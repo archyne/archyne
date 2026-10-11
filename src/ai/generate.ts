@@ -1,4 +1,5 @@
 import { parseDiagram } from "../model/diagram";
+import { isHeaderLine } from "../model/sniff";
 import { buildChat, RETRY_FEEDBACK, UNCHANGED_FEEDBACK } from "./prompt";
 import type { AiProvider, AiRequest, GenerateOptions } from "./types";
 
@@ -53,6 +54,14 @@ function stripFence(raw: string): string {
   if (fence) text = text.slice(fence[0].length);
   const closing = text.indexOf("```");
   if (closing !== -1) text = text.slice(0, closing);
+  // Whatever stands before the header is not the diagram either. The 3B model
+  // opens a good share of its answers with a stray `mer` line — the start of
+  // a fence it never finished — above an otherwise correct diagram, and the
+  // whole answer failed to parse on that one line. With no header anywhere,
+  // the text is left as it is and the parser says what is wrong with it.
+  const lines = text.split("\n");
+  const header = lines.findIndex((line) => isHeaderLine(line.trim()));
+  if (header > 0) text = lines.slice(header).join("\n");
   return text.trim();
 }
 

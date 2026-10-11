@@ -123,6 +123,20 @@ describe("generateDiagram", () => {
     expect(result.attempts).toBe(1);
   });
 
+  it("drops what stands above the header, like the 3B model's stray `mer`", async () => {
+    const result = await generateDiagram(
+      REQUEST,
+      responding("mer\nflowchart TD\n  a --> b\n  c --> d"),
+    );
+    expect(result.code).toBe("flowchart TD\n  a --> b\n  c --> d");
+    expect(result.attempts).toBe(1);
+  });
+
+  it("leaves an answer with no header at all for the parser to refuse", async () => {
+    const run = generateDiagram(REQUEST, responding("mer\n  a --> b"));
+    await expect(run).rejects.toBeInstanceOf(DiagramGenerationError);
+  });
+
   it("refuses to run when the provider has no model behind it", async () => {
     const bare: AiProvider = {
       kind: "test",
