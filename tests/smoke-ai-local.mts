@@ -19,9 +19,12 @@
  *
  * `SMOKE_PROFILE` points at a directory for the browser profile: the model
  * weights cache there, so a rerun after a code fix skips the download.
+ * The cache belongs to the origin, so keep the port. `SMOKE_MODEL` picks the
+ * model (an option value of the panel's select), and `SMOKE_EXPECT_DEVICE=webgpu`
+ * fails the run if the engine settled on anything else.
  */
 import { chromium, type ConsoleMessage, type Page } from "playwright";
-import { BASE, CHANNEL } from "./env.mts";
+import { CHANNEL, codeUrl } from "./env.mts";
 
 let failed = false;
 function check(label: string, ok: boolean, detail: string): void {
@@ -66,7 +69,26 @@ page.on("requestfailed", (req) =>
 
 const t0 = Date.now();
 
-await page.goto(BASE, { timeout: 60_000 });
+// Open a known document through a share link. The profile persists (that is
+// what keeps the weights cached), and so does its workspace: opening the bare
+// page would hand the model whatever the last run left behind.
+const START = [
+  "flowchart TD",
+  '  start(["Start"])',
+  '  input[/"User request"/]',
+  '  check{"Valid?"}',
+  '  work["Process request"]',
+  '  err["Show error"]',
+  '  done(["Done"])',
+  "  start --> input",
+  "  input --> check",
+  '  check -->|"yes"| work',
+  '  check -->|"no"| err',
+  "  work --> done",
+  "  err --> done",
+  "",
+].join("\n");
+await page.goto(codeUrl(START), { timeout: 60_000 });
 await page.waitForSelector(".app", { timeout: 60_000 });
 
 await page.getByRole("button", { name: "More" }).click();
@@ -83,7 +105,14 @@ check(
   "composer hidden",
 );
 
-await page.locator(".ai-composer textarea.ai-request").fill("make the checkout clearer");
+// SMOKE_MODEL picks the size (an option value of the model select).
+const SMOKE_MODEL = process.env.SMOKE_MODEL;
+if (SMOKE_MODEL) await page.locator("select[aria-label='Model']").selectOption(SMOKE_MODEL);
+// A request about the sample the app opens on, so a wrong answer is the
+// model's fault rather than the question's.
+await page
+  .locator(".ai-composer textarea.ai-request")
+  .fill("after an error, go back to the user request instead of finishing");
 const started = Date.now();
 await page.getByRole("button", { name: "Send", exact: true }).click();
 
@@ -95,6 +124,7 @@ const deadline = Date.now() + 30 * 60_000;
 let settled = "none" as "done" | "error" | "none";
 let answer = "";
 let appliedNotes = 0;
+let device: string | null = null;
 let errorText = "";
 while (Date.now() < deadline) {
   const strip = await page
@@ -117,6 +147,18 @@ while (Date.now() < deadline) {
   if (status && !statusSeen.has(status)) {
     statusSeen.add(status);
     timeline.push(`${Math.round((Date.now() - started) / 1000)}s ${status}`);
+  }
+  const finished =
+    (await page.locator(".ai-assistant.done").count()) > 0 ||
+    (await page.locator(".ai-assistant.error").count()) > 0;
+  // Which execution provider the engine settled on: a run that quietly fell
+  // back to WASM is a quarter of an hour per answer, so it is worth naming.
+  // Read while the panel is still on screen; the Code tab unmounts it.
+  if (finished) {
+    device = await page
+      .locator(".ai-model-status")
+      .getAttribute("data-device", { timeout: 2000 })
+      .catch(() => null);
   }
   if ((await page.locator(".ai-assistant.done").count()) > 0) {
     settled = "done";
@@ -163,8 +205,6 @@ if (settled === "done") {
     /* fall through */
   }
   check("the canvas paints it", canvasPainted, "no .react-flow__node");
-  const stripVisible = await page.locator(".ai-model-status").count();
-  check("the model status strip is on the page", stripVisible > 0, "no .ai-model-status");
 } else {
   check("the failure is reported, not hidden", errorText.length > 0, JSON.stringify(errorText));
 }
@@ -179,6 +219,14 @@ check(
 );
 
 console.log(problems.map((p) => `[problem] ${p}`).join("\n"));
+console.log(`[trace] device: ${device ?? "(not reported)"}`);
+if (process.env.SMOKE_EXPECT_DEVICE) {
+  check(
+    `the engine runs on ${process.env.SMOKE_EXPECT_DEVICE}`,
+    device === process.env.SMOKE_EXPECT_DEVICE,
+    `device = ${device}`,
+  );
+}
 console.log(`[trace] timeline:\n  ${timeline.join("\n  ") || "none"}`);
 const codeSeen =
   settled === "error"
@@ -186,7 +234,7 @@ const codeSeen =
     : answer;
 console.log(`[trace] ${settled === "error" ? `error: ${errorText}` : "answer"}`);
 console.log(
-  `[trace] last draw (${codeSeen.length} chars): ${codeSeen.slice(0, 260) || "(none)"}`,
+  `[trace] last draw (${codeSeen.length} chars): ${codeSeen.slice(0, 1200) || "(none)"}`,
 );
 
 await context.close();

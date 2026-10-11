@@ -75,7 +75,11 @@ export function AiPanel() {
       </div>
 
       {mode === "local" && modelStatus.state !== "idle" && (
-        <div className={`ai-model-status ai-model-status--${modelStatus.state}`} role="status">
+        <div
+          className={`ai-model-status ai-model-status--${modelStatus.state}`}
+          role="status"
+          data-device={modelStatus.state === "ready" ? modelStatus.device : undefined}
+        >
           {modelStatus.state === "downloading" && (
             <span>
               {t("ai.downloading", {

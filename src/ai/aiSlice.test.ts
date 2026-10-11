@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useGraphStore } from "../store";
+import { fakeProvider } from "./fake";
 import { DEFAULT_AI_MODEL } from "./types";
 
 const START = "flowchart TD\n  a[Start] --> b[Done]\n";
@@ -23,6 +24,10 @@ beforeEach(async () => {
   });
   await useGraphStore.getState().applyCode(START);
 }, 60_000);
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("the Generate conversation slice", () => {
   it("starts shut, on the small model, with no conversation", () => {
@@ -57,6 +62,20 @@ describe("the Generate conversation slice", () => {
     expect(s.aiTurns[0].code.startsWith("flowchart TD")).toBe(true);
     expect(s.aiTurns[0].error).toBeNull();
     expect(s.aiTurns[0].attempts).toBe(1);
+  });
+
+  it("does not show the model the positions comment", async () => {
+    // A line of JSON coordinates is nothing the model can use, and a small
+    // one shown it recites it back until it runs out of tokens.
+    await useGraphStore
+      .getState()
+      .applyCode(START + '%% graph:positions {"a":{"x":0,"y":0},"b":{"x":0,"y":120}}\n');
+    expect(useGraphStore.getState().code).toContain("%% graph:positions");
+    const generate = vi.spyOn(fakeProvider, "generate");
+    await useGraphStore.getState().aiGenerate("make the checkout clearer");
+    const prompt = generate.mock.calls[0][0].map((m) => m.content).join("\n");
+    expect(prompt).toContain("a[Start] --> b[Done]");
+    expect(prompt).not.toContain("graph:positions");
   });
 
   it("a conversation threads its turns: each answer joins the thread", async () => {

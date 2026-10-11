@@ -41,7 +41,12 @@ import {
   serializeDiagram,
   UnsupportedDiagramError,
 } from "./model/diagram";
-import { patchPositions, readPositions, type PositionMap } from "./model/positions";
+import {
+  patchPositions,
+  readPositions,
+  stripPositions,
+  type PositionMap,
+} from "./model/positions";
 import {
   patchWaypoints,
   readWaypoints,
@@ -1566,7 +1571,11 @@ export const useGraphStore = create<GraphState>((set, get) => {
         const result = await generateDiagram(
           {
             kind: get().kind,
-            code: get().code,
+            // Without the positions comment: it is a line of JSON coordinates
+            // the model has no use for (the answer is laid out afresh), and a
+            // small model shown one tends to recite it back — measured on the
+            // 1.5B, a two-second answer became a thousand tokens of loop.
+            code: stripPositions(get().code),
             request: request.trim(),
             model: get().aiModel,
           },

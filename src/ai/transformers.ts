@@ -29,7 +29,7 @@ export type LocalStatus =
       percent: number | null;
     }
   | { state: "warming"; model: AiModel }
-  | { state: "ready"; model: AiModel }
+  | { state: "ready"; model: AiModel; device: Backend["device"] }
   | { state: "error"; model: AiModel; error: string };
 
 export interface LocalProviderOptions {
@@ -46,6 +46,49 @@ export interface LocalProviderOptions {
    * parse error it will spend a retry fixing — so give a real diagram room.
    */
   maxNewTokens?: number;
+  /**
+   * Which execution provider and weights to run. Injectable for tests; the
+   * default asks the browser for a GPU (see `pickBackend`).
+   */
+  backend?: () => Promise<Backend>;
+}
+
+/**
+ * An execution provider and the weights that suit it. The pairing matters as
+ * much as the device: `q4f16` is the export built for WebGPU, and `q4` is the
+ * one the WASM kernels run least badly single-threaded.
+ */
+export interface Backend {
+  device: "webgpu" | "wasm";
+  dtype: "q4f16" | "q4";
+}
+
+export const WEBGPU_BACKEND: Backend = { device: "webgpu", dtype: "q4f16" };
+export const WASM_BACKEND: Backend = { device: "wasm", dtype: "q4" };
+
+/**
+ * WebGPU when the browser hands out an adapter, WASM otherwise.
+ *
+ * Measured on the 0.5B model (Ryzen 7 7700, Edge): WASM decodes about one
+ * token a second on a single thread — a full answer is a quarter of an hour —
+ * while WebGPU decodes fifty to sixty, and a whole turn takes a second or two.
+ * WASM only goes multithreaded on a cross-origin isolated page, which the
+ * static hosting this app ships on cannot declare. So the GPU is not an
+ * optimisation here, it is the difference between a feature and none.
+ *
+ * `navigator.gpu` existing is not enough: a blocklisted driver or a disabled
+ * flag still exposes it and returns no adapter, so the adapter is asked for.
+ */
+export async function pickBackend(): Promise<Backend> {
+  const gpu = (
+    globalThis.navigator as { gpu?: { requestAdapter(): Promise<unknown> } } | undefined
+  )?.gpu;
+  if (!gpu) return WASM_BACKEND;
+  try {
+    return (await gpu.requestAdapter()) ? WEBGPU_BACKEND : WASM_BACKEND;
+  } catch {
+    return WASM_BACKEND;
+  }
 }
 
 /**
@@ -153,6 +196,7 @@ export function localProvider(options: LocalProviderOptions = {}): AiProvider {
   const onStatus = options.onStatus ?? (() => undefined);
   const maxNewTokens = options.maxNewTokens ?? 1024;
   const load = options.load ?? loadTransformersRuntime;
+  const pickBackendFor = options.backend ?? pickBackend;
 
   let runtime: Promise<LocalRuntime> | null = null;
   const getRuntime = (): Promise<LocalRuntime> => (runtime ??= load());
@@ -168,18 +212,31 @@ export function localProvider(options: LocalProviderOptions = {}): AiProvider {
       }
       onStatus({ state: "downloading", model, file: "", percent: null });
       const rt = await getRuntime();
-      try {
-        const generator = await rt.pipeline("text-generation", AI_MODELS[model].repo, {
-          dtype: "q4",
-          // In the browser the CPU backend is the WASM execution provider:
-          // onnxruntime-web knows `wasm` and `webgpu`, and "cpu" is a Node
-          // (onnxruntime-node) device name, not one the page can run on.
-          device: "wasm",
+      // In the browser the CPU backend is the WASM execution provider:
+      // onnxruntime-web knows `wasm` and `webgpu`, and "cpu" is a Node
+      // (onnxruntime-node) device name, not one the page can run on.
+      const build = (backend: Backend) =>
+        rt.pipeline("text-generation", AI_MODELS[model].repo, {
+          ...backend,
           progress_callback: (info: Record<string, unknown>) =>
             applyProgress(info, model, onStatus),
         });
+      try {
+        const backend = await pickBackendFor();
+        let generator: LocalGenerator;
+        let device = backend.device;
+        try {
+          generator = await build(backend);
+        } catch (err) {
+          // An adapter can be handed out and the session still fail to build
+          // on it (an unsupported operator, a lost device). The slow engine
+          // is still an engine; nothing is gained by refusing to run.
+          if (backend.device !== "webgpu") throw err;
+          generator = await build(WASM_BACKEND);
+          device = WASM_BACKEND.device;
+        }
         engine = { model, generator };
-        onStatus({ state: "ready", model });
+        onStatus({ state: "ready", model, device });
         return generator;
       } catch (err) {
         onStatus({

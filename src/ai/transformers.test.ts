@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { localProvider } from "./transformers";
+import { afterEach, describe, expect, it } from "vitest";
+import { localProvider, pickBackend, WASM_BACKEND, WEBGPU_BACKEND } from "./transformers";
 import type { LocalRuntime, LocalStatus } from "./transformers";
 import type { ChatMessage } from "./types";
 
@@ -176,6 +176,81 @@ describe("localProvider", () => {
       state: "error",
       model: "qwen2.5-coder-0.5b",
       error: "engine exploded",
+    });
+  });
+});
+
+describe("the backend", () => {
+  /** A runtime that records what each build asked for, and can refuse WebGPU. */
+  function recording(refuseGpu: boolean): { runtime: LocalRuntime; asked: unknown[] } {
+    const asked: unknown[] = [];
+    const runtime: LocalRuntime = {
+      pipeline: async (_task, _repo, options) => {
+        asked.push({ device: options?.device, dtype: options?.dtype });
+        if (refuseGpu && options?.device === "webgpu") throw new Error("no such operator");
+        return Object.assign(async () => ({}), { tokenizer: {} });
+      },
+      TextStreamer: class {},
+    };
+    return { runtime, asked };
+  }
+
+  it("builds on the GPU with the weights made for it, when there is one", async () => {
+    const { runtime, asked } = recording(false);
+    const statuses: LocalStatus[] = [];
+    const provider = localProvider({
+      onStatus: (s) => statuses.push(s),
+      load: async () => runtime,
+      backend: async () => WEBGPU_BACKEND,
+    });
+    await provider.generate(MSG);
+    expect(asked).toEqual([{ device: "webgpu", dtype: "q4f16" }]);
+    expect(statuses.at(-1)).toMatchObject({ state: "ready", device: "webgpu" });
+  });
+
+  it("falls back to WASM when the GPU session will not build, and says so", async () => {
+    const { runtime, asked } = recording(true);
+    const statuses: LocalStatus[] = [];
+    const provider = localProvider({
+      onStatus: (s) => statuses.push(s),
+      load: async () => runtime,
+      backend: async () => WEBGPU_BACKEND,
+    });
+    await provider.generate(MSG);
+    expect(asked).toEqual([
+      { device: "webgpu", dtype: "q4f16" },
+      { device: "wasm", dtype: "q4" },
+    ]);
+    expect(statuses.at(-1)).toMatchObject({ state: "ready", device: "wasm" });
+  });
+
+  describe("pickBackend", () => {
+    const original = Object.getOwnPropertyDescriptor(navigator, "gpu");
+    const withGpu = (gpu: unknown) =>
+      Object.defineProperty(navigator, "gpu", { value: gpu, configurable: true });
+    afterEach(() => {
+      if (original) Object.defineProperty(navigator, "gpu", original);
+      else delete (navigator as { gpu?: unknown }).gpu;
+    });
+
+    it("is WASM where WebGPU does not exist", async () => {
+      expect(await pickBackend()).toEqual(WASM_BACKEND);
+    });
+
+    it("is WebGPU when an adapter is handed out", async () => {
+      withGpu({ requestAdapter: async () => ({}) });
+      expect(await pickBackend()).toEqual(WEBGPU_BACKEND);
+    });
+
+    it("is WASM when WebGPU exists but gives no adapter, or throws", async () => {
+      withGpu({ requestAdapter: async () => null });
+      expect(await pickBackend()).toEqual(WASM_BACKEND);
+      withGpu({
+        requestAdapter: async () => {
+          throw new Error("blocklisted");
+        },
+      });
+      expect(await pickBackend()).toEqual(WASM_BACKEND);
     });
   });
 });
