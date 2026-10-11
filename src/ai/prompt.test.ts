@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { fakeCodeFor } from "./fake";
-import { EDIT_LABEL, buildChat, RETRY_FEEDBACK } from "./prompt";
+import { parseDiagram } from "../model/diagram";
+import type { DiagramKind } from "../model/types";
+import { EDIT_LABEL, EXAMPLES, buildChat, RETRY_FEEDBACK } from "./prompt";
 import type { AiRequest } from "./types";
 
 const REQUEST: AiRequest = {
@@ -11,12 +13,10 @@ const REQUEST: AiRequest = {
 };
 
 describe("buildChat", () => {
-  it("tells the model the family, the document and the request", () => {
+  it("tells the model the family, the document and the request, last", () => {
     const chat = buildChat(REQUEST);
-    expect(chat).toHaveLength(2);
-    expect(chat[0].role).toBe("system");
-    expect(chat[1].role).toBe("user");
-    const user = chat[1].content;
+    expect(chat.map((m) => m.role)).toEqual(["system", "user", "assistant", "user"]);
+    const user = chat[3].content;
     expect(user).toContain("flowchart");
     expect(user).toContain(REQUEST.code);
     expect(user).toContain("add a step before b");
@@ -25,22 +25,58 @@ describe("buildChat", () => {
 
   it("says plainly when the document is empty rather than printing nothing", () => {
     const chat = buildChat({ ...REQUEST, code: "   " });
-    expect(chat[1].content).toContain("(the diagram is empty)");
+    expect(chat[3].content).toContain("(the diagram is empty)");
   });
 
-  it("tacks the retry feedback onto the same turn", () => {
+  it("tacks the retry feedback onto the real turn, not the example", () => {
     const feedback = RETRY_FEEDBACK({ kind: "flowchart", error: "syntax error in a" });
     const chat = buildChat(REQUEST, feedback);
-    const user = chat[1].content;
+    const user = chat[3].content;
     expect(user).toContain("syntax error in a");
     // The stub provider keys on exactly this phrase (see fake.ts).
     expect(user).toContain("did not parse");
+    expect(chat[1].content).not.toContain("did not parse");
   });
 
-  it("keeps the system brief so a small model can follow it", () => {
-    const system = buildChat(REQUEST)[0].content;
-    // ~250 words or fewer: a 0.5B model gets the gist or none at all.
-    expect(system.split(/\s+/).length).toBeLessThan(250);
+  it("keeps the brief short so a small model can follow it", () => {
+    // ~250 words or fewer, or a model of this size gets the gist or none.
+    expect(buildChat(REQUEST)[0].content.split(/\s+/).length).toBeLessThan(250);
+  });
+
+  it("works the open document's own family as the example exchange", () => {
+    for (const kind of Object.keys(EXAMPLES) as DiagramKind[]) {
+      const chat = buildChat({ ...REQUEST, kind });
+      expect(chat[1].content).toContain(`a ${kind}.`);
+      expect(chat[1].content).toContain(EXAMPLES[kind].document);
+      expect(chat[1].content).toContain(`${EDIT_LABEL}\n${EXAMPLES[kind].request}`);
+      expect(chat[2].content).toBe(EXAMPLES[kind].answer);
+    }
+  });
+});
+
+describe("the examples", () => {
+  // An example is copied, forms and all. One that does not parse — or that
+  // parses as another family — would teach the mistake it exists to prevent.
+  for (const [kind, example] of Object.entries(EXAMPLES)) {
+    it(`the ${kind} exchange parses as a ${kind} on both sides, and changes something`, async () => {
+      const before = await parseDiagram(example.document);
+      const after = await parseDiagram(example.answer);
+      expect(before.kind).toBe(kind);
+      expect(after.kind).toBe(kind);
+      // A sequence exchange adds messages rather than participants, so the
+      // count may hold still; the text may not.
+      expect(after.nodes.length).toBeGreaterThanOrEqual(before.nodes.length);
+      expect(example.answer).not.toBe(example.document);
+    });
+  }
+
+  it("each shows the colour or icon form its family can carry", () => {
+    expect(EXAMPLES.flowchart.answer).toMatch(/^\s*style \w+ fill:/m);
+    expect(EXAMPLES.flowchart.answer).toMatch(/@\{ icon: "/);
+    expect(EXAMPLES.state.answer).toMatch(/^\s*classDef \w+ fill:/m);
+    expect(EXAMPLES.state.answer).toMatch(/^\s*class \w+ \w+$/m);
+    expect(EXAMPLES.class.answer).toMatch(/^\s*style \w+ fill:/m);
+    expect(EXAMPLES.er.answer).toMatch(/\|\|--o\{/);
   });
 });
 
@@ -73,7 +109,8 @@ describe("fakeCodeFor", () => {
 
 describe("fakeCodeFor edits", () => {
   const turn = (request: string, code: string): string =>
-    buildChat({ kind: "flowchart", code, request, model: "qwen2.5-coder-0.5b" })[1].content;
+    buildChat({ kind: "flowchart", code, request, model: "qwen2.5-coder-0.5b" }).at(-1)!
+      .content;
   const DOC = "flowchart TD\n  a[Start] --> b[Done]\n";
 
   it("grows the open drawing when asked to add a step", () => {
