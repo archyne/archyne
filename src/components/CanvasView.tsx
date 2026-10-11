@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ContextMenu, type MenuState } from "./ContextMenu";
 import {
   Background,
@@ -101,8 +101,26 @@ export function CanvasView() {
   const onNodeDragStop = useGraphStore((s) => s.onNodeDragStop);
   const addNode = useGraphStore((s) => s.addNode);
   const selectOnly = useGraphStore((s) => s.selectOnly);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
+  const fitSeq = useGraphStore((s) => s.fitSeq);
   const [menu, setMenu] = useState<MenuState | null>(null);
+
+  /**
+   * Fit the drawing into view when the store asks.
+   *
+   * Replacing the document does not move the viewport, so a diagram that grew
+   * downwards put its new part off the bottom of the screen and the canvas
+   * looked untouched. The store bumps a counter when something replaced the
+   * drawing wholesale; this answers it. Deliberately not on `nodes`: fitting
+   * on every change would yank the viewport around while someone is working.
+   */
+  useEffect(() => {
+    if (fitSeq === 0) return;
+    // After the nodes have been measured, or the fit is computed against
+    // boxes that do not have their real size yet.
+    const id = requestAnimationFrame(() => void fitView({ duration: 200 }));
+    return () => cancelAnimationFrame(id);
+  }, [fitSeq, fitView]);
   const connect = useKeyboardConnect();
   /**
    * Whether a connection is being dragged, so the canvas can show every

@@ -241,6 +241,15 @@ jobs:
         env:
           ARCHYNE_URL: http://localhost:5173
 
+      # The dev server runs the AI pipeline on a fake provider so this whole
+      # suite works with zero model download (see src/ai/provider.ts) — the
+      # moments pinned here have to hold for the real engine as much as the
+      # stub, which is why they are checked at all.
+      - name: Generate (AI) panel
+        run: npm run test:e2e:ai
+        env:
+          ARCHYNE_URL: http://localhost:5173
+
       - name: Icon picking
         run: npm run test:e2e:icons
         env:

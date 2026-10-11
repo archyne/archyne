@@ -11,5 +11,16 @@
     "",
     "Keep this list empty when you can. An entry is a promise to look again."
   ],
-  "allow": []
+  "allow": [
+    {
+      "id": "GHSA-xcpc-8h2w-3j85",
+      "reason": "adm-zip is a dependency of onnxruntime-node, a Node-only module of @huggingface/transformers; Archyne ships and runs the browser WASM build, which never loads it.",
+      "expires": "2026-12-31"
+    },
+    {
+      "id": "GHSA-f88m-g3jw-g9cj",
+      "reason": "sharp is a Node-only dependency of @huggingface/transformers (image pre-processing); Archyne ships and runs the browser WASM build, which never loads it.",
+      "expires": "2026-12-31"
+    }
+  ]
 }

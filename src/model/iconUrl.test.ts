@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 // The page's own source, as text. Read through the bundler rather than with
 // `node:fs`, because this project is type-checked as browser code.
 import indexHtml from "../../index.html?raw";
+import { MODEL_HOSTS } from "../ai/types";
 import {
   fetchableInBrowser,
   ICON_HOSTS,
@@ -145,10 +146,25 @@ describe("the content security policy", () => {
     expect(imgSrc.trim().split(/\s+/)).not.toContain("*");
   });
 
+  it("names every host the local model's weights come from", () => {
+    // The other opt-in feature that reaches out: running the model in the
+    // tab fetches its ONNX weights. Same bargain as the icons — the list
+    // lives in code, and the policy has to agree with it.
+    for (const host of MODEL_HOSTS) {
+      expect(connectSrc, host).toContain(`https://${host}`);
+    }
+  });
+
   it("names no others, and never opens up to everything", () => {
     const allowed = connectSrc.trim().split(/\s+/);
     expect(allowed).not.toContain("*");
     expect(allowed).not.toContain("https:");
-    expect(allowed.sort()).toEqual(["'self'", ...ICON_HOSTS.map((h) => `https://${h}`)].sort());
+    expect(allowed.sort()).toEqual(
+      [
+        "'self'",
+        ...ICON_HOSTS.map((h) => `https://${h}`),
+        ...MODEL_HOSTS.map((h) => `https://${h}`),
+      ].sort(),
+    );
   });
 });

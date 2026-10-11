@@ -118,6 +118,15 @@ export function Toolbar() {
     setTimeout(() => setCopied(false), 1200);
   };
 
+  /** "Generate with AI": the side panel holds the Generate tab, so opening it
+      opens the panel alongside. Both placements matter — without the panel an
+      invisible tab has opened, without the tab a closed drawer has. */
+  const openAi = () => {
+    const layout = useLayoutStore.getState();
+    if (!layout.sideOpen) layout.toggleSide();
+    useGraphStore.getState().setAiOpen(true);
+  };
+
   /* Controls that live in the bar when there is room for them and in the
      overflow menu when there is not, defined once so the two placements
      cannot drift apart. */
@@ -372,6 +381,7 @@ export function Toolbar() {
           <MenuItem onSelect={() => void copy()}>
             {copied ? t("toolbar.copied") : t("toolbar.copyCode")}
           </MenuItem>
+          <MenuItem onSelect={openAi}>{t("ai.tab")}</MenuItem>
           <div className="menu-separator" />
           <label className="menu-field">
             {t("prefs.singleKeys")}

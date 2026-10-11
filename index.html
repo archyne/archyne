@@ -8,20 +8,32 @@
       needs — the icon packs, mermaid's renderers — is bundled, and nothing
       here calls home.
 
-      `connect-src` names five hosts because of one feature: importing an icon
-      from a pasted link. Vendors publish their sets as loose files, and the
-      alternative to fetching one is that the only way to get an icon in is to
-      have it on the disk in front of you. The list is closed on purpose —
+      `connect-src` names the hosts behind two opt-in features, and nothing
+      else. Importing an icon from a pasted link fetches loose vendor files:
       four raw-file hosts that serve with permissive CORS, plus Iconify's API,
       which is how ~200 000 icons are reachable without the build carrying
-      them — and it is kept in step with `ICON_HOSTS` in
-      src/model/iconUrl.ts, which a test checks.
+      them — that list is kept in step with `ICON_HOSTS` in
+      src/model/iconUrl.ts, which a test checks. And running the local model
+      (the Generate panel's own feature) fetches its ONNX weights from
+      huggingface.co, which redirects large files to its CDNs — the legacy
+      LFS hosts and `*.cdn.hf.co`, the aws/eu/ap "xet" locations a repo
+      actually resolves the redirect to. These are reached only when a person
+      sends a prompt, never on their own.
       It must never become `*` or bare `https:`: a request only ever goes out
       because somebody pasted a link and pressed a button.
 
       Notes on the loosenings:
         style-src 'unsafe-inline'  mermaid injects a <style> per render, and
                                    the splash below is inline on purpose
+        script-src blob:           onnxruntime-web (the local model's WASM
+                                   backend) bootstraps its execution worker
+                                   from a blob URL; worker-src 'self' blob:
+                                   already admits the worker itself, and this
+                                   admits the single script that starts it
+        script-src 'wasm-unsafe-eval'  onnxruntime-web compiles the model's
+                                   WASM kernels; this is the narrow token that
+                                   lets WebAssembly.instantiate run without
+                                   granting eval, whose own token stays absent
         img-src data: blob:        exports are produced as data URLs, and the
                                    preview rasterizes SVG through blobs; the
                                    same five hosts as `connect-src`, because
@@ -38,11 +50,11 @@
       http-equiv="Content-Security-Policy"
       content="
         default-src 'self';
-        script-src 'self';
+        script-src 'self' blob: 'wasm-unsafe-eval';
         style-src 'self' 'unsafe-inline';
         img-src 'self' data: blob: https://raw.githubusercontent.com https://gist.githubusercontent.com https://cdn.jsdelivr.net https://unpkg.com https://api.iconify.design;
         font-src 'self' data:;
-        connect-src 'self' https://raw.githubusercontent.com https://gist.githubusercontent.com https://cdn.jsdelivr.net https://unpkg.com https://api.iconify.design;
+        connect-src 'self' https://raw.githubusercontent.com https://gist.githubusercontent.com https://cdn.jsdelivr.net https://unpkg.com https://api.iconify.design https://huggingface.co https://cdn.huggingface.co https://cdn-lfs.huggingface.co https://*.cdn.hf.co;
         worker-src 'self' blob:;
         object-src 'none';
         base-uri 'none';

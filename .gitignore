@@ -28,3 +28,7 @@ e2e-out
 # tarball carries it. Generated rather than kept, so that the package's licence
 # cannot drift from the project's.
 packages/render/LICENSE
+
+# Browser profile of tests/smoke-ai-local.mts: it caches the model weights so a
+# rerun skips a download of several hundred megabytes. Local only.
+.smoke-profile

@@ -82,6 +82,7 @@
     "test:e2e:recipes": "tsx tests/e2e-recipes.mts",
     "test:e2e:paint": "tsx tests/e2e-paint.mts",
     "test:e2e:legibility": "tsx tests/e2e-legibility.mts",
+    "test:e2e:ai": "tsx tests/e2e-ai.mts",
     "test:e2e:slide": "tsx tests/e2e-slide.mts",
     "test:e2e:metrics": "tsx tests/e2e-metrics.mts",
     "start": "node bin/archyne.mjs",
@@ -91,6 +92,7 @@
   },
   "dependencies": {
     "@codemirror/theme-one-dark": "^6.1.3",
+    "@huggingface/transformers": "^4.2.0",
     "@iconify-json/carbon": "^1.2.24",
     "@iconify-json/devicon": "^1.2.62",
     "@iconify-json/logos": "^1.2.11",
