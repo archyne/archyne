@@ -476,13 +476,39 @@ export const en = {
   "ai.undoTurn": "Undo this change",
   "ai.undoTurnHint": "Put the diagram back as it was before this answer",
   "ai.failed": "That did not draw: {error}",
-  "ai.notConfiguredTitle": "No local model is connected",
-  "ai.notConfiguredBody":
-    "Archyne draws with a small model that runs entirely in this browser — the diagram never leaves the machine. This build is not connected to one yet.",
   "ai.downloading": "Downloading the model… {percent}%",
   "ai.warming": "Loading the model…",
   "ai.ready": "Model ready",
   "ai.localError": "The local model is not ready: {error}",
+  "ai.engine": "Engine",
+  "ai.engineBrowser": "In this browser",
+  "ai.engineServer": "Local server",
+  "ai.serverSummary": "Local server: {model}",
+  "ai.serverNoModel": "no model chosen",
+  "ai.serverHint":
+    "Works with Ollama, LM Studio and any server that speaks the OpenAI API. The diagram stays on this computer, unless you pick a cloud model.",
+  "ai.serverCloudTag": "{model} — cloud",
+  "ai.serverCloudWarning":
+    "This model runs in the cloud, not on this computer: the diagram will be sent there.",
+  "ai.serverAddress": "Address",
+  "ai.serverModel": "Model",
+  "ai.serverPickModel": "Choose a model",
+  "ai.serverCheck": "Check connection",
+  "ai.serverChecking": "Checking…",
+  "ai.serverOk": "Connected — {count} models available.",
+  "ai.serverOkEmpty": "Connected, but the server lists no models. Load or download one first.",
+  "ai.serverDown": "Nothing is answering at {url}. Start {server} and check again.",
+  "ai.serverBlockedOllama":
+    "Ollama is running but refuses this page. Set OLLAMA_ORIGINS to {origin} and restart Ollama.",
+  "ai.serverBlockedLmStudio":
+    "LM Studio is running but refuses this page. Turn on “Enable CORS” in LM Studio's server settings.",
+  "ai.serverBlocked":
+    "The server is running but refuses this page (CORS). Allow the origin {origin} in its settings.",
+  "ai.serverNotLocal":
+    "Only a server on this computer can be used: the address must start with http://localhost or http://127.0.0.1.",
+  "ai.serverHttp": "The server answered with error {status}.",
+  "ai.serverNeedsModel": "Choose a model in the local server settings first.",
+  "ai.serverGeneric": "the server",
 
   "tpl.title": "Start from a template",
   "tpl.blank": "Blank diagram",

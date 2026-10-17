@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 // The page's own source, as text. Read through the bundler rather than with
 // `node:fs`, because this project is type-checked as browser code.
 import indexHtml from "../../index.html?raw";
+import { SERVER_ORIGINS } from "../ai/server";
 import { MODEL_HOSTS } from "../ai/types";
 import {
   fetchableInBrowser,
@@ -155,15 +156,26 @@ describe("the content security policy", () => {
     }
   });
 
+  it("reaches a local model server on loopback, and on loopback only", () => {
+    // The third: a server the person runs on this machine. Any port, because
+    // every server picks its own — but never a host that is not this one.
+    for (const origin of SERVER_ORIGINS) {
+      expect(connectSrc, origin).toContain(origin);
+      expect(new URL(origin.replace(":*", "")).hostname).toMatch(/^(localhost|127\.0\.0\.1)$/);
+    }
+  });
+
   it("names no others, and never opens up to everything", () => {
     const allowed = connectSrc.trim().split(/\s+/);
     expect(allowed).not.toContain("*");
     expect(allowed).not.toContain("https:");
+    expect(allowed).not.toContain("http:");
     expect(allowed.sort()).toEqual(
       [
         "'self'",
         ...ICON_HOSTS.map((h) => `https://${h}`),
         ...MODEL_HOSTS.map((h) => `https://${h}`),
+        ...SERVER_ORIGINS,
       ].sort(),
     );
   });

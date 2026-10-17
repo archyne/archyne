@@ -28,6 +28,7 @@ import type {
   StateNode,
 } from "./model/types";
 import { getProvider } from "./ai/provider";
+import { ServerError } from "./ai/server";
 import { DEFAULT_AI_MODEL, type AiModel, type AiTurn } from "./ai/types";
 import type { LocalStatus } from "./ai/transformers";
 import { DiagramGenerationError, generateDiagram } from "./ai/generate";
@@ -1643,6 +1644,7 @@ export const useGraphStore = create<GraphState>((set, get) => {
             // made of their request instead of an opaque failure.
             code: failed?.code ?? turn?.code ?? "",
             error: err instanceof Error ? err.message : String(err),
+            reason: err instanceof ServerError ? err.reason : null,
             attempts: failed?.attempts ?? turn?.attempts ?? 1,
           }),
         });

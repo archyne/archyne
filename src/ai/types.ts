@@ -86,6 +86,12 @@ export interface AiTurn {
   code: string;
   /** Why the turn stopped, when it stopped in error. */
   error: string | null;
+  /**
+   * When a local server was the reason, which kind of failure (see
+   * `Reachability` in server.ts), so the panel can say how to fix it rather
+   * than repeat a browser's "Failed to fetch".
+   */
+  reason?: string | null;
   /** Which draw of this turn is in progress (1 = the first). */
   attempts: number;
   /**

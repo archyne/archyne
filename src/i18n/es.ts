@@ -470,13 +470,40 @@ export const messages: Messages = {
   "ai.undoTurn": "Deshacer este cambio",
   "ai.undoTurnHint": "Devuelve el diagrama a como estaba antes de esta respuesta",
   "ai.failed": "No se ha podido dibujar: {error}",
-  "ai.notConfiguredTitle": "No hay un modelo local conectado",
-  "ai.notConfiguredBody":
-    "Archyne dibuja con un modelo pequeño que se ejecuta por completo en este navegador — el diagrama nunca sale de la máquina. Esta versión aún no lleva uno conectado.",
   "ai.downloading": "Descargando el modelo… {percent}%",
   "ai.warming": "Cargando el modelo…",
   "ai.ready": "Modelo listo",
   "ai.localError": "El modelo local no está listo: {error}",
+  "ai.engine": "Motor",
+  "ai.engineBrowser": "En este navegador",
+  "ai.engineServer": "Servidor local",
+  "ai.serverSummary": "Servidor local: {model}",
+  "ai.serverNoModel": "ningún modelo elegido",
+  "ai.serverHint":
+    "Funciona con Ollama, LM Studio y cualquier servidor compatible con la API de OpenAI. El diagrama se queda en este ordenador, salvo que elijas un modelo en la nube.",
+  "ai.serverCloudTag": "{model} — nube",
+  "ai.serverCloudWarning":
+    "Este modelo se ejecuta en la nube, no en este ordenador: el diagrama se enviará allí.",
+  "ai.serverAddress": "Dirección",
+  "ai.serverModel": "Modelo",
+  "ai.serverPickModel": "Elige un modelo",
+  "ai.serverCheck": "Comprobar conexión",
+  "ai.serverChecking": "Comprobando…",
+  "ai.serverOk": "Conectado — {count} modelos disponibles.",
+  "ai.serverOkEmpty":
+    "Conectado, pero el servidor no muestra modelos. Carga o descarga uno primero.",
+  "ai.serverDown": "Nada responde en {url}. Inicia {server} y vuelve a comprobarlo.",
+  "ai.serverBlockedOllama":
+    "Ollama está en marcha pero rechaza esta página. Define OLLAMA_ORIGINS como {origin} y reinicia Ollama.",
+  "ai.serverBlockedLmStudio":
+    "LM Studio está en marcha pero rechaza esta página. Activa «Enable CORS» en los ajustes del servidor de LM Studio.",
+  "ai.serverBlocked":
+    "El servidor está en marcha pero rechaza esta página (CORS). Permite el origen {origin} en sus ajustes.",
+  "ai.serverNotLocal":
+    "Solo se puede usar un servidor en este ordenador: la dirección debe empezar por http://localhost o http://127.0.0.1.",
+  "ai.serverHttp": "El servidor respondió con el error {status}.",
+  "ai.serverNeedsModel": "Elige primero un modelo en los ajustes del servidor local.",
+  "ai.serverGeneric": "el servidor",
 
   "tpl.title": "Empezar con una plantilla",
   "tpl.blank": "Diagrama en blanco",

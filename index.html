@@ -8,7 +8,7 @@
       needs — the icon packs, mermaid's renderers — is bundled, and nothing
       here calls home.
 
-      `connect-src` names the hosts behind two opt-in features, and nothing
+      `connect-src` names the hosts behind three opt-in features, and nothing
       else. Importing an icon from a pasted link fetches loose vendor files:
       four raw-file hosts that serve with permissive CORS, plus Iconify's API,
       which is how ~200 000 icons are reachable without the build carrying
@@ -18,7 +18,11 @@
       huggingface.co, which redirects large files to its CDNs — the legacy
       LFS hosts and `*.cdn.hf.co`, the aws/eu/ap "xet" locations a repo
       actually resolves the redirect to. These are reached only when a person
-      sends a prompt, never on their own.
+      sends a prompt, never on their own. And the Generate panel can use a
+      model server the person runs on this computer (Ollama, LM Studio):
+      `http://localhost:*` and `http://127.0.0.1:*`, loopback only, kept in
+      step with `SERVER_ORIGINS` in src/ai/server.ts — a diagram sent there
+      does not leave the machine.
       It must never become `*` or bare `https:`: a request only ever goes out
       because somebody pasted a link and pressed a button.
 
@@ -54,7 +58,7 @@
         style-src 'self' 'unsafe-inline';
         img-src 'self' data: blob: https://raw.githubusercontent.com https://gist.githubusercontent.com https://cdn.jsdelivr.net https://unpkg.com https://api.iconify.design;
         font-src 'self' data:;
-        connect-src 'self' https://raw.githubusercontent.com https://gist.githubusercontent.com https://cdn.jsdelivr.net https://unpkg.com https://api.iconify.design https://huggingface.co https://cdn.huggingface.co https://cdn-lfs.huggingface.co https://*.cdn.hf.co;
+        connect-src 'self' https://raw.githubusercontent.com https://gist.githubusercontent.com https://cdn.jsdelivr.net https://unpkg.com https://api.iconify.design https://huggingface.co https://cdn.huggingface.co https://cdn-lfs.huggingface.co https://*.cdn.hf.co http://localhost:* http://127.0.0.1:*;
         worker-src 'self' blob:;
         object-src 'none';
         base-uri 'none';

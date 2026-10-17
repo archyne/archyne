@@ -250,6 +250,14 @@ jobs:
         env:
           ARCHYNE_URL: http://localhost:5173
 
+      # A stand-in OpenAI-compatible server on a loopback port: what this
+      # pins is the page's connect-src, the CORS diagnosis and the round trip,
+      # none of which needs a model.
+      - name: Generate (AI) panel, local server
+        run: npm run test:e2e:ai-server
+        env:
+          ARCHYNE_URL: http://localhost:5173
+
       - name: Icon picking
         run: npm run test:e2e:icons
         env:

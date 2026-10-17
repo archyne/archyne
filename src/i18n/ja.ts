@@ -464,13 +464,40 @@ export const messages: Messages = {
   "ai.undoTurn": "この変更を元に戻す",
   "ai.undoTurnHint": "この回答の前の状態に図を戻します",
   "ai.failed": "描画できませんでした: {error}",
-  "ai.notConfiguredTitle": "ローカルモデルが接続されていません",
-  "ai.notConfiguredBody":
-    "Archyneはこのブラウザだけで動く小さなモデルで図を描きます — 図が端末から出ることはありません。このビルドはまだモデルに接続されていません。",
   "ai.downloading": "モデルをダウンロード中… {percent}%",
   "ai.warming": "モデルを読み込み中…",
   "ai.ready": "モデルが準備できました",
   "ai.localError": "ローカルモデルが準備できません: {error}",
+  "ai.engine": "エンジン",
+  "ai.engineBrowser": "このブラウザー内",
+  "ai.engineServer": "ローカルサーバー",
+  "ai.serverSummary": "ローカルサーバー: {model}",
+  "ai.serverNoModel": "モデル未選択",
+  "ai.serverHint":
+    "Ollama、LM Studio、および OpenAI API に対応した任意のサーバーで動作します。クラウドモデルを選ばない限り、図はこのコンピューターから出ません。",
+  "ai.serverCloudTag": "{model} — クラウド",
+  "ai.serverCloudWarning":
+    "このモデルはこのコンピューターではなくクラウドで動作します。図はそこに送信されます。",
+  "ai.serverAddress": "アドレス",
+  "ai.serverModel": "モデル",
+  "ai.serverPickModel": "モデルを選択",
+  "ai.serverCheck": "接続を確認",
+  "ai.serverChecking": "確認中…",
+  "ai.serverOk": "接続しました — {count} 個のモデルが利用できます。",
+  "ai.serverOkEmpty":
+    "接続しましたが、サーバーにモデルがありません。先にモデルを読み込むかダウンロードしてください。",
+  "ai.serverDown": "{url} から応答がありません。{server} を起動してから再度確認してください。",
+  "ai.serverBlockedOllama":
+    "Ollama は起動していますが、このページを拒否しています。OLLAMA_ORIGINS を {origin} に設定し、Ollama を再起動してください。",
+  "ai.serverBlockedLmStudio":
+    "LM Studio は起動していますが、このページを拒否しています。LM Studio のサーバー設定で「Enable CORS」をオンにしてください。",
+  "ai.serverBlocked":
+    "サーバーは起動していますが、このページを拒否しています (CORS)。設定でオリジン {origin} を許可してください。",
+  "ai.serverNotLocal":
+    "このコンピューター上のサーバーのみ使用できます。アドレスは http://localhost または http://127.0.0.1 で始まる必要があります。",
+  "ai.serverHttp": "サーバーがエラー {status} を返しました。",
+  "ai.serverNeedsModel": "先にローカルサーバーの設定でモデルを選択してください。",
+  "ai.serverGeneric": "サーバー",
 
   "tpl.title": "テンプレートから始める",
   "tpl.blank": "空の図",

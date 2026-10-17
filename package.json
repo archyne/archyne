@@ -83,6 +83,7 @@
     "test:e2e:paint": "tsx tests/e2e-paint.mts",
     "test:e2e:legibility": "tsx tests/e2e-legibility.mts",
     "test:e2e:ai": "tsx tests/e2e-ai.mts",
+    "test:e2e:ai-server": "tsx tests/e2e-ai-server.mts",
     "test:e2e:slide": "tsx tests/e2e-slide.mts",
     "test:e2e:metrics": "tsx tests/e2e-metrics.mts",
     "start": "node bin/archyne.mjs",

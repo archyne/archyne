@@ -468,13 +468,39 @@ export const messages: Messages = {
   "ai.undoTurn": "التراجع عن هذا التغيير",
   "ai.undoTurnHint": "يعيد المخطط إلى ما كان عليه قبل هذه الإجابة",
   "ai.failed": "تعذّر رسم ذلك: {error}",
-  "ai.notConfiguredTitle": "لا يوجد نموذج محلي متصل",
-  "ai.notConfiguredBody":
-    "يرسم Archyne بنموذج صغير يعمل بالكامل داخل هذا المتصفح — لا يغادر المخطط الجهاز أبدًا. هذه النسخة غير متصلة بنموذج بعد.",
   "ai.downloading": "جارٍ تنزيل النموذج… {percent}%",
   "ai.warming": "جارٍ تحميل النموذج…",
   "ai.ready": "النموذج جاهز",
   "ai.localError": "النموذج المحلي غير جاهز: {error}",
+  "ai.engine": "المحرك",
+  "ai.engineBrowser": "في هذا المتصفح",
+  "ai.engineServer": "خادم محلي",
+  "ai.serverSummary": "خادم محلي: {model}",
+  "ai.serverNoModel": "لم يتم اختيار نموذج",
+  "ai.serverHint":
+    "يعمل مع Ollama وLM Studio وأي خادم يدعم واجهة OpenAI البرمجية. يبقى المخطط على هذا الحاسوب، ما لم تختر نموذجاً سحابياً.",
+  "ai.serverCloudTag": "{model} — سحابي",
+  "ai.serverCloudWarning":
+    "يعمل هذا النموذج في السحابة وليس على هذا الحاسوب: سيُرسل المخطط إلى هناك.",
+  "ai.serverAddress": "العنوان",
+  "ai.serverModel": "النموذج",
+  "ai.serverPickModel": "اختر نموذجاً",
+  "ai.serverCheck": "التحقق من الاتصال",
+  "ai.serverChecking": "جارٍ التحقق…",
+  "ai.serverOk": "متصل — يتوفر {count} من النماذج.",
+  "ai.serverOkEmpty": "متصل، لكن الخادم لا يعرض أي نموذج. حمّل نموذجاً أو نزّله أولاً.",
+  "ai.serverDown": "لا شيء يستجيب على {url}. شغّل {server} ثم تحقق مرة أخرى.",
+  "ai.serverBlockedOllama":
+    "Ollama يعمل لكنه يرفض هذه الصفحة. اضبط OLLAMA_ORIGINS على {origin} ثم أعد تشغيل Ollama.",
+  "ai.serverBlockedLmStudio":
+    "LM Studio يعمل لكنه يرفض هذه الصفحة. فعّل «Enable CORS» في إعدادات خادم LM Studio.",
+  "ai.serverBlocked":
+    "الخادم يعمل لكنه يرفض هذه الصفحة (CORS). اسمح بالأصل {origin} في إعداداته.",
+  "ai.serverNotLocal":
+    "لا يمكن استخدام إلا خادم على هذا الحاسوب: يجب أن يبدأ العنوان بـ http://localhost أو http://127.0.0.1.",
+  "ai.serverHttp": "رد الخادم بالخطأ {status}.",
+  "ai.serverNeedsModel": "اختر نموذجاً أولاً في إعدادات الخادم المحلي.",
+  "ai.serverGeneric": "الخادم",
 
   "tpl.title": "ابدأ من قالب",
   "tpl.blank": "مخطط فارغ",

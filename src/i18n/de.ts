@@ -475,13 +475,40 @@ export const messages: Messages = {
   "ai.undoTurn": "Diese Änderung rückgängig machen",
   "ai.undoTurnHint": "Setzt das Diagramm auf den Stand vor dieser Antwort zurück",
   "ai.failed": "Das ließ sich nicht zeichnen: {error}",
-  "ai.notConfiguredTitle": "Kein lokales Modell verbunden",
-  "ai.notConfiguredBody":
-    "Archyne zeichnet mit einem kleinen Modell, das vollständig in diesem Browser läuft — das Diagramm verlässt nie den Rechner. Diese Version ist noch mit keinem verbunden.",
   "ai.downloading": "Modell wird heruntergeladen… {percent}%",
   "ai.warming": "Modell wird geladen…",
   "ai.ready": "Modell bereit",
   "ai.localError": "Das lokale Modell ist nicht bereit: {error}",
+  "ai.engine": "Engine",
+  "ai.engineBrowser": "In diesem Browser",
+  "ai.engineServer": "Lokaler Server",
+  "ai.serverSummary": "Lokaler Server: {model}",
+  "ai.serverNoModel": "kein Modell gewählt",
+  "ai.serverHint":
+    "Funktioniert mit Ollama, LM Studio und jedem Server, der die OpenAI-API spricht. Das Diagramm bleibt auf diesem Computer, außer du wählst ein Cloud-Modell.",
+  "ai.serverCloudTag": "{model} — Cloud",
+  "ai.serverCloudWarning":
+    "Dieses Modell läuft in der Cloud, nicht auf diesem Computer: Das Diagramm wird dorthin gesendet.",
+  "ai.serverAddress": "Adresse",
+  "ai.serverModel": "Modell",
+  "ai.serverPickModel": "Modell wählen",
+  "ai.serverCheck": "Verbindung prüfen",
+  "ai.serverChecking": "Wird geprüft…",
+  "ai.serverOk": "Verbunden — {count} Modelle verfügbar.",
+  "ai.serverOkEmpty":
+    "Verbunden, aber der Server listet keine Modelle. Lade zuerst eines oder lade eines herunter.",
+  "ai.serverDown": "Unter {url} antwortet nichts. Starte {server} und prüfe erneut.",
+  "ai.serverBlockedOllama":
+    "Ollama läuft, lehnt diese Seite aber ab. Setze OLLAMA_ORIGINS auf {origin} und starte Ollama neu.",
+  "ai.serverBlockedLmStudio":
+    "LM Studio läuft, lehnt diese Seite aber ab. Aktiviere „Enable CORS“ in den Server-Einstellungen von LM Studio.",
+  "ai.serverBlocked":
+    "Der Server läuft, lehnt diese Seite aber ab (CORS). Erlaube den Ursprung {origin} in seinen Einstellungen.",
+  "ai.serverNotLocal":
+    "Nur ein Server auf diesem Computer ist möglich: Die Adresse muss mit http://localhost oder http://127.0.0.1 beginnen.",
+  "ai.serverHttp": "Der Server antwortete mit Fehler {status}.",
+  "ai.serverNeedsModel": "Wähle zuerst ein Modell in den Einstellungen des lokalen Servers.",
+  "ai.serverGeneric": "den Server",
 
   "tpl.title": "Mit einer Vorlage beginnen",
   "tpl.blank": "Leeres Diagramm",

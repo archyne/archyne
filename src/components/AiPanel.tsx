@@ -1,6 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useGraphStore } from "../store";
 import { aiMode } from "../ai/provider";
+import { browserEngineAvailable, useAiEngine, type AiEngine } from "../ai/engine";
+import {
+  presetOf,
+  probeServer,
+  SERVER_PRESETS,
+  type Reachability,
+  type ServerPreset,
+} from "../ai/server";
+import { serverAdvice } from "../ai/serverAdvice";
 import type { AiModel } from "../ai/types";
 import { useT } from "../i18n";
 
@@ -25,44 +34,58 @@ export function AiPanel() {
   const cancel = useGraphStore((s) => s.aiCancel);
   const undoTurn = useGraphStore((s) => s.aiUndoTurn);
   const clear = useGraphStore((s) => s.aiClear);
+  const engine = useAiEngine((s) => s.engine);
+  const setEngine = useAiEngine((s) => s.setEngine);
+  const server = useAiEngine((s) => s.server);
   const [request, setRequest] = useState("");
   const t = useT();
 
   const mode = aiMode();
   const working = (turns[turns.length - 1]?.state ?? null) === "working";
+  const onServer = engine === "server";
+  // Sending to a server with no model chosen would only come back as an
+  // error, so the composer waits for one instead.
+  const ready = !onServer || server.model !== "";
 
   const run = () => {
-    if (!request.trim()) return;
+    if (!request.trim() || !ready) return;
     // The document behind the request never changes hands here: the store
     // reads it at send time, so a follow-up edits the diagram on screen now.
     void send(request);
     setRequest("");
   };
 
-  if (mode === "off") {
-    return (
-      <div className="ai-note">
-        <h2>{t("ai.notConfiguredTitle")}</h2>
-        <p>{t("ai.notConfiguredBody")}</p>
-      </div>
-    );
-  }
-
   return (
     <div className="ai-panel ai-chat">
       <div className="ai-header">
-        <label className="ai-model">
-          {t("ai.model")}
-          <select
-            value={model}
-            aria-label={t("ai.model")}
-            disabled={working}
-            onChange={(e) => setModel(e.target.value as AiModel)}
-          >
-            <option value="qwen2.5-coder-0.5b">{t("ai.modelSmall")}</option>
-            <option value="qwen2.5-coder-1.5b">{t("ai.modelLarge")}</option>
-          </select>
-        </label>
+        {browserEngineAvailable() && (
+          <label className="ai-model">
+            {t("ai.engine")}
+            <select
+              value={engine}
+              aria-label={t("ai.engine")}
+              disabled={working}
+              onChange={(e) => setEngine(e.target.value as AiEngine)}
+            >
+              <option value="browser">{t("ai.engineBrowser")}</option>
+              <option value="server">{t("ai.engineServer")}</option>
+            </select>
+          </label>
+        )}
+        {!onServer && (
+          <label className="ai-model">
+            {t("ai.model")}
+            <select
+              value={model}
+              aria-label={t("ai.model")}
+              disabled={working}
+              onChange={(e) => setModel(e.target.value as AiModel)}
+            >
+              <option value="qwen2.5-coder-0.5b">{t("ai.modelSmall")}</option>
+              <option value="qwen2.5-coder-1.5b">{t("ai.modelLarge")}</option>
+            </select>
+          </label>
+        )}
         <button
           type="button"
           className="editor-action ai-new"
@@ -74,7 +97,9 @@ export function AiPanel() {
         </button>
       </div>
 
-      {mode === "local" && modelStatus.state !== "idle" && (
+      {onServer && <ServerSettingsBlock disabled={working} />}
+
+      {!onServer && mode === "local" && modelStatus.state !== "idle" && (
         <div
           className={`ai-model-status ai-model-status--${modelStatus.state}`}
           role="status"
@@ -111,7 +136,11 @@ export function AiPanel() {
                 </p>
               )}
               {turn.state === "error" && (
-                <p className="ai-error">{t("ai.failed", { error: turn.error ?? "" })}</p>
+                <p className="ai-error">
+                  {turn.reason
+                    ? serverAdvice(t, turn.reason, server.baseUrl)
+                    : t("ai.failed", { error: turn.error ?? "" })}
+                </p>
               )}
               {turn.state === "done" && (
                 <p className="ai-applied" role="status">
@@ -142,8 +171,8 @@ export function AiPanel() {
           className="ai-request"
           rows={2}
           value={request}
-          placeholder={t("ai.placeholder")}
-          disabled={working}
+          placeholder={ready ? t("ai.placeholder") : t("ai.serverNeedsModel")}
+          disabled={working || !ready}
           onChange={(e) => setRequest(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -166,7 +195,7 @@ export function AiPanel() {
             type="button"
             className="primary ai-send"
             title={t("ai.sendHint")}
-            disabled={!request.trim()}
+            disabled={!request.trim() || !ready}
             onClick={run}
           >
             {t("ai.send")}
@@ -174,5 +203,143 @@ export function AiPanel() {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Where the local server is and which of its models to use, folded away once
+ * a model is chosen: the setting is made once and then the conversation is
+ * the point. The connection is checked as soon as the block opens and on
+ * every preset, so the model list is never typed by hand and a refusal is
+ * explained before a request is ever sent.
+ */
+function ServerSettingsBlock({ disabled }: { disabled: boolean }) {
+  const server = useAiEngine((s) => s.server);
+  const setServer = useAiEngine((s) => s.setServer);
+  const [address, setAddress] = useState(server.baseUrl);
+  // Starts as "checking": the block checks the saved address as it opens.
+  const [result, setResult] = useState<Reachability | "checking">("checking");
+  const t = useT();
+
+  const check = async (baseUrl: string) => {
+    setResult("checking");
+    setResult(await probeServer({ ...useAiEngine.getState().server, baseUrl }));
+  };
+
+  useEffect(() => {
+    let live = true;
+    void probeServer(useAiEngine.getState().server).then((r) => {
+      if (live) setResult(r);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const commitAddress = (baseUrl: string) => {
+    const trimmed = baseUrl.trim();
+    setAddress(trimmed);
+    if (trimmed === server.baseUrl) return;
+    setServer({ baseUrl: trimmed, model: "" });
+    void check(trimmed);
+  };
+
+  const models = result !== "checking" && result.state === "ok" ? result.models : [];
+  // A model chosen earlier stays selectable even if the server does not list
+  // it right now (not loaded yet, server still starting).
+  const options =
+    server.model && !models.includes(server.model) ? [server.model, ...models] : models;
+  // A model the server only relays to a cloud service is still offered —
+  // choosing it is the person's call — but never without saying so, because
+  // "the diagram stays on this computer" would then be untrue.
+  const remote = result !== "checking" && result.state === "ok" ? result.remote : [];
+  const isCloud = (id: string) => remote.includes(id) || /[-:]cloud$/i.test(id);
+
+  return (
+    <details className="ai-server" open={!server.model}>
+      <summary>
+        {t("ai.serverSummary", { model: server.model || t("ai.serverNoModel") })}
+      </summary>
+      <p className="ai-server-hint">{t("ai.serverHint")}</p>
+      <div className="ai-server-presets">
+        {(Object.keys(SERVER_PRESETS) as ServerPreset[]).map((key) => (
+          <button
+            key={key}
+            type="button"
+            className="editor-action"
+            aria-pressed={presetOf(server.baseUrl) === key}
+            disabled={disabled}
+            onClick={() => commitAddress(SERVER_PRESETS[key].baseUrl)}
+          >
+            {SERVER_PRESETS[key].label}
+          </button>
+        ))}
+      </div>
+      <label className="ai-server-field">
+        {t("ai.serverAddress")}
+        <input
+          type="url"
+          value={address}
+          spellCheck={false}
+          disabled={disabled}
+          onChange={(e) => setAddress(e.target.value)}
+          onBlur={(e) => commitAddress(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitAddress(e.currentTarget.value);
+          }}
+        />
+      </label>
+      <label className="ai-server-field">
+        {t("ai.serverModel")}
+        <select
+          value={server.model}
+          aria-label={t("ai.serverModel")}
+          disabled={disabled || options.length === 0}
+          onChange={(e) => setServer({ model: e.target.value })}
+        >
+          <option value="" disabled>
+            {t("ai.serverPickModel")}
+          </option>
+          {options.map((id) => (
+            <option key={id} value={id}>
+              {isCloud(id) ? t("ai.serverCloudTag", { model: id }) : id}
+            </option>
+          ))}
+        </select>
+      </label>
+      {server.model && isCloud(server.model) && (
+        <p className="ai-server-status ai-server-cloud" role="note">
+          {t("ai.serverCloudWarning")}
+        </p>
+      )}
+      <div className="ai-server-check">
+        <button
+          type="button"
+          className="editor-action"
+          disabled={disabled || result === "checking"}
+          onClick={() => void check(server.baseUrl)}
+        >
+          {result === "checking" ? t("ai.serverChecking") : t("ai.serverCheck")}
+        </button>
+        {result !== "checking" && (
+          <p
+            className={`ai-server-status ai-server-status--${result.state}`}
+            role="status"
+            data-state={result.state}
+          >
+            {result.state === "ok"
+              ? result.models.length > 0
+                ? t("ai.serverOk", { count: result.models.length })
+                : t("ai.serverOkEmpty")
+              : serverAdvice(
+                  t,
+                  result.state,
+                  server.baseUrl,
+                  result.state === "http" ? result.status : undefined,
+                )}
+          </p>
+        )}
+      </div>
+    </details>
   );
 }
