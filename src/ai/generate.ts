@@ -1,6 +1,12 @@
 import { parseDiagram } from "../model/diagram";
 import { isHeaderLine } from "../model/sniff";
-import { buildChat, RETRY_FEEDBACK, UNCHANGED_FEEDBACK } from "./prompt";
+import {
+  buildChat,
+  EXAMPLE_FEEDBACK,
+  EXAMPLES,
+  RETRY_FEEDBACK,
+  UNCHANGED_FEEDBACK,
+} from "./prompt";
 import type { AiProvider, AiRequest, GenerateOptions } from "./types";
 
 /** A "Generate" run: the first draw, then a bounded number of retries. */
@@ -90,15 +96,16 @@ export async function generateDiagram(
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     throwIfAborted(options?.signal);
     options?.onAttempt?.(attempt);
-    const unchanged = lastError === UNCHANGED;
     const raw = await provider.generate(
       buildChat(
         request,
         attempt === 1
           ? undefined
-          : unchanged
+          : lastError === UNCHANGED
             ? UNCHANGED_FEEDBACK
-            : RETRY_FEEDBACK({ kind: request.kind, error: lastError }),
+            : lastError === ECHOED
+              ? EXAMPLE_FEEDBACK
+              : RETRY_FEEDBACK({ kind: request.kind, error: lastError }),
       ),
       // The engine needs to know which language model this turn is for.
       { ...options, model: request.model },
@@ -127,10 +134,49 @@ export async function generateDiagram(
       }
       continue;
     }
+    // Parses and changes something, but perhaps the wrong thing: the worked
+    // example sits right above the real turn, and a small model sometimes
+    // edits that instead.
+    if (echoesExample(code, request)) {
+      lastError = ECHOED;
+      if (attempt === MAX_ATTEMPTS) {
+        throw new DiagramGenerationError(
+          "The answer kept changing the example instead of the diagram.",
+          code,
+          attempt,
+        );
+      }
+      continue;
+    }
     return { code, attempts: attempt };
   }
   throw new Error("unreachable");
 }
 
+/**
+ * Whether an answer carries names that only the worked example uses.
+ *
+ * Measured on Qwen3.5-4B, about one answer in eight edited the example (a
+ * kitchen taking a pizza order) instead of the user's diagram. A name counts
+ * only when the user's own document and request do not use it, so a person
+ * who really is drawing a kitchen is never refused for it.
+ */
+export function echoesExample(code: string, request: AiRequest): boolean {
+  const theirs = words(`${request.code}\n${request.request}`);
+  const answer = words(code);
+  return EXAMPLES[request.kind].marks.some((mark) => {
+    const word = mark.toLowerCase();
+    return !theirs.has(word) && answer.has(word);
+  });
+}
+
+/** The words of a text, lower-cased; a hyphen joins, so `on-call` is one. */
+function words(text: string): Set<string> {
+  return new Set(text.toLowerCase().match(/[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*/gu) ?? []);
+}
+
 /** Marks a fallback that parsed but edited nothing (see the check above). */
 const UNCHANGED = "the answer did not change the diagram";
+
+/** Marks a fallback that edited the worked example instead. */
+const ECHOED = "the answer changed the example, not the diagram";

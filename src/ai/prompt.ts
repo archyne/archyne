@@ -39,7 +39,13 @@ The first exchange is an example of the forms to use. It is not about the user's
  */
 export const EXAMPLES: Record<
   DiagramKind,
-  { document: string; request: string; answer: string }
+  {
+    document: string;
+    request: string;
+    answer: string;
+    /** Names only this exchange uses; see `echoesExample` in generate.ts. */
+    marks: string[];
+  }
 > = {
   flowchart: {
     document: `flowchart TD
@@ -57,6 +63,7 @@ export const EXAMPLES: Record<
   s@{ icon: "carbon:data-base", label: "Ticket store", pos: "t" }
   s --> c(["Closed"])
   style p fill:#f97316,color:#fff`,
+    marks: ["Ticket", "on-call", "Triage"],
   },
   state: {
     document: `stateDiagram-v2
@@ -71,6 +78,7 @@ export const EXAMPLES: Record<
   Archived --> [*]
   classDef old fill:#9ca3af,color:#fff
   class Archived old`,
+    marks: ["Draft", "Published", "Archived"],
   },
   er: {
     document: `erDiagram
@@ -90,6 +98,7 @@ export const EXAMPLES: Record<
     string title
   }
   AUTHOR ||--o{ BOOK : "writes"`,
+    marks: ["AUTHOR", "BOOK"],
   },
   class: {
     document: `classDiagram
@@ -107,6 +116,7 @@ export const EXAMPLES: Record<
   }
   Library "1" --> "*" Book : holds
   style Book fill:#3b82f6,color:#fff`,
+    marks: ["Library"],
   },
   sequence: {
     document: `sequenceDiagram
@@ -120,6 +130,7 @@ export const EXAMPLES: Record<
   C->>K: order a pizza
   K-->>C: order confirmed
   Note right of K: bakes for ten minutes`,
+    marks: ["Kitchen", "pizza"],
   },
   architecture: {
     document: `architecture-beta
@@ -131,6 +142,7 @@ export const EXAMPLES: Record<
   service api(server)[API] in app
   service store(database)[Store] in app
   api:R --> L:store`,
+    marks: ["Store"],
   },
   c4: {
     document: `C4Context
@@ -146,6 +158,7 @@ export const EXAMPLES: Record<
   System_Ext(mail, "Mail service")
   Rel(reader, lib, "Searches")
   Rel(lib, mail, "Sends reminders via")`,
+    marks: ["Catalogue", "Reader"],
   },
 };
 
@@ -169,6 +182,14 @@ export const RETRY_FEEDBACK = ({ kind, error }: { kind: string; error: string })
  */
 export const UNCHANGED_FEEDBACK =
   "That last answer was exactly the diagram already there. Reply again with an actual change to it, still valid Mermaid.";
+
+/**
+ * What the orchestrator appends when an answer edited the worked example
+ * rather than the user's document — the example is the earlier exchange, and
+ * a small model sometimes picks up the wrong diagram to change.
+ */
+export const EXAMPLE_FEEDBACK =
+  "That last answer changed the example from earlier in this conversation, not the user's diagram. Start again from the user's diagram, shown in their last message, and change that.";
 
 /**
  * The turn sent to the model for one generation attempt.

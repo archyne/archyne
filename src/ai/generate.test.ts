@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { fakeProvider, fakeCodeFor } from "./fake";
-import { UNCHANGED_FEEDBACK } from "./prompt";
+import { EXAMPLE_FEEDBACK, UNCHANGED_FEEDBACK } from "./prompt";
 import {
   AiNotConfiguredError,
   DiagramGenerationError,
   MAX_ATTEMPTS,
+  echoesExample,
   generateDiagram,
 } from "./generate";
 import type { AiProvider, AiRequest } from "./types";
@@ -121,6 +122,37 @@ describe("generateDiagram", () => {
     const result = await generateDiagram(REQUEST, responding(fenced));
     expect(result.code).toBe("flowchart TD\n  a --> b\n  c --> d");
     expect(result.attempts).toBe(1);
+  });
+
+  it("refuses an answer that edited the worked example, and says so on the retry", async () => {
+    const seq: AiRequest = {
+      ...REQUEST,
+      kind: "sequence",
+      code: "sequenceDiagram\n  participant U as User\n  participant S as Server\n  U->>S: POST /login",
+    };
+    const turns: string[] = [];
+    const result = await generateDiagram(
+      seq,
+      responding((turn) => {
+        turns.push(turn);
+        return turns.length === 1
+          ? "sequenceDiagram\n  participant K as Kitchen\n  K->>K: order a pizza"
+          : `${seq.code}\n  S-->>U: 200 OK`;
+      }),
+    );
+    expect(result.attempts).toBe(2);
+    expect(turns[1]).toContain(EXAMPLE_FEEDBACK);
+  });
+
+  it("does not hold the example's names against someone who uses them", () => {
+    const kitchen: AiRequest = {
+      ...REQUEST,
+      kind: "sequence",
+      code: "sequenceDiagram\n  participant W as Waiter\n  participant K as Kitchen",
+      request: "the kitchen confirms",
+    };
+    expect(echoesExample(`${kitchen.code}\n  K-->>W: confirmed`, kitchen)).toBe(false);
+    expect(echoesExample(`${kitchen.code}\n  K-->>W: pizza ready`, kitchen)).toBe(true);
   });
 
   it("drops what stands above the header, like the 3B model's stray `mer`", async () => {

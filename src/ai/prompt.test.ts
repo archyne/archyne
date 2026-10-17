@@ -70,6 +70,17 @@ describe("the examples", () => {
     });
   }
 
+  it("each names marks that really are its own", () => {
+    for (const example of Object.values(EXAMPLES)) {
+      expect(example.marks.length).toBeGreaterThan(0);
+      for (const mark of example.marks) {
+        expect(`${example.document}\n${example.answer}`.toLowerCase()).toContain(
+          mark.toLowerCase(),
+        );
+      }
+    }
+  });
+
   it("each shows the colour or icon form its family can carry", () => {
     expect(EXAMPLES.flowchart.answer).toMatch(/^\s*style \w+ fill:/m);
     expect(EXAMPLES.flowchart.answer).toMatch(/@\{ icon: "/);
