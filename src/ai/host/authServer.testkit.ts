@@ -65,6 +65,8 @@ export function authorizationServer(options: AsOptions = {}) {
     clientAuth?: ClientAuthSeen;
     /** The DPoP key thumbprint a proof carried, or why it was refused. */
     dpop?: string;
+    /** The CN of the verified client certificate the request came with, if any. */
+    peer?: string | null;
   }> = [];
   let base = "";
   const codes = new Map<string, { challenge: string; redirectUri: string; clientId: string }>();
@@ -113,7 +115,7 @@ export function authorizationServer(options: AsOptions = {}) {
   const handler = async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? "/", base);
     const body = req.method === "POST" ? await form(req) : undefined;
-    log.push({ path: url.pathname, body });
+    log.push({ path: url.pathname, body, peer: peerCn(req) });
     switch (url.pathname) {
       case "/.well-known/openid-configuration":
         return json(res, 200, {

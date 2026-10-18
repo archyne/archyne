@@ -87,6 +87,7 @@
     "test:e2e:ai-server": "tsx tests/e2e-ai-server.mts",
     "test:e2e:desktop-ai": "tsx tests/e2e-desktop-ai.mts",
     "test:e2e:desktop-oauth": "tsx tests/e2e-desktop-oauth.mts",
+    "test:e2e:desktop-machine": "tsx tests/e2e-desktop-machine.mts",
     "test:e2e:vscode-ai": "tsx tests/e2e-vscode-ai.mts",
     "test:e2e:slide": "tsx tests/e2e-slide.mts",
     "test:e2e:metrics": "tsx tests/e2e-metrics.mts",
