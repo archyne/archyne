@@ -5,7 +5,7 @@ is organised, and what a reviewable change looks like.
 
 ## Getting started
 
-Archyne needs Node 22 or newer.
+Archyne needs Node 22.12 or newer (Mermaid 12 requires it).
 
 ```sh
 npm install
