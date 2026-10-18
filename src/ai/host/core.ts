@@ -11,10 +11,12 @@ import {
   connectionProblem,
   PAGE_SETTABLE_SECRETS,
   SECRET_FIELDS,
+  secretFieldsOf,
   type Connection,
   type OAuthConfig,
 } from "./connection";
 import { nodeLoopback } from "./loopback";
+import { mtlsFetch } from "./mtls";
 import {
   accessToken,
   authStatus,
@@ -98,7 +100,7 @@ export class AiHost {
     const next = new Map(list.filter(isConnection).map((c) => [c.id, c]));
     for (const [id, old] of this.connections) {
       if (next.has(id)) continue;
-      for (const field of SECRET_FIELDS[old.auth.type]) {
+      for (const field of secretFieldsOf(old)) {
         await this.env.secrets.delete(secretKey(id, field));
       }
     }
@@ -122,7 +124,7 @@ export class AiHost {
     const c = this.connections.get(connectionId);
     if (!c) return [];
     const set: string[] = [];
-    for (const field of SECRET_FIELDS[c.auth.type]) {
+    for (const field of secretFieldsOf(c)) {
       if (!PAGE_SETTABLE_SECRETS.has(field)) continue;
       if (await this.env.secrets.get(secretKey(connectionId, field))) set.push(field);
     }
@@ -206,7 +208,7 @@ export class AiHost {
         c.auth,
         c.baseUrl,
         this.oauthSecrets(c.id),
-        this.oauthEnv(),
+        this.oauthEnv(c),
         (prompt) => emit({ type: "ai:auth", connectionId, state: "device-code", ...prompt }),
         AbortSignal.any([ctrl.signal, timeout]),
       );
@@ -230,7 +232,7 @@ export class AiHost {
   async signOut(connectionId: string): Promise<void> {
     const c = this.connections.get(connectionId);
     if (!c || c.auth.type !== "oauth") return;
-    await signOut(c.auth, c.baseUrl, this.oauthSecrets(c.id), this.oauthEnv());
+    await signOut(c.auth, c.baseUrl, this.oauthSecrets(c.id), this.oauthEnv(c));
   }
 
   async authStatus(connectionId: string): Promise<{ signedIn: boolean; expiresAt?: number }> {
@@ -249,7 +251,6 @@ export class AiHost {
    * and retry: a token revoked early, or a clock that disagrees.
    */
   private fetchFor(c: Connection): typeof fetch {
-    const base = this.env.fetch;
     const headersFor = async (force: boolean) => {
       const secrets: Record<string, string | undefined> = {};
       for (const field of SECRET_FIELDS[c.auth.type]) {
@@ -260,7 +261,7 @@ export class AiHost {
           c.auth,
           c.baseUrl,
           this.oauthSecrets(c.id),
-          this.oauthEnv(),
+          this.oauthEnv(c),
           force,
         );
         secrets.tokens = token ? JSON.stringify({ access_token: token }) : undefined;
@@ -272,7 +273,7 @@ export class AiHost {
       init: RequestInit | undefined,
       force: boolean,
     ) =>
-      base(input, {
+      (await this.transportFor(c))(input, {
         ...init,
         headers: {
           ...(init?.headers as Record<string, string> | undefined),
@@ -296,10 +297,26 @@ export class AiHost {
     };
   }
 
-  private oauthEnv(): OAuthEnv {
+  /**
+   * How this connection's requests travel: the platform fetch, or — when it
+   * presents a client certificate — the mTLS transport, for the service and
+   * its token endpoint alike.
+   */
+  private async transportFor(c: Connection): Promise<typeof fetch> {
+    if (!c.clientCertificate) return this.env.fetch;
+    const get = (field: string) => this.env.secrets.get(secretKey(c.id, field));
+    const [cert, key, passphrase, ca] = await Promise.all(
+      ["tlsCert", "tlsKey", "tlsPassphrase", "tlsCa"].map(get),
+    );
+    if (!cert || !key) throw new Error("A client certificate and its key are needed.");
+    return mtlsFetch({ cert, key, passphrase, ca });
+  }
+
+  private oauthEnv(c: Connection): OAuthEnv {
     const env = this.env;
     return {
-      fetch: env.fetch,
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) =>
+        (await this.transportFor(c))(input, init)) as typeof fetch,
       openExternal:
         env.openExternal ??
         (() => Promise.reject(new Error("This host cannot open a browser."))),

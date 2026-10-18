@@ -85,6 +85,20 @@ export interface Connection {
   headers?: Record<string, string>;
   /** The model last chosen for this connection. */
   model?: string;
+  /**
+   * Present a client certificate (mutual TLS) on every request this
+   * connection makes — to the service and to its token endpoint. The
+   * certificate and its key are secrets (`TLS_SECRET_FIELDS`).
+   */
+  clientCertificate?: boolean;
+}
+
+/** The secrets of a client certificate, whatever the auth method. */
+export const TLS_SECRET_FIELDS = ["tlsCert", "tlsKey", "tlsPassphrase", "tlsCa"];
+
+/** Every secret a connection may have filed, for listing and for deleting. */
+export function secretFieldsOf(c: Connection): string[] {
+  return [...SECRET_FIELDS[c.auth.type], ...TLS_SECRET_FIELDS];
 }
 
 /**
@@ -104,7 +118,13 @@ export const SECRET_FIELDS: Record<AuthType, string[]> = {
  * write a token or a registered client, which only the host's own flows
  * produce.
  */
-export const PAGE_SETTABLE_SECRETS = new Set(["key", "password", "clientSecret", "privateKey"]);
+export const PAGE_SETTABLE_SECRETS = new Set([
+  "key",
+  "password",
+  "clientSecret",
+  "privateKey",
+  ...TLS_SECRET_FIELDS,
+]);
 
 /** Header names a connection's extra headers may not set: auth has its own place. */
 const RESERVED_HEADERS = new Set(["authorization", "proxy-authorization", "cookie", "host"]);
@@ -133,6 +153,14 @@ export function connectionProblem(c: Connection): string | null {
     if (!c.auth.clientId && c.auth.clientAuth && c.auth.clientAuth !== "client_secret_basic") {
       return "client";
     }
+  }
+  if (c.clientCertificate && !c.baseUrl.startsWith("https:")) return "tls-https";
+  if (
+    c.auth.type === "oauth" &&
+    c.auth.clientAuth === "tls_client_auth" &&
+    !c.clientCertificate
+  ) {
+    return "tls-client-auth";
   }
   for (const name of Object.keys(c.headers ?? {})) {
     if (!isHeaderName(name) || RESERVED_HEADERS.has(name.toLowerCase())) return "extra-header";
@@ -235,5 +263,34 @@ export function isIssuerUrl(value: string): boolean {
     );
   } catch {
     return false;
+  }
+}
+
+/**
+ * The secrets a person is asked for, for this configuration — only the ones
+ * that will be used, so the form never invites a key nobody reads.
+ */
+export function wantedSecrets(auth: AuthConfig, clientCertificate = false): string[] {
+  return [...wantedAuthSecrets(auth), ...(clientCertificate ? TLS_SECRET_FIELDS : [])];
+}
+
+function wantedAuthSecrets(auth: AuthConfig): string[] {
+  switch (auth.type) {
+    case "header":
+      return ["key"];
+    case "basic":
+      return ["password"];
+    case "oauth":
+      switch (auth.clientAuth) {
+        case "private_key_jwt":
+          return ["privateKey"];
+        case "tls_client_auth":
+          return [];
+        default:
+          // Basic, post, or unset: a secret, optional for a public client.
+          return ["clientSecret"];
+      }
+    default:
+      return [];
   }
 }

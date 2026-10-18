@@ -570,6 +570,25 @@ export const messages: Messages = {
   "ai.remoteProblemIssuer": "Die Adresse des Autorisierungsservers muss https sein.",
   "ai.remoteProblemClient":
     "Gib eine Client-ID ein oder lass Archyne sich selbst registrieren.",
+  "ai.oauthFlowMachine": "Als diese App, ohne Person (Client Credentials)",
+  "ai.oauthClientAuth": "Client-Authentifizierung",
+  "ai.oauthClientAuthAuto": "Automatisch",
+  "ai.oauthClientAuthBasic": "Client-Secret im Basic-Header",
+  "ai.oauthClientAuthPost": "Client-Secret im Anfragetext",
+  "ai.oauthClientAuthKey": "Privater Schlüssel (signierte Assertion)",
+  "ai.oauthClientAuthTls": "Client-Zertifikat (gegenseitiges TLS)",
+  "ai.oauthKeyId": "Schlüssel-ID",
+  "ai.oauthPrivateKey": "Privater Schlüssel (PEM)",
+  "ai.tlsClientCertificate": "Client-Zertifikat vorlegen (gegenseitiges TLS)",
+  "ai.tlsHint":
+    "Wird für den Dienst und seinen Anmeldeserver verwendet, nur über https. Diese Anfragen nutzen nicht die Zertifikate des Systems: Stammt das Zertifikat eines Servers von der CA deines Unternehmens, füge sie unten hinzu.",
+  "ai.tlsCert": "Client-Zertifikat (PEM)",
+  "ai.tlsKey": "Zertifikatsschlüssel (PEM)",
+  "ai.tlsPassphrase": "Passphrase des Schlüssels (falls vorhanden)",
+  "ai.tlsCa": "Zusätzliche vertrauenswürdige CA (PEM, optional)",
+  "ai.remoteProblemTlsHttps": "Ein Client-Zertifikat erfordert eine https-Adresse.",
+  "ai.remoteProblemTlsClientAuth":
+    "Die Authentifizierung per Client-Zertifikat erfordert ein Client-Zertifikat: Aktiviere es unten.",
 
   "tpl.title": "Mit einer Vorlage beginnen",
   "tpl.blank": "Leeres Diagramm",

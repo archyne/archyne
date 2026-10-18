@@ -1,6 +1,9 @@
 import { createHash, randomBytes, verify, type KeyObject } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import type { AddressInfo } from "node:net";
+import type { TLSSocket } from "node:tls";
+import type { TestPki } from "./tls.testkit";
 
 /**
  * A stand-in OAuth authorization server, and a browser that consents at once.
@@ -24,11 +27,33 @@ export interface AsOptions {
    * prove itself: its secret (Basic or in the body), or an assertion signed
    * with the private half of `publicKey` (private_key_jwt).
    */
-  client?: { id: string; secret?: string; publicKey?: KeyObject; keyId?: string };
+  client?: {
+    id: string;
+    secret?: string;
+    publicKey?: KeyObject;
+    keyId?: string;
+    /** The certificate subject CN that proves this client (tls_client_auth, RFC 8705). */
+    certificateCn?: string;
+  };
+  /**
+   * Serve over HTTPS with this PKI's server certificate, asking every caller
+   * for a client certificate and trusting only the PKI's CA for it.
+   */
+  tls?: TestPki;
+  /** What the protected /v1 API wants: the current token (default), or a client certificate alone. */
+  serviceAuth?: "bearer" | "certificate";
 }
 
 /** Which client authentication a token request used, as the server judged it. */
-export type ClientAuthSeen = "basic" | "post" | "private_key_jwt" | "none" | "refused";
+export type ClientAuthSeen =
+  "basic" | "post" | "private_key_jwt" | "tls_client_auth" | "none" | "refused";
+
+/** The CN of a verified client certificate on this request, or null. */
+function peerCn(req: IncomingMessage): string | null {
+  const socket = req.socket as Partial<TLSSocket>;
+  if (!socket.authorized || !socket.getPeerCertificate) return null;
+  return String(socket.getPeerCertificate().subject?.CN ?? "") || null;
+}
 
 export function authorizationServer(options: AsOptions = {}) {
   const tag = randomBytes(12).toString("hex");
@@ -78,7 +103,7 @@ export function authorizationServer(options: AsOptions = {}) {
       });
     });
 
-  const server = createServer(async (req, res) => {
+  const handler = async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? "/", base);
     const body = req.method === "POST" ? await form(req) : undefined;
     log.push({ path: url.pathname, body });
@@ -164,6 +189,13 @@ export function authorizationServer(options: AsOptions = {}) {
       case "/revoke":
         return json(res, 200, {});
       case "/v1/models": {
+        if (options.serviceAuth === "certificate") {
+          if (!peerCn(req)) {
+            res.writeHead(401).end("client certificate required");
+            return;
+          }
+          return json(res, 200, { data: [{ id: "secured-model" }] });
+        }
         if (req.headers.authorization !== `Bearer ${accessToken}` || !accessToken) {
           res.writeHead(401, { "WWW-Authenticate": "Bearer" }).end();
           return;
@@ -173,7 +205,21 @@ export function authorizationServer(options: AsOptions = {}) {
       default:
         res.writeHead(404).end();
     }
-  });
+  };
+  const server = options.tls
+    ? createHttpsServer(
+        {
+          cert: options.tls.server.cert,
+          key: options.tls.server.key,
+          ca: options.tls.ca,
+          requestCert: true,
+          // Judged per request, so a missing certificate is a 401 a test can
+          // read rather than a handshake that just fails.
+          rejectUnauthorized: false,
+        },
+        handler,
+      )
+    : createServer(handler);
 
   return {
     log,
@@ -191,7 +237,7 @@ export function authorizationServer(options: AsOptions = {}) {
     },
     async start() {
       await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-      base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      base = `${options.tls ? "https" : "http"}://127.0.0.1:${(server.address() as AddressInfo).port}`;
     },
     close() {
       server.close();
@@ -221,6 +267,16 @@ function judgeClient(
 ): ClientAuthSeen {
   if (!client) return "refused";
   const header = req.headers.authorization ?? "";
+  const cn = peerCn(req);
+  if (
+    !header &&
+    body.client_secret === undefined &&
+    body.client_assertion === undefined &&
+    body.client_id === client.id &&
+    client.certificateCn
+  ) {
+    return cn === client.certificateCn ? "tls_client_auth" : "refused";
+  }
   if (header.startsWith("Basic ")) {
     const [id, secret] = Buffer.from(header.slice(6), "base64")
       .toString("utf8")

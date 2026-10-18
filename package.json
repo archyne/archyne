@@ -120,6 +120,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@peculiar/x509": "^2.2.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@types/jsdom": "^30.0.0",
@@ -141,6 +142,7 @@
     "oauth4webapi": "^3.8.8",
     "playwright": "^1.62.1",
     "prettier": "^3.9.6",
+    "reflect-metadata": "^0.2.2",
     "typescript": "~5.8.0",
     "typescript-eslint": "^8.65.0",
     "vite": "^8.2.1",

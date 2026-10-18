@@ -5,14 +5,14 @@ import {
   formatHeaders,
   PAGE_SETTABLE_SECRETS,
   parseHeaders,
-  SECRET_FIELDS,
+  wantedSecrets,
   type AuthConfig,
   type Connection,
   type OAuthConfig,
 } from "../ai/host/connection";
 import { AiOAuthSection } from "./AiOAuthSection";
 import { remoteAdvice } from "../ai/serverAdvice";
-import { useT } from "../i18n";
+import { useT, type MessageKey } from "../i18n";
 
 /**
  * The remote services Generate can use from the desktop app or VS Code, and
@@ -247,18 +247,23 @@ function ConnectionForm({
           onChange={(auth: OAuthConfig) => patch({ auth })}
         />
       )}
-      {SECRET_FIELDS[connection.auth.type]
+      <label className="ai-oauth-check">
+        <input
+          type="checkbox"
+          checked={!!connection.clientCertificate}
+          disabled={disabled}
+          onChange={(e) => patch({ clientCertificate: e.target.checked })}
+        />
+        {t("ai.tlsClientCertificate")}
+      </label>
+      {connection.clientCertificate && <p className="ai-server-hint">{t("ai.tlsHint")}</p>}
+      {wantedSecrets(connection.auth, connection.clientCertificate)
         .filter((field) => PAGE_SETTABLE_SECRETS.has(field))
         .map((field) => (
           <SecretField
             key={field}
-            label={
-              field === "key"
-                ? t("ai.remoteKey")
-                : field === "clientSecret"
-                  ? t("ai.oauthClientSecret")
-                  : t("ai.remotePassword")
-            }
+            label={t(SECRET_LABELS[field] ?? "ai.remotePassword")}
+            multiline={MULTILINE_SECRETS.has(field)}
             saved={secretsSet.includes(field)}
             disabled={disabled || !canKeep}
             onSave={(value) => void saveSecret(field, value)}
@@ -337,12 +342,15 @@ function SecretField({
   label,
   saved,
   disabled,
+  multiline = false,
   onSave,
   onForget,
 }: {
   label: string;
   saved: boolean;
   disabled: boolean;
+  /** A PEM key spans lines; it is pasted, saved on leaving the field, and emptied. */
+  multiline?: boolean;
   onSave: (value: string) => void;
   onForget: () => void;
 }) {
@@ -357,19 +365,33 @@ function SecretField({
     <div className="ai-server-field">
       <label className="ai-server-field">
         {label}
-        <input
-          type="password"
-          value={value}
-          autoComplete="off"
-          placeholder={saved ? t("ai.remoteSecretSaved") : ""}
-          disabled={disabled}
-          data-saved={saved || undefined}
-          onChange={(e) => setValue(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commit();
-          }}
-        />
+        {multiline ? (
+          <textarea
+            rows={3}
+            value={value}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={saved ? t("ai.remoteSecretSaved") : "-----BEGIN PRIVATE KEY-----"}
+            disabled={disabled}
+            data-saved={saved || undefined}
+            onChange={(e) => setValue(e.target.value)}
+            onBlur={commit}
+          />
+        ) : (
+          <input
+            type="password"
+            value={value}
+            autoComplete="off"
+            placeholder={saved ? t("ai.remoteSecretSaved") : ""}
+            disabled={disabled}
+            data-saved={saved || undefined}
+            onChange={(e) => setValue(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+            }}
+          />
+        )}
       </label>
       {saved && (
         <button type="button" className="editor-action" disabled={disabled} onClick={onForget}>
@@ -379,3 +401,18 @@ function SecretField({
     </div>
   );
 }
+
+/** The label each secret field is asked for under. */
+const SECRET_LABELS: Record<string, MessageKey> = {
+  key: "ai.remoteKey",
+  password: "ai.remotePassword",
+  clientSecret: "ai.oauthClientSecret",
+  privateKey: "ai.oauthPrivateKey",
+  tlsCert: "ai.tlsCert",
+  tlsKey: "ai.tlsKey",
+  tlsPassphrase: "ai.tlsPassphrase",
+  tlsCa: "ai.tlsCa",
+};
+
+/** PEM blocks span lines; everything else is one. */
+const MULTILINE_SECRETS = new Set(["privateKey", "tlsCert", "tlsKey", "tlsCa"]);

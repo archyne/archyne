@@ -89,6 +89,7 @@ export function AiOAuthSection({
         >
           <option value="authorization_code">{t("ai.oauthFlowBrowser")}</option>
           <option value="device_code">{t("ai.oauthFlowDevice")}</option>
+          <option value="client_credentials">{t("ai.oauthFlowMachine")}</option>
         </select>
       </label>
       <label className="ai-server-field">
@@ -112,15 +113,46 @@ export function AiOAuthSection({
           onChange={(e) => set({ clientId: e.target.value.trim() || undefined })}
         />
       </label>
-      <label className="ai-oauth-check">
-        <input
-          type="checkbox"
-          checked={!!config.register}
+      {config.flow !== "client_credentials" && (
+        <label className="ai-oauth-check">
+          <input
+            type="checkbox"
+            checked={!!config.register}
+            disabled={disabled || busy}
+            onChange={(e) => set({ register: e.target.checked })}
+          />
+          {t("ai.oauthRegister")}
+        </label>
+      )}
+      <label className="ai-server-field">
+        {t("ai.oauthClientAuth")}
+        <select
+          value={config.clientAuth ?? ""}
+          aria-label={t("ai.oauthClientAuth")}
           disabled={disabled || busy}
-          onChange={(e) => set({ register: e.target.checked })}
-        />
-        {t("ai.oauthRegister")}
+          onChange={(e) =>
+            set({ clientAuth: (e.target.value || undefined) as OAuthConfig["clientAuth"] })
+          }
+        >
+          <option value="">{t("ai.oauthClientAuthAuto")}</option>
+          <option value="client_secret_basic">{t("ai.oauthClientAuthBasic")}</option>
+          <option value="client_secret_post">{t("ai.oauthClientAuthPost")}</option>
+          <option value="private_key_jwt">{t("ai.oauthClientAuthKey")}</option>
+          <option value="tls_client_auth">{t("ai.oauthClientAuthTls")}</option>
+        </select>
       </label>
+      {config.clientAuth === "private_key_jwt" && (
+        <label className="ai-server-field">
+          {t("ai.oauthKeyId")}
+          <input
+            type="text"
+            value={config.keyId ?? ""}
+            spellCheck={false}
+            disabled={disabled || busy}
+            onChange={(e) => set({ keyId: e.target.value.trim() || undefined })}
+          />
+        </label>
+      )}
       <label className="ai-server-field">
         {t("ai.oauthScopes")}
         <input
