@@ -35,9 +35,11 @@ export interface OAuthConfig {
    * `authorization_code`: the system browser opens, the person signs in, and
    * the answer comes back to a loopback port (RFC 8252). `device_code`: the
    * person types a short code on another page (RFC 8628) — for identity
-   * providers that refuse loopback redirects.
+   * providers that refuse loopback redirects. `client_credentials`: no
+   * person at all — the connection authenticates as itself (a machine
+   * identity, a service principal).
    */
-  flow: "authorization_code" | "device_code";
+  flow: "authorization_code" | "device_code" | "client_credentials";
   /** The authorization server; when empty, found from the service (RFC 9728). */
   issuer?: string;
   /** Empty with `register`, which asks the server for one (RFC 7591). */
@@ -50,7 +52,24 @@ export interface OAuthConfig {
   audience?: string;
   /** Register a client with the server when there is no client id. */
   register?: boolean;
+  /**
+   * How the client proves itself at the token endpoint. Default: with the
+   * client secret in a Basic header when one is set, and not at all (a
+   * public client, PKCE carrying the proof) when none is.
+   */
+  clientAuth?: ClientAuthMethod;
+  /** The JWK key id to put in a `private_key_jwt` assertion, if the server wants one. */
+  keyId?: string;
 }
+
+/**
+ * Client authentication at the token endpoint (RFC 6749 §2.3, RFC 7523,
+ * RFC 8705). `client_secret_jwt` is left out on purpose: it signs with the
+ * shared secret, so it buys nothing over `client_secret_basic` and costs a
+ * second way for the secret to be mishandled.
+ */
+export type ClientAuthMethod =
+  "client_secret_basic" | "client_secret_post" | "private_key_jwt" | "tls_client_auth";
 
 export type AuthType = AuthConfig["type"];
 
@@ -77,7 +96,7 @@ export const SECRET_FIELDS: Record<AuthType, string[]> = {
   none: [],
   header: ["key"],
   basic: ["password"],
-  oauth: ["clientSecret", "tokens", "client"],
+  oauth: ["clientSecret", "privateKey", "tokens", "client"],
 };
 
 /**
@@ -85,7 +104,7 @@ export const SECRET_FIELDS: Record<AuthType, string[]> = {
  * write a token or a registered client, which only the host's own flows
  * produce.
  */
-export const PAGE_SETTABLE_SECRETS = new Set(["key", "password", "clientSecret"]);
+export const PAGE_SETTABLE_SECRETS = new Set(["key", "password", "clientSecret", "privateKey"]);
 
 /** Header names a connection's extra headers may not set: auth has its own place. */
 const RESERVED_HEADERS = new Set(["authorization", "proxy-authorization", "cookie", "host"]);
@@ -103,9 +122,17 @@ export function connectionProblem(c: Connection): string | null {
     return "username";
   }
   if (c.auth.type === "oauth") {
-    if (c.auth.flow !== "authorization_code" && c.auth.flow !== "device_code") return "flow";
+    if (!["authorization_code", "device_code", "client_credentials"].includes(c.auth.flow)) {
+      return "flow";
+    }
     if (c.auth.issuer && !isIssuerUrl(c.auth.issuer)) return "issuer";
     if (!c.auth.clientId && !c.auth.register) return "client";
+    // A machine identity is configured, never registered on the fly; and a
+    // key or a certificate proves a client id, so there must be one.
+    if (!c.auth.clientId && c.auth.flow === "client_credentials") return "client";
+    if (!c.auth.clientId && c.auth.clientAuth && c.auth.clientAuth !== "client_secret_basic") {
+      return "client";
+    }
   }
   for (const name of Object.keys(c.headers ?? {})) {
     if (!isHeaderName(name) || RESERVED_HEADERS.has(name.toLowerCase())) return "extra-header";

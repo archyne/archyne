@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, verify, type KeyObject } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -19,11 +19,24 @@ export interface AsOptions {
   wrongState?: boolean;
   pendingPolls?: number;
   expiresIn?: number;
+  /**
+   * The machine client the client-credentials grant accepts, and how it may
+   * prove itself: its secret (Basic or in the body), or an assertion signed
+   * with the private half of `publicKey` (private_key_jwt).
+   */
+  client?: { id: string; secret?: string; publicKey?: KeyObject; keyId?: string };
 }
+
+/** Which client authentication a token request used, as the server judged it. */
+export type ClientAuthSeen = "basic" | "post" | "private_key_jwt" | "none" | "refused";
 
 export function authorizationServer(options: AsOptions = {}) {
   const tag = randomBytes(12).toString("hex");
-  const log: Array<{ path: string; body?: Record<string, string> }> = [];
+  const log: Array<{
+    path: string;
+    body?: Record<string, string>;
+    clientAuth?: ClientAuthSeen;
+  }> = [];
   let base = "";
   const codes = new Map<string, { challenge: string; redirectUri: string; clientId: string }>();
   let accessToken = "";
@@ -123,6 +136,13 @@ export function authorizationServer(options: AsOptions = {}) {
             return json(res, 400, { error: "authorization_pending" });
           return issue(res);
         }
+        if (grant === "client_credentials") {
+          const seen = judgeClient(req, body ?? {}, options.client, base);
+          log[log.length - 1].clientAuth = seen;
+          if (seen === "refused" || seen === "none")
+            return json(res, 401, { error: "invalid_client" });
+          return issue(res);
+        }
         if (grant === "refresh_token") {
           if (body?.refresh_token !== refreshToken)
             return json(res, 400, { error: "invalid_grant" });
@@ -186,4 +206,65 @@ export async function browser(url: string): Promise<void> {
   const consent = await fetch(url, { redirect: "manual" });
   const back = consent.headers.get("location");
   if (back) await fetch(back);
+}
+
+/**
+ * How a token request authenticated its client, checked the way a server
+ * must: the secret compared, or the assertion's signature, issuer, subject,
+ * audience and expiry verified against the client's public key (RFC 7523).
+ */
+function judgeClient(
+  req: IncomingMessage,
+  body: Record<string, string>,
+  client: AsOptions["client"],
+  issuer: string,
+): ClientAuthSeen {
+  if (!client) return "refused";
+  const header = req.headers.authorization ?? "";
+  if (header.startsWith("Basic ")) {
+    const [id, secret] = Buffer.from(header.slice(6), "base64")
+      .toString("utf8")
+      .split(":")
+      .map(decodeURIComponent);
+    return id === client.id && !!client.secret && secret === client.secret
+      ? "basic"
+      : "refused";
+  }
+  if (body.client_secret !== undefined) {
+    return body.client_id === client.id && body.client_secret === client.secret
+      ? "post"
+      : "refused";
+  }
+  if (body.client_assertion_type === "urn:ietf:params:oauth:client-assertion-type:jwt-bearer") {
+    if (!client.publicKey) return "refused";
+    const [h, p, sig] = (body.client_assertion ?? "").split(".");
+    const head = JSON.parse(Buffer.from(h, "base64url").toString()) as {
+      alg: string;
+      kid?: string;
+    };
+    const claims = JSON.parse(Buffer.from(p, "base64url").toString()) as {
+      iss: string;
+      sub: string;
+      aud: string | string[];
+      exp: number;
+      jti?: string;
+    };
+    const signed = verify(
+      "sha256", // RS256 and ES256, the two the tests sign with
+      Buffer.from(`${h}.${p}`),
+      { key: client.publicKey, dsaEncoding: "ieee-p1363" },
+      Buffer.from(sig, "base64url"),
+    );
+    const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+    const ok =
+      signed &&
+      claims.iss === client.id &&
+      claims.sub === client.id &&
+      audiences.some((a) => a === issuer || a === `${issuer}/token`) &&
+      claims.exp * 1000 > Date.now() &&
+      !!claims.jti &&
+      (!client.keyId || head.kid === client.keyId);
+    return ok ? "private_key_jwt" : "refused";
+  }
+  return "none";
 }

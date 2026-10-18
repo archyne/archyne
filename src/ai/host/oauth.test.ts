@@ -1,6 +1,7 @@
 // @vitest-environment node
 // Node, not jsdom: oauth4webapi hashes and encodes with Node's Uint8Array, and
 // jsdom's realm hands it arrays from another realm that lack toBase64.
+import { generateKeyPairSync } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Connection } from "./connection";
 import { AiHost, type HostEvent, type SecretStore } from "./core";
@@ -133,6 +134,88 @@ describe("OAuth sign-in", () => {
     // A second sign-in reuses the registered client rather than registering again.
     await signIn();
     expect(as.registered).toHaveLength(1);
+  });
+});
+
+describe("a machine identity (client credentials)", () => {
+  const machine = { flow: "client_credentials", clientId: "svc-1" } as const;
+  const tokenRequests = (as: {
+    log: Array<{ body?: Record<string, string>; clientAuth?: string }>;
+  }) => as.log.filter((l) => l.body?.grant_type === "client_credentials");
+
+  it("authenticates with the secret in a Basic header unless told otherwise", async () => {
+    const { host, events, signIn, as } = await setup(
+      { client: { id: "svc-1", secret: "s3cr3t" } },
+      machine,
+    );
+    await host.setSecret("sso", "clientSecret", "s3cr3t");
+    await signIn();
+    expect(events.at(-1)).toMatchObject({ state: "signed-in" });
+    expect(tokenRequests(as)[0].clientAuth).toBe("basic");
+    expect(await host.probe("sso")).toMatchObject({ state: "ok" });
+  });
+
+  it("sends the secret in the body when the server wants client_secret_post", async () => {
+    const { host, signIn, as } = await setup(
+      { client: { id: "svc-1", secret: "s3cr3t" } },
+      { ...machine, clientAuth: "client_secret_post" },
+    );
+    await host.setSecret("sso", "clientSecret", "s3cr3t");
+    await signIn();
+    expect(tokenRequests(as)[0].clientAuth).toBe("post");
+  });
+
+  for (const kind of ["EC P-256", "RSA"] as const) {
+    it(`proves itself with a ${kind} key: a signed assertion the server verifies (RFC 7523)`, async () => {
+      const pair =
+        kind === "RSA"
+          ? generateKeyPairSync("rsa", { modulusLength: 2048 })
+          : generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+      const { host, signIn, as, events } = await setup(
+        { client: { id: "svc-1", publicKey: pair.publicKey, keyId: "k-2026" } },
+        { ...machine, clientAuth: "private_key_jwt", keyId: "k-2026" },
+      );
+      await host.setSecret(
+        "sso",
+        "privateKey",
+        pair.privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+      );
+      await signIn();
+      expect(events.at(-1)).toMatchObject({ state: "signed-in" });
+      expect(tokenRequests(as)[0].clientAuth).toBe("private_key_jwt");
+    });
+  }
+
+  it("is refused with the wrong secret, and says so", async () => {
+    const { host, events, signIn } = await setup(
+      { client: { id: "svc-1", secret: "right" } },
+      machine,
+    );
+    await host.setSecret("sso", "clientSecret", "wrong");
+    await signIn();
+    expect(events.at(-1)).toMatchObject({ state: "error" });
+    expect(await host.authStatus("sso")).toEqual({ signedIn: false });
+  });
+
+  it("asks again when its token lapses — there is no refresh token to use", async () => {
+    const { host, signIn, as, advance } = await setup(
+      { client: { id: "svc-1", secret: "s3cr3t" }, expiresIn: 120 },
+      machine,
+    );
+    await host.setSecret("sso", "clientSecret", "s3cr3t");
+    await signIn();
+    advance(90_000);
+    expect(await host.probe("sso")).toMatchObject({ state: "ok" });
+    expect(tokenRequests(as)).toHaveLength(2);
+    expect(as.log.some((l) => l.body?.grant_type === "refresh_token")).toBe(false);
+  });
+
+  it("needs a client id: a machine identity is configured, never registered on the fly", async () => {
+    const { host } = await setup(
+      {},
+      { flow: "client_credentials", clientId: undefined, register: true },
+    );
+    expect(await host.probe("sso")).toEqual({ state: "invalid", problem: "client" });
   });
 });
 

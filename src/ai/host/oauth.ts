@@ -35,7 +35,7 @@ export interface OAuthEnv {
 
 /** The secrets an OAuth connection reads and writes, by field. */
 export interface OAuthSecrets {
-  get(field: "clientSecret" | "tokens" | "client"): Promise<string | undefined>;
+  get(field: "clientSecret" | "privateKey" | "tokens" | "client"): Promise<string | undefined>;
   set(field: "tokens" | "client", value: string): Promise<void>;
   delete(field: "tokens" | "client"): Promise<void>;
 }
@@ -112,7 +112,7 @@ async function clientFor(
   if (config.clientId) {
     return {
       client: { client_id: config.clientId },
-      auth: secret ? oauth.ClientSecretBasic(secret) : oauth.None(),
+      auth: await clientAuthentication(config, secret, secrets),
     };
   }
   const stored = await secrets.get("client");
@@ -165,6 +165,102 @@ async function clientFor(
   };
 }
 
+/**
+ * How the client proves itself at the token endpoint, as configured — or,
+ * when nothing is configured, the secret in a Basic header if there is one
+ * and nothing otherwise (a public client, with PKCE carrying the proof).
+ */
+async function clientAuthentication(
+  config: OAuthConfig,
+  secret: string | undefined,
+  secrets: OAuthSecrets,
+): Promise<oauth.ClientAuth> {
+  const method = config.clientAuth ?? (secret ? "client_secret_basic" : undefined);
+  switch (method) {
+    case "client_secret_basic":
+    case "client_secret_post":
+      if (!secret)
+        throw new Error("This client authenticates with a secret, and none is saved.");
+      return method === "client_secret_basic"
+        ? oauth.ClientSecretBasic(secret)
+        : oauth.ClientSecretPost(secret);
+    case "private_key_jwt": {
+      const pem = await secrets.get("privateKey");
+      if (!pem)
+        throw new Error("This client authenticates with a private key, and none is saved.");
+      return oauth.PrivateKeyJwt({
+        key: await importPrivateKey(pem),
+        kid: config.keyId || undefined,
+      });
+    }
+    case "tls_client_auth":
+      // The proof is the client certificate on the connection itself (RFC
+      // 8705); the request carries only the client id.
+      return oauth.TlsClientAuth();
+    default:
+      return oauth.None();
+  }
+}
+
+/**
+ * A PEM private key as a signing CryptoKey, with the algorithm its type
+ * implies: RS256 for RSA, ES256/384/512 by curve, EdDSA for Ed25519 — which is
+ * what the server will expect for the key it was given the public half of.
+ */
+export async function importPrivateKey(pem: string): Promise<CryptoKey> {
+  const { createPrivateKey } = await import("node:crypto");
+  const key = createPrivateKey(pem);
+  const der = key.export({ type: "pkcs8", format: "der" });
+  const curves: Record<string, [string, string]> = {
+    prime256v1: ["P-256", "SHA-256"],
+    secp384r1: ["P-384", "SHA-384"],
+    secp521r1: ["P-521", "SHA-512"],
+  };
+  let algorithm: RsaHashedImportParams | EcKeyImportParams | { name: "Ed25519" };
+  switch (key.asymmetricKeyType) {
+    case "rsa":
+      algorithm = { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" };
+      break;
+    case "ec": {
+      const curve = curves[String(key.asymmetricKeyDetails?.namedCurve)];
+      if (!curve) throw new Error("This elliptic curve is not one OAuth signs with.");
+      algorithm = { name: "ECDSA", namedCurve: curve[0] };
+      break;
+    }
+    case "ed25519":
+      algorithm = { name: "Ed25519" };
+      break;
+    default:
+      throw new Error("The private key must be RSA, EC (P-256/384/521) or Ed25519.");
+  }
+  return crypto.subtle.importKey("pkcs8", der, algorithm, false, ["sign"]);
+}
+
+/** A token for the client itself (RFC 6749 §4.4), stored like any other. */
+async function clientCredentialsToken(
+  as: oauth.AuthorizationServer,
+  client: oauth.Client,
+  auth: oauth.ClientAuth,
+  config: OAuthConfig,
+  secrets: OAuthSecrets,
+  env: OAuthEnv,
+  signal?: AbortSignal,
+): Promise<string> {
+  const params: Record<string, string> = { ...audienceParams(config) };
+  const scope = config.scopes?.trim();
+  if (scope) params.scope = scope;
+  const response = await oauth.clientCredentialsGrantRequest(
+    as,
+    client,
+    auth,
+    params,
+    requestOptions(env, as.issuer, signal),
+  );
+  const tokens = await oauth.processClientCredentialsResponse(as, client, response);
+  await secrets.set("tokens", store(tokens, env));
+  return tokens.access_token;
+}
+
 /** The extra parameters a provider needs to issue a token for the right API. */
 function audienceParams(config: OAuthConfig): Record<string, string> {
   const p: Record<string, string> = {};
@@ -202,6 +298,13 @@ export async function signIn(
   const { client, auth } = await clientFor(config, as, secrets, env);
   const scope = config.scopes?.trim() || undefined;
   const options = requestOptions(env, as.issuer, signal);
+
+  if (config.flow === "client_credentials") {
+    // No person: "signing in" is getting the first token, which also proves
+    // the client id and its credential are right.
+    await clientCredentialsToken(as, client, auth, config, secrets, env, signal);
+    return;
+  }
 
   if (config.flow === "device_code") {
     const params: Record<string, string> = { ...audienceParams(config) };
@@ -299,8 +402,21 @@ export async function accessToken(
   force = false,
 ): Promise<string | null> {
   const tokens = parseTokens(await secrets.get("tokens"));
+  const fresh =
+    !!tokens && (!tokens.expires_at || tokens.expires_at - EXPIRY_MARGIN_MS > env.now());
+  if (config.flow === "client_credentials") {
+    // A machine identity has no refresh token: it simply asks again.
+    if (tokens && fresh && !force) return tokens.access_token;
+    try {
+      const as = await discover(config, baseUrl, env);
+      const { client, auth } = await clientFor(config, as, secrets, env);
+      return await clientCredentialsToken(as, client, auth, config, secrets, env);
+    } catch {
+      await secrets.delete("tokens");
+      return null;
+    }
+  }
   if (!tokens) return null;
-  const fresh = !tokens.expires_at || tokens.expires_at - EXPIRY_MARGIN_MS > env.now();
   if (fresh && !force) return tokens.access_token;
   if (!tokens.refresh_token) return force ? null : tokens.access_token;
   try {
