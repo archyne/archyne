@@ -529,6 +529,14 @@ export const messages: Messages = {
   "ai.awsSessionToken": "Token di sessione (solo credenziali temporanee)",
   "ai.remoteBedrockHint":
     "Indirizzo: https://bedrock-runtime.<regione>.amazonaws.com. Firma con una chiave di accesso AWS (SigV4), oppure metti una chiave API di Bedrock nell'intestazione Authorization come token Bearer. Per elencare i modelli servono i permessi bedrock:ListInferenceProfiles e bedrock:ListFoundationModels; senza, scrivi l'ID del modello.",
+  "ai.remoteVertexHint":
+    "Indirizzo: sostituisci PROJECT_ID con il tuo progetto Google Cloud; per una regione invece di global usa https://<regione>-aiplatform.googleapis.com/v1/projects/<progetto>/locations/<regione>/endpoints/openapi. I modelli si chiamano come google/gemini-…. Accedi con la chiave di un account di servizio, oppure dal browser con un client OAuth di Google.",
+  "ai.oauthFlowAssertion": "Asserzione firmata (account di servizio)",
+  "ai.oauthAssertionHint":
+    "Incolla qui sotto la chiave privata, oppure il file di chiave JSON di un account di servizio Google così com'è: contiene l'emittente e l'ID della chiave.",
+  "ai.oauthAssertionIssuer": "Emittente (per un account di servizio, la sua email)",
+  "ai.oauthAssertionKey": "Chiave privata (PEM, o un file di chiave JSON)",
+  "ai.oauthSubject": "Agisci per conto di (facoltativo)",
   "ai.remoteBedrockModel": "ID modello o profilo di inferenza",
   "ai.remoteProblemRegion": "La regione non è valida; ha la forma eu-west-1.",
   "ai.remoteProblemService":

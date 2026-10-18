@@ -520,6 +520,14 @@ export const messages: Messages = {
   "ai.awsSessionToken": "セッショントークン（一時的な認証情報の場合のみ）",
   "ai.remoteBedrockHint":
     "アドレス: https://bedrock-runtime.<リージョン>.amazonaws.com。AWS アクセスキーで署名する（SigV4）か、Bedrock の API キーを Bearer トークンとして Authorization ヘッダーに入れます。モデルの一覧には bedrock:ListInferenceProfiles と bedrock:ListFoundationModels の権限が必要です。権限がない場合はモデル ID を入力してください。",
+  "ai.remoteVertexHint":
+    "アドレス: PROJECT_ID を Google Cloud のプロジェクトに置き換えます。global ではなくリージョンを使う場合は https://<リージョン>-aiplatform.googleapis.com/v1/projects/<プロジェクト>/locations/<リージョン>/endpoints/openapi です。モデル名は google/gemini-… のような形式です。サービスアカウントの鍵でサインインするか、Google の OAuth クライアントを使ってブラウザでサインインします。",
+  "ai.oauthFlowAssertion": "署名付きアサーション（サービスアカウント）",
+  "ai.oauthAssertionHint":
+    "下に秘密鍵を貼り付けるか、Google サービスアカウントの JSON 鍵ファイルをそのまま貼り付けます。発行者と鍵 ID はファイルに含まれています。",
+  "ai.oauthAssertionIssuer": "発行者（サービスアカウントの場合はそのメールアドレス）",
+  "ai.oauthAssertionKey": "秘密鍵（PEM または JSON 鍵ファイル）",
+  "ai.oauthSubject": "代理で操作するユーザー（任意）",
   "ai.remoteBedrockModel": "モデル ID または推論プロファイル",
   "ai.remoteProblemRegion": "リージョンが正しくありません。eu-west-1 のような形式です。",
   "ai.remoteProblemService": "署名名に使えるのは小文字、数字、ハイフンだけです。",

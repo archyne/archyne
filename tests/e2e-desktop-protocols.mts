@@ -1,9 +1,10 @@
 /**
  * The hosted dialects through the desktop shell, set up in the panel: an
- * Anthropic Messages service, an Azure OpenAI deployment and Amazon Bedrock,
- * each a stand-in on a loopback port that answers only in its own dialect and
- * only with its own credentials — for Bedrock, a SigV4 signature checked the
- * way AWS checks it, over the request as it arrived.
+ * Anthropic Messages service, an Azure OpenAI deployment, Amazon Bedrock and
+ * Google Vertex AI, each a stand-in on a loopback port that answers only in
+ * its own dialect and only with its own credentials — for Bedrock, a SigV4
+ * signature checked the way AWS checks it, over the request as it arrived;
+ * for Vertex, a token issued for a service account's signed assertion.
  *
  * What only the real app can show: that choosing a kind of service in the
  * panel fills in what it should, that the choice reaches the shell, and that
@@ -12,12 +13,14 @@
  *
  * Run:  npm run build, then npx tsx tests/e2e-desktop-protocols.mts
  */
+import { generateKeyPairSync } from "node:crypto";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _electron as electron } from "playwright";
+import { authorizationServer } from "../src/ai/host/authServer.testkit";
 import { bedrockEvent, verifySigV4 } from "../src/ai/host/sigv4.testkit";
 
 let failed = false;
@@ -33,7 +36,28 @@ const ANTHROPIC_KEY = "sk-ant-e2e-51c9";
 const AZURE_KEY = "azure-e2e-0d77";
 const AWS_KEYS = { accessKeyId: "AKIDE2EBEDROCK", secretAccessKey: "e2e/bedrock+secret" };
 const AWS_SCOPE = { region: "eu-central-1", service: "bedrock" };
-const seen: Array<{ url: string; body?: Record<string, unknown>; signature?: string }> = [];
+const seen: Array<{
+  url: string;
+  body?: Record<string, unknown>;
+  signature?: string;
+  authorization?: string;
+}> = [];
+
+// Google, as far as Vertex needs it: an authorization server that takes a
+// service account's assertion, and the service account's key file.
+const serviceAccount = generateKeyPairSync("rsa", { modulusLength: 2048 });
+const SA_EMAIL = "diagrams-e2e@acme-ai.iam.gserviceaccount.com";
+const KEY_FILE = JSON.stringify({
+  type: "service_account",
+  project_id: "acme-ai",
+  private_key_id: "kid-e2e",
+  private_key: serviceAccount.privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+  client_email: SA_EMAIL,
+});
+const google = authorizationServer({
+  assertion: { issuer: SA_EMAIL, publicKey: serviceAccount.publicKey, keyId: "kid-e2e" },
+});
+await google.start();
 
 /** The user's document, out of the envelope prompt.ts wraps it in. */
 function documentOf(text: string): string {
@@ -152,6 +176,31 @@ const service = createServer(async (req, res) => {
         bedrockEvent("contentBlockDelta", { contentBlockIndex: 0, delta: { text: answer } }),
       );
       res.end(bedrockEvent("messageStop", { stopReason: "end_turn" }));
+      return;
+    }
+  }
+  if (url.startsWith("/vertex/")) {
+    const authorization = req.headers.authorization;
+    if (authorization !== `Bearer ${google.issued.accessToken}` || !google.issued.accessToken) {
+      seen.push({ url, authorization });
+      res.writeHead(401).end();
+      return;
+    }
+    const location = "/vertex/v1/projects/acme-ai/locations/global";
+    if (req.method === "GET" && url === location) {
+      seen.push({ url, authorization });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ name: "projects/acme-ai/locations/global" }));
+      return;
+    }
+    if (req.method === "POST" && url === `${location}/endpoints/openapi/chat/completions`) {
+      const body = await readBody(req);
+      seen.push({ url, body, authorization });
+      const messages = body.messages as Array<{ content: string }>;
+      const answer = `${documentOf(messages.at(-1)!.content)}\n  gcp["Via Vertex"]`;
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: answer } }] })}\n\n`);
+      res.end("data: [DONE]\n\n");
       return;
     }
   }
@@ -316,9 +365,78 @@ check(
   "found in the page",
 );
 
+/* ---------- Google Vertex AI, as a service account ---------- */
+
+await openSettings();
+await page.getByRole("button", { name: "Add service" }).click();
+await kind.selectOption("vertex");
+check(
+  "choosing Vertex fills in its address, and a service account's sign-in at Google",
+  (await field("Address").inputValue()).includes("aiplatform.googleapis.com") &&
+    (await page.getByRole("combobox", { name: "Authentication" }).inputValue()) === "oauth" &&
+    (await page.getByRole("combobox", { name: "How to sign in" }).inputValue()) ===
+      "jwt_bearer" &&
+    (await field("Authorization server").inputValue()) === "https://accounts.google.com",
+  await field("Authorization server").inputValue(),
+);
+await field("Address").fill(
+  `${base}/vertex/v1/projects/acme-ai/locations/global/endpoints/openapi`,
+);
+await field("Authorization server").fill(google.base);
+const keyField = page
+  .locator(".ai-server-field", { hasText: "Private key (PEM, or a JSON key file)" })
+  .locator("textarea")
+  .first();
+await keyField.fill(KEY_FILE);
+await keyField.blur();
+await page.waitForTimeout(500);
+await page.getByRole("button", { name: "Sign in" }).click();
+await page.waitForSelector('[data-auth="signed-in"], [data-auth="signed-out"]', {
+  timeout: 30_000,
+});
+const exchange = google.log.find(
+  (l) => l.body?.grant_type === "urn:ietf:params:oauth:grant-type:jwt-bearer",
+);
+check(
+  "the key file alone signs the service account in: an assertion Google's stand-in verified",
+  (await page.locator('[data-auth="signed-in"]').count()) === 1 &&
+    exchange?.assertion?.iss === SA_EMAIL,
+  JSON.stringify(exchange?.assertion ?? exchange?.body ?? null),
+);
+await field("Model").fill("google/gemini-e2e");
+await page.getByRole("button", { name: "Check connection" }).click();
+await page.waitForSelector('.ai-server-status[data-state="ok"]', { timeout: 15_000 });
+await send("add a step from Vertex");
+const vertexCall = seen
+  .filter((s) => s.url.endsWith("/endpoints/openapi/chat/completions"))
+  .at(-1);
+check(
+  "a turn reaches Vertex with the issued token, naming the model, and the answer lands",
+  vertexCall?.authorization === `Bearer ${google.issued.accessToken}` &&
+    vertexCall.body?.model === "google/gemini-e2e" &&
+    (await onCanvas("Via Vertex")),
+  JSON.stringify(vertexCall?.body?.model ?? null),
+);
+const gcpView = await page.evaluate(() => ({
+  storage: JSON.stringify({ ...localStorage }),
+  html: document.documentElement.outerHTML,
+}));
+const keyLine = KEY_FILE.split("\\n")[2] ?? "";
+check(
+  "neither the key file nor the token is in the page",
+  keyLine.length > 20 &&
+    [keyLine, google.issued.accessToken].every(
+      (secret) => !gcpView.storage.includes(secret) && !gcpView.html.includes(secret),
+    ),
+  "found in the page",
+);
+
 await app.close();
+google.close();
 service.close();
 service.closeAllConnections();
 rmSync(userData, { recursive: true, force: true });
 if (failed) process.exit(1);
-console.log("\nAnthropic, Azure OpenAI and Amazon Bedrock work through the desktop shell");
+console.log(
+  "\nAnthropic, Azure OpenAI, Amazon Bedrock and Google Vertex AI work through the desktop shell",
+);

@@ -523,6 +523,14 @@ export const messages: Messages = {
   "ai.awsSessionToken": "رمز الجلسة (لبيانات الاعتماد المؤقتة فقط)",
   "ai.remoteBedrockHint":
     "العنوان: https://bedrock-runtime.<المنطقة>.amazonaws.com. وقّع بمفتاح وصول AWS ‏(SigV4)، أو ضع مفتاح API لـ Bedrock في الترويسة Authorization كرمز Bearer. يتطلب سرد النماذج الصلاحيتين bedrock:ListInferenceProfiles وbedrock:ListFoundationModels؛ وبدونهما اكتب معرّف النموذج.",
+  "ai.remoteVertexHint":
+    "العنوان: استبدل PROJECT_ID بمشروعك على Google Cloud؛ ولاستخدام منطقة بدل global استخدم https://<المنطقة>-aiplatform.googleapis.com/v1/projects/<المشروع>/locations/<المنطقة>/endpoints/openapi. تُسمّى النماذج مثل google/gemini-…. سجّل الدخول بمفتاح حساب خدمة، أو عبر المتصفح بعميل OAuth من Google.",
+  "ai.oauthFlowAssertion": "تأكيد موقَّع (حساب خدمة)",
+  "ai.oauthAssertionHint":
+    "الصق المفتاح الخاص أدناه، أو ملف مفتاح JSON لحساب خدمة Google كما هو: فهو يتضمن المُصدِر ومعرّف المفتاح.",
+  "ai.oauthAssertionIssuer": "المُصدِر (لحساب خدمة: بريده الإلكتروني)",
+  "ai.oauthAssertionKey": "المفتاح الخاص (PEM أو ملف مفتاح JSON)",
+  "ai.oauthSubject": "التصرف نيابةً عن (اختياري)",
   "ai.remoteBedrockModel": "معرّف النموذج أو ملف تعريف الاستدلال",
   "ai.remoteProblemRegion": "المنطقة غير صالحة؛ شكلها مثل eu-west-1.",
   "ai.remoteProblemService": "لا يجوز أن يحتوي اسم التوقيع إلا على أحرف صغيرة وأرقام وشرطات.",

@@ -511,6 +511,14 @@ export const messages: Messages = {
   "ai.awsSessionToken": "会话令牌（仅限临时凭证）",
   "ai.remoteBedrockHint":
     "地址：https://bedrock-runtime.<区域>.amazonaws.com。使用 AWS 访问密钥签名（SigV4），或将 Bedrock API 密钥作为 Bearer 令牌放入 Authorization 请求头。列出模型需要 bedrock:ListInferenceProfiles 和 bedrock:ListFoundationModels 权限；没有这些权限时，请直接输入模型 ID。",
+  "ai.remoteVertexHint":
+    "地址：将 PROJECT_ID 替换为你的 Google Cloud 项目；若使用区域而非 global，请用 https://<区域>-aiplatform.googleapis.com/v1/projects/<项目>/locations/<区域>/endpoints/openapi。模型名称形如 google/gemini-…。可用服务账号密钥登录，或通过浏览器使用 Google OAuth 客户端登录。",
+  "ai.oauthFlowAssertion": "签名断言（服务账号）",
+  "ai.oauthAssertionHint":
+    "在下方粘贴私钥，或原样粘贴 Google 服务账号的 JSON 密钥文件：其中已包含签发者和密钥 ID。",
+  "ai.oauthAssertionIssuer": "签发者（服务账号即其电子邮件地址）",
+  "ai.oauthAssertionKey": "私钥（PEM，或 JSON 密钥文件）",
+  "ai.oauthSubject": "代表以下用户操作（可选）",
   "ai.remoteBedrockModel": "模型 ID 或推理配置文件",
   "ai.remoteProblemRegion": "区域无效，格式应类似 eu-west-1。",
   "ai.remoteProblemService": "签名名称只能包含小写字母、数字和连字符。",

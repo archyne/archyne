@@ -29,6 +29,9 @@ export function AiOAuthSection({
   const [device, setDevice] = useState<{ userCode: string; uri: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const set = (patch: Partial<OAuthConfig>) => onChange({ ...config, ...patch });
+  // A signed assertion is its own identity: no client to register or to
+  // authenticate, and the key id and subject are the assertion's.
+  const assertion = config.flow === "jwt_bearer";
 
   useEffect(() => {
     if (!ai) return;
@@ -90,8 +93,10 @@ export function AiOAuthSection({
           <option value="authorization_code">{t("ai.oauthFlowBrowser")}</option>
           <option value="device_code">{t("ai.oauthFlowDevice")}</option>
           <option value="client_credentials">{t("ai.oauthFlowMachine")}</option>
+          <option value="jwt_bearer">{t("ai.oauthFlowAssertion")}</option>
         </select>
       </label>
+      {assertion && <p className="ai-server-hint">{t("ai.oauthAssertionHint")}</p>}
       <label className="ai-server-field">
         {t("ai.oauthIssuer")}
         <input
@@ -104,7 +109,7 @@ export function AiOAuthSection({
         />
       </label>
       <label className="ai-server-field">
-        {t("ai.oauthClientId")}
+        {t(assertion ? "ai.oauthAssertionIssuer" : "ai.oauthClientId")}
         <input
           type="text"
           value={config.clientId ?? ""}
@@ -113,7 +118,7 @@ export function AiOAuthSection({
           onChange={(e) => set({ clientId: e.target.value.trim() || undefined })}
         />
       </label>
-      {config.flow !== "client_credentials" && (
+      {config.flow !== "client_credentials" && !assertion && (
         <label className="ai-oauth-check">
           <input
             type="checkbox"
@@ -124,33 +129,49 @@ export function AiOAuthSection({
           {t("ai.oauthRegister")}
         </label>
       )}
-      <label className="ai-server-field">
-        {t("ai.oauthClientAuth")}
-        <select
-          value={config.clientAuth ?? ""}
-          aria-label={t("ai.oauthClientAuth")}
-          disabled={disabled || busy}
-          onChange={(e) =>
-            set({ clientAuth: (e.target.value || undefined) as OAuthConfig["clientAuth"] })
-          }
-        >
-          <option value="">{t("ai.oauthClientAuthAuto")}</option>
-          <option value="client_secret_basic">{t("ai.oauthClientAuthBasic")}</option>
-          <option value="client_secret_post">{t("ai.oauthClientAuthPost")}</option>
-          <option value="private_key_jwt">{t("ai.oauthClientAuthKey")}</option>
-          <option value="tls_client_auth">{t("ai.oauthClientAuthTls")}</option>
-        </select>
-      </label>
-      <label className="ai-oauth-check">
-        <input
-          type="checkbox"
-          checked={!!config.dpop}
-          disabled={disabled || busy}
-          onChange={(e) => set({ dpop: e.target.checked })}
-        />
-        {t("ai.oauthDpop")}
-      </label>
-      {config.clientAuth === "private_key_jwt" && (
+      {!assertion && (
+        <label className="ai-server-field">
+          {t("ai.oauthClientAuth")}
+          <select
+            value={config.clientAuth ?? ""}
+            aria-label={t("ai.oauthClientAuth")}
+            disabled={disabled || busy}
+            onChange={(e) =>
+              set({ clientAuth: (e.target.value || undefined) as OAuthConfig["clientAuth"] })
+            }
+          >
+            <option value="">{t("ai.oauthClientAuthAuto")}</option>
+            <option value="client_secret_basic">{t("ai.oauthClientAuthBasic")}</option>
+            <option value="client_secret_post">{t("ai.oauthClientAuthPost")}</option>
+            <option value="private_key_jwt">{t("ai.oauthClientAuthKey")}</option>
+            <option value="tls_client_auth">{t("ai.oauthClientAuthTls")}</option>
+          </select>
+        </label>
+      )}
+      {!assertion && (
+        <label className="ai-oauth-check">
+          <input
+            type="checkbox"
+            checked={!!config.dpop}
+            disabled={disabled || busy}
+            onChange={(e) => set({ dpop: e.target.checked })}
+          />
+          {t("ai.oauthDpop")}
+        </label>
+      )}
+      {assertion && (
+        <label className="ai-server-field">
+          {t("ai.oauthSubject")}
+          <input
+            type="text"
+            value={config.subject ?? ""}
+            spellCheck={false}
+            disabled={disabled || busy}
+            onChange={(e) => set({ subject: e.target.value.trim() || undefined })}
+          />
+        </label>
+      )}
+      {(config.clientAuth === "private_key_jwt" || assertion) && (
         <label className="ai-server-field">
           {t("ai.oauthKeyId")}
           <input

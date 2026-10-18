@@ -191,6 +191,31 @@ async function bedrockModels(
 }
 
 /**
+ * Google Vertex AI through its OpenAI-compatible endpoint
+ * (`https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/endpoints/openapi`,
+ * or `aiplatform.googleapis.com` for `global`), with models named
+ * `google/gemini-…`. The wire is OpenAI's; the token is Google's — OAuth with
+ * the `cloud-platform` scope, from a service account's signed assertion or a
+ * person signing in.
+ *
+ * The endpoint lists no models, so a check asks for the location itself: one
+ * authenticated GET that proves the token, the project and the address.
+ */
+export const VERTEX_DIALECT: Dialect = {
+  ...OPENAI_DIALECT,
+  relays: false,
+  modelsPath: null,
+  listModels: async (baseUrl, fetchImpl) => {
+    const location = /^(.*\/projects\/[^/]+\/locations\/[^/]+)\/endpoints\/openapi\/?$/.exec(
+      baseUrl,
+    )?.[1];
+    if (!location) return [];
+    const response = await fetchImpl(location);
+    return response.ok ? [] : { status: response.status };
+  },
+};
+
+/**
  * The dialect for each protocol a connection can name.
  *
  * Azure OpenAI and AI Foundry are the OpenAI dialect: their v1 API
@@ -208,7 +233,7 @@ export function dialectFor(protocol: Protocol): Dialect | null {
       return ANTHROPIC_DIALECT;
     case "bedrock":
       return BEDROCK_DIALECT;
-    default:
-      return null;
+    case "vertex":
+      return VERTEX_DIALECT;
   }
 }

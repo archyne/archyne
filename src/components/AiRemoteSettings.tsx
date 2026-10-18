@@ -113,7 +113,7 @@ export function AiRemoteSettings({ disabled }: { disabled: boolean }) {
  * nothing the person typed is lost by changing their mind.
  */
 const PROTOCOL_DEFAULTS: Record<
-  "openai" | "anthropic" | "azure" | "bedrock",
+  "openai" | "anthropic" | "azure" | "bedrock" | "vertex",
   { baseUrl: string; auth: AuthConfig; hint?: MessageKey }
 > = {
   openai: {
@@ -134,6 +134,17 @@ const PROTOCOL_DEFAULTS: Record<
     baseUrl: bedrockRuntime("us-east-1"),
     auth: { type: "sigv4", region: "us-east-1" },
     hint: "ai.remoteBedrockHint",
+  },
+  vertex: {
+    baseUrl:
+      "https://aiplatform.googleapis.com/v1/projects/PROJECT_ID/locations/global/endpoints/openapi",
+    auth: {
+      type: "oauth",
+      flow: "jwt_bearer",
+      issuer: "https://accounts.google.com",
+      scopes: "https://www.googleapis.com/auth/cloud-platform",
+    },
+    hint: "ai.remoteVertexHint",
   },
 };
 
@@ -233,7 +244,7 @@ function ConnectionForm({
   // A deployment is a name the person gave, not one the service lists; a
   // Bedrock model may be one only a profile or an ARN names. Typed, then,
   // with what the service did list offered alongside.
-  const typedModel = connection.protocol === "azure" || connection.protocol === "bedrock";
+  const typedModel = ["azure", "bedrock", "vertex"].includes(connection.protocol);
   const suggest = connection.protocol === "bedrock";
   const setRegion = (region: string) => {
     const was = connection.auth.type === "sigv4" ? connection.auth : null;
@@ -280,6 +291,7 @@ function ConnectionForm({
           <option value="anthropic">Anthropic</option>
           <option value="azure">Azure OpenAI / AI Foundry</option>
           <option value="bedrock">Amazon Bedrock</option>
+          <option value="vertex">Google Vertex AI</option>
         </select>
       </label>
       {defaults?.hint && <p className="ai-server-hint">{t(defaults.hint)}</p>}
@@ -415,7 +427,13 @@ function ConnectionForm({
         .map((field) => (
           <SecretField
             key={field}
-            label={t(SECRET_LABELS[field] ?? "ai.remotePassword")}
+            label={t(
+              field === "privateKey" &&
+                connection.auth.type === "oauth" &&
+                connection.auth.flow === "jwt_bearer"
+                ? "ai.oauthAssertionKey"
+                : (SECRET_LABELS[field] ?? "ai.remotePassword"),
+            )}
             multiline={MULTILINE_SECRETS.has(field)}
             saved={secretsSet.includes(field)}
             disabled={disabled || !canKeep}
@@ -440,7 +458,13 @@ function ConnectionForm({
 
       {typedModel ? (
         <label className="ai-server-field">
-          {t(suggest ? "ai.remoteBedrockModel" : "ai.remoteDeployment")}
+          {t(
+            suggest
+              ? "ai.remoteBedrockModel"
+              : connection.protocol === "azure"
+                ? "ai.remoteDeployment"
+                : "ai.serverModel",
+          )}
           <input
             type="text"
             value={connection.model ?? ""}

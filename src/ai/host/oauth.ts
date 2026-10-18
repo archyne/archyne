@@ -323,6 +323,114 @@ async function clientCredentialsToken(
   return tokens.access_token;
 }
 
+export const JWT_BEARER = "urn:ietf:params:oauth:grant-type:jwt-bearer";
+
+/**
+ * A signing key as a person may paste it: a PEM private key, or a Google
+ * service account key file — JSON that carries the key with the identity it
+ * belongs to and the key's id, so nothing else has to be typed.
+ */
+function signingKey(raw: string): { pem: string; issuer?: string; keyId?: string } {
+  if (!raw.trim().startsWith("{")) return { pem: raw };
+  const file = JSON.parse(raw) as {
+    private_key?: unknown;
+    client_email?: unknown;
+    private_key_id?: unknown;
+  };
+  if (typeof file.private_key !== "string") {
+    throw new Error("The key file has no private_key.");
+  }
+  return {
+    pem: file.private_key,
+    issuer: typeof file.client_email === "string" ? file.client_email : undefined,
+    keyId: typeof file.private_key_id === "string" ? file.private_key_id : undefined,
+  };
+}
+
+/** A compact JWS over `claims`, with the algorithm the key's type implies. */
+async function signJwt(
+  pem: string,
+  keyId: string | undefined,
+  claims: Record<string, unknown>,
+): Promise<string> {
+  const key = await importPrivateKey(pem);
+  const algorithm = key.algorithm as { name: string; namedCurve?: string };
+  const jws: Record<string, [string, AlgorithmIdentifier | EcdsaParams]> = {
+    "RSASSA-PKCS1-v1_5": ["RS256", { name: "RSASSA-PKCS1-v1_5" }],
+    "P-256": ["ES256", { name: "ECDSA", hash: "SHA-256" }],
+    "P-384": ["ES384", { name: "ECDSA", hash: "SHA-384" }],
+    "P-521": ["ES512", { name: "ECDSA", hash: "SHA-512" }],
+    Ed25519: ["EdDSA", { name: "Ed25519" }],
+  };
+  const [alg, params] = jws[algorithm.namedCurve ?? algorithm.name];
+  const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  const input = `${part({ alg, typ: "JWT", ...(keyId ? { kid: keyId } : {}) })}.${part(claims)}`;
+  // WebCrypto's ECDSA signature is already r||s, the form JWS wants.
+  const signature = await crypto.subtle.sign(params, key, new TextEncoder().encode(input));
+  return `${input}.${Buffer.from(signature).toString("base64url")}`;
+}
+
+/**
+ * A token for an identity proven by a signed assertion (RFC 7523 §2.1, the
+ * JWT bearer grant): how a Google service account gets one, and any server
+ * that trusts a key rather than a secret. Like a machine identity, there is
+ * no refresh token — when the token lapses, a new assertion is signed.
+ *
+ * The assertion is short-lived (five minutes) and single-use (a `jti`), its
+ * audience the token endpoint. The scope goes in the request, as RFC 7523
+ * has it, and in the assertion, where Google reads it — except to Google,
+ * which documents no form parameter for it.
+ */
+async function jwtBearerToken(
+  as: oauth.AuthorizationServer,
+  config: OAuthConfig,
+  secrets: OAuthSecrets,
+  env: OAuthEnv,
+  signal?: AbortSignal,
+): Promise<string> {
+  const raw = await secrets.get("privateKey");
+  if (!raw) throw new Error("This identity signs with a private key, and none is saved.");
+  if (!as.token_endpoint) throw new Error("The server has no token endpoint.");
+  const key = signingKey(raw);
+  const issuer = config.clientId || key.issuer;
+  if (!issuer) throw new Error("Whose assertion this is is not set: enter the issuer.");
+  const scope = config.scopes?.trim();
+  const now = Math.floor(env.now() / 1000);
+  const assertion = await signJwt(key.pem, config.keyId || key.keyId, {
+    iss: issuer,
+    sub: config.subject || issuer,
+    aud: as.token_endpoint,
+    iat: now,
+    exp: now + 300,
+    jti: oauth.generateRandomState(),
+    ...(scope ? { scope } : {}),
+  });
+  const body = new URLSearchParams({
+    grant_type: JWT_BEARER,
+    assertion,
+    ...audienceParams(config),
+  });
+  const google = new URL(as.token_endpoint).hostname === "oauth2.googleapis.com";
+  if (scope && !google) body.set("scope", scope);
+  const response = await env.fetch(as.token_endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+    },
+    body: body.toString(),
+    redirect: "error",
+    signal,
+  });
+  const tokens = await oauth.processGenericTokenEndpointResponse(
+    as,
+    { client_id: issuer },
+    response,
+  );
+  await secrets.set("tokens", store(tokens, env));
+  return tokens.access_token;
+}
+
 /** The extra parameters a provider needs to issue a token for the right API. */
 function audienceParams(config: OAuthConfig): Record<string, string> {
   const p: Record<string, string> = {};
@@ -358,6 +466,11 @@ export async function signIn(
   signal: AbortSignal = AbortSignal.timeout(SIGN_IN_TIMEOUT_MS),
 ): Promise<void> {
   const as = await discover(config, baseUrl, env);
+  if (config.flow === "jwt_bearer") {
+    // The assertion is the identity; there is no client to find first.
+    await jwtBearerToken(as, config, secrets, env, signal);
+    return;
+  }
   const { client, auth } = await clientFor(config, as, secrets, env);
   const scope = config.scopes?.trim() || undefined;
   const dpop = await dpopHandle(config, secrets);
@@ -474,11 +587,12 @@ export async function accessToken(
   const tokens = parseTokens(await secrets.get("tokens"));
   const fresh =
     !!tokens && (!tokens.expires_at || tokens.expires_at - EXPIRY_MARGIN_MS > env.now());
-  if (config.flow === "client_credentials") {
+  if (config.flow === "client_credentials" || config.flow === "jwt_bearer") {
     // A machine identity has no refresh token: it simply asks again.
     if (tokens && fresh && !force) return tokens.access_token;
     try {
       const as = await discover(config, baseUrl, env);
+      if (config.flow === "jwt_bearer") return await jwtBearerToken(as, config, secrets, env);
       const { client, auth } = await clientFor(config, as, secrets, env);
       return await clientCredentialsToken(as, client, auth, config, secrets, env);
     } catch {

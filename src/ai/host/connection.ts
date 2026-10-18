@@ -19,6 +19,7 @@ export const IMPLEMENTED_PROTOCOLS: readonly Protocol[] = [
   "azure",
   "anthropic",
   "bedrock",
+  "vertex",
 ];
 
 export type AuthConfig =
@@ -48,13 +49,20 @@ export interface OAuthConfig {
    * person types a short code on another page (RFC 8628) — for identity
    * providers that refuse loopback redirects. `client_credentials`: no
    * person at all — the connection authenticates as itself (a machine
-   * identity, a service principal).
+   * identity, a service principal). `jwt_bearer`: no person either — the
+   * identity is an assertion signed with a private key (RFC 7523 §2.1), as a
+   * Google service account proves itself.
    */
-  flow: "authorization_code" | "device_code" | "client_credentials";
+  flow: "authorization_code" | "device_code" | "client_credentials" | "jwt_bearer";
   /** The authorization server; when empty, found from the service (RFC 9728). */
   issuer?: string;
   /** Empty with `register`, which asks the server for one (RFC 7591). */
   clientId?: string;
+  /**
+   * For `jwt_bearer`: whom the assertion asks to act for, when not the
+   * issuer itself (domain-wide delegation, in Google's terms).
+   */
+  subject?: string;
   /** Space-separated, as the server expects them. */
   scopes?: string;
   /** RFC 8707 resource indicator, which Entra ID and others need. */
@@ -163,10 +171,17 @@ export function connectionProblem(c: Connection): string | null {
     return "username";
   }
   if (c.auth.type === "oauth") {
-    if (!["authorization_code", "device_code", "client_credentials"].includes(c.auth.flow)) {
+    if (
+      !["authorization_code", "device_code", "client_credentials", "jwt_bearer"].includes(
+        c.auth.flow,
+      )
+    ) {
       return "flow";
     }
     if (c.auth.issuer && !isIssuerUrl(c.auth.issuer)) return "issuer";
+    // An assertion names its own issuer, from the field or from a key file;
+    // it has no client to register or to authenticate.
+    if (c.auth.flow === "jwt_bearer") return restProblem(c);
     if (!c.auth.clientId && !c.auth.register) return "client";
     // A machine identity is configured, never registered on the fly; and a
     // key or a certificate proves a client id, so there must be one.
@@ -175,6 +190,11 @@ export function connectionProblem(c: Connection): string | null {
       return "client";
     }
   }
+  return restProblem(c);
+}
+
+/** What is wrong whatever the sign-in: the signature, the transport, the headers. */
+function restProblem(c: Connection): string | null {
   if (c.auth.type === "sigv4") {
     if (!/^[a-z]{2}(-[a-z]+)+-\d+$/.test(c.auth.region)) return "region";
     if (c.auth.service !== undefined && !/^[a-z0-9-]+$/.test(c.auth.service)) return "service";
@@ -316,6 +336,8 @@ function wantedAuthSecrets(auth: AuthConfig): string[] {
     case "sigv4":
       return ["accessKeyId", "secretAccessKey", "sessionToken"];
     case "oauth":
+      // An assertion is signed with a key; there is no client to prove.
+      if (auth.flow === "jwt_bearer") return ["privateKey"];
       switch (auth.clientAuth) {
         case "private_key_jwt":
           return ["privateKey"];

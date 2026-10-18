@@ -220,6 +220,107 @@ describe("a machine identity (client credentials)", () => {
   });
 });
 
+describe("an identity proven by a signed assertion (JWT bearer, RFC 7523 §2.1)", () => {
+  const pair = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const pem = pair.privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+  const identity = {
+    issuer: "diagrams@acme-ai.iam.gserviceaccount.com",
+    publicKey: pair.publicKey,
+  };
+  const assertions = (as: { log: Array<{ body?: Record<string, string> }> }) =>
+    as.log.filter(
+      (l) => l.body?.grant_type === "urn:ietf:params:oauth:grant-type:jwt-bearer",
+    ) as Array<{ body: Record<string, string>; assertion?: Record<string, unknown> }>;
+
+  it("signs an assertion the server verifies, and calls the service with what it issues", async () => {
+    const { host, events, signIn, as } = await setup(
+      { assertion: { ...identity, keyId: "k-sa-1" } },
+      {
+        flow: "jwt_bearer",
+        clientId: identity.issuer,
+        keyId: "k-sa-1",
+        scopes: "https://www.googleapis.com/auth/cloud-platform",
+      },
+    );
+    await host.setSecret("sso", "privateKey", pem);
+    await signIn();
+    expect(events.at(-1)).toMatchObject({ state: "signed-in" });
+    const [request] = assertions(as);
+    expect(request.assertion).toMatchObject({
+      iss: identity.issuer,
+      sub: identity.issuer,
+      aud: `${as.base}/token`,
+      scope: "https://www.googleapis.com/auth/cloud-platform",
+    });
+    // RFC 7523 carries the scope as a parameter too; no client to name.
+    expect(request.body.scope).toBe("https://www.googleapis.com/auth/cloud-platform");
+    expect(request.body).not.toHaveProperty("client_id");
+    expect(await host.probe("sso")).toMatchObject({ state: "ok" });
+  });
+
+  it("takes a Google service account key file as it is: the key, the identity and the key id in it", async () => {
+    const { host, events, signIn, as } = await setup(
+      { assertion: { ...identity, keyId: "0123abcd" } },
+      { flow: "jwt_bearer", clientId: undefined, scopes: "models.read" },
+    );
+    await host.setSecret(
+      "sso",
+      "privateKey",
+      JSON.stringify({
+        type: "service_account",
+        project_id: "acme-ai",
+        private_key_id: "0123abcd",
+        private_key: pem,
+        client_email: identity.issuer,
+        token_uri: "https://oauth2.googleapis.com/token",
+      }),
+    );
+    await signIn();
+    expect(events.at(-1)).toMatchObject({ state: "signed-in" });
+    expect(assertions(as)[0].assertion).toMatchObject({ iss: identity.issuer });
+  });
+
+  it("asks to act for someone else when a subject is set", async () => {
+    const { host, signIn, as } = await setup(
+      { assertion: identity },
+      { flow: "jwt_bearer", clientId: identity.issuer, subject: "dario@acme.example" },
+    );
+    await host.setSecret("sso", "privateKey", pem);
+    await signIn();
+    expect(assertions(as)[0].assertion).toMatchObject({ sub: "dario@acme.example" });
+  });
+
+  it("signs a new assertion when the token lapses, never reusing one", async () => {
+    const { host, signIn, as, advance } = await setup(
+      { assertion: identity, expiresIn: 120 },
+      { flow: "jwt_bearer", clientId: identity.issuer },
+    );
+    await host.setSecret("sso", "privateKey", pem);
+    await signIn();
+    advance(90_000);
+    expect(await host.probe("sso")).toMatchObject({ state: "ok" });
+    const [first, second] = assertions(as);
+    expect(second.assertion?.jti).not.toBe(first.assertion?.jti);
+    expect(as.log.some((l) => l.body?.grant_type === "refresh_token")).toBe(false);
+  });
+
+  it("is refused when signed with another key", async () => {
+    const other = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const { host, events, signIn } = await setup(
+      { assertion: identity },
+      { flow: "jwt_bearer", clientId: identity.issuer },
+    );
+    await host.setSecret(
+      "sso",
+      "privateKey",
+      other.privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+    );
+    await signIn();
+    expect(events.at(-1)).toMatchObject({ state: "error" });
+    expect(await host.authStatus("sso")).toEqual({ signedIn: false });
+  });
+});
+
 describe("DPoP: tokens bound to a key the host keeps (RFC 9449)", () => {
   const tokenProofs = (as: { log: Array<{ path: string; dpop?: string }> }) =>
     as.log.filter((l) => l.path === "/token" && l.dpop).map((l) => l.dpop);

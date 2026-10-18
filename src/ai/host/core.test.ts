@@ -98,7 +98,9 @@ describe("connectionProblem", () => {
   });
 
   it("refuses what would make a broken or dangerous request", () => {
-    expect(connectionProblem({ ...GATEWAY, protocol: "vertex" })).toBe("protocol");
+    expect(
+      connectionProblem({ ...GATEWAY, protocol: "carrier-pigeon" as Connection["protocol"] }),
+    ).toBe("protocol");
     expect(connectionProblem({ ...GATEWAY, auth: { type: "header", name: "bad name" } })).toBe(
       "header-name",
     );
@@ -182,7 +184,9 @@ describe("AiHost", () => {
   it("reports an invalid connection instead of calling it", async () => {
     const net = service();
     const host = new AiHost({ fetch: net.fetch, secrets: memorySecrets() });
-    await host.setConnections([{ ...GATEWAY, protocol: "vertex" }]);
+    await host.setConnections([
+      { ...GATEWAY, protocol: "carrier-pigeon" as Connection["protocol"] },
+    ]);
     const events: HostEvent[] = [];
     await host.chat("r1", "gw", "m", MSG, (e) => events.push(e));
     expect(events).toEqual([

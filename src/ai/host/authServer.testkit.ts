@@ -44,6 +44,11 @@ export interface AsOptions {
   serviceAuth?: "bearer" | "certificate";
   /** Insist on this DPoP nonce in token-endpoint proofs (RFC 9449 §8). */
   dpopNonce?: string;
+  /**
+   * The identity the JWT bearer grant (RFC 7523 §2.1) accepts: assertions
+   * from `issuer`, signed with the private half of `publicKey`.
+   */
+  assertion?: { issuer: string; publicKey: KeyObject; keyId?: string };
 }
 
 /** Which client authentication a token request used, as the server judged it. */
@@ -67,6 +72,8 @@ export function authorizationServer(options: AsOptions = {}) {
     dpop?: string;
     /** The CN of the verified client certificate the request came with, if any. */
     peer?: string | null;
+    /** The claims of a JWT bearer assertion, once its signature checked out. */
+    assertion?: Record<string, unknown>;
   }> = [];
   let base = "";
   const codes = new Map<string, { challenge: string; redirectUri: string; clientId: string }>();
@@ -202,6 +209,16 @@ export function authorizationServer(options: AsOptions = {}) {
           if (seen === "refused" || seen === "none")
             return json(res, 401, { error: "invalid_client" });
           return issue(res, jkt);
+        }
+        if (grant === "urn:ietf:params:oauth:grant-type:jwt-bearer") {
+          const claims = judgeAssertion(
+            body?.assertion ?? "",
+            options.assertion,
+            `${base}/token`,
+          );
+          if (!claims) return json(res, 400, { error: "invalid_grant" });
+          log[log.length - 1].assertion = claims;
+          return issue(res);
         }
         if (grant === "refresh_token") {
           if (body?.refresh_token !== refreshToken)
@@ -374,6 +391,58 @@ function judgeClient(
     return ok ? "private_key_jwt" : "refused";
   }
   return "none";
+}
+
+const seenAssertions = new Set<string>();
+
+/**
+ * A JWT bearer assertion checked as RFC 7523 §3 has a server check it: the
+ * signature against the identity's key, the issuer, a subject, the token
+ * endpoint as audience, an expiry no more than an hour out, and a jti not
+ * used before. Returns the claims, or null.
+ */
+function judgeAssertion(
+  assertion: string,
+  identity: AsOptions["assertion"],
+  tokenEndpoint: string,
+): Record<string, unknown> | null {
+  if (!identity) return null;
+  const [h, p, sig] = assertion.split(".");
+  if (!h || !p || !sig) return null;
+  const head = JSON.parse(Buffer.from(h, "base64url").toString()) as {
+    alg?: string;
+    kid?: string;
+  };
+  const claims = JSON.parse(Buffer.from(p, "base64url").toString()) as {
+    iss?: string;
+    sub?: string;
+    aud?: string;
+    exp?: number;
+    iat?: number;
+    jti?: string;
+  };
+  const signed = verify(
+    "sha256",
+    Buffer.from(`${h}.${p}`),
+    { key: identity.publicKey, dsaEncoding: "ieee-p1363" },
+    Buffer.from(sig, "base64url"),
+  );
+  const now = Date.now() / 1000;
+  const ok =
+    signed &&
+    (head.alg === "RS256" || head.alg === "ES256") &&
+    claims.iss === identity.issuer &&
+    !!claims.sub &&
+    claims.aud === tokenEndpoint &&
+    !!claims.exp &&
+    claims.exp > now &&
+    claims.exp - (claims.iat ?? now) <= 3600 &&
+    !!claims.jti &&
+    !seenAssertions.has(claims.jti) &&
+    (!identity.keyId || head.kid === identity.keyId);
+  if (!ok) return null;
+  seenAssertions.add(claims.jti!);
+  return claims;
 }
 
 /** RFC 7638 thumbprint of an EC public JWK: the required members in order, hashed. */
