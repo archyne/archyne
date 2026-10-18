@@ -195,6 +195,8 @@ describe("AiHost", () => {
     const host = new AiHost({
       fetch: ((_i: RequestInfo | URL, init?: RequestInit) =>
         new Promise((_resolve, reject) => {
+          // As a real fetch does: an already-aborted signal fails at once.
+          if (init?.signal?.aborted) reject(new DOMException("aborted", "AbortError"));
           init?.signal?.addEventListener("abort", () =>
             reject(new DOMException("aborted", "AbortError")),
           );

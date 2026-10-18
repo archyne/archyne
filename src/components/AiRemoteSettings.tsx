@@ -3,11 +3,14 @@ import { hostSynced, useAiEngine } from "../ai/engine";
 import { hostAi, type HostProbe } from "../ai/hostBridge";
 import {
   formatHeaders,
+  PAGE_SETTABLE_SECRETS,
   parseHeaders,
   SECRET_FIELDS,
   type AuthConfig,
   type Connection,
+  type OAuthConfig,
 } from "../ai/host/connection";
+import { AiOAuthSection } from "./AiOAuthSection";
 import { remoteAdvice } from "../ai/serverAdvice";
 import { useT } from "../i18n";
 
@@ -138,7 +141,9 @@ function ConnectionForm({
         ? { type, name: "Authorization", prefix: "Bearer " }
         : type === "basic"
           ? { type, username: "" }
-          : { type: "none" };
+          : type === "oauth"
+            ? { type, flow: "authorization_code", register: true, scopes: "" }
+            : { type: "none" };
     patch({ auth });
   };
 
@@ -180,6 +185,7 @@ function ConnectionForm({
           <option value="none">{t("ai.remoteAuthNone")}</option>
           <option value="header">{t("ai.remoteAuthHeader")}</option>
           <option value="basic">{t("ai.remoteAuthBasic")}</option>
+          <option value="oauth">{t("ai.remoteAuthOAuth")}</option>
         </select>
       </label>
 
@@ -233,16 +239,32 @@ function ConnectionForm({
           />
         </label>
       )}
-      {SECRET_FIELDS[connection.auth.type].map((field) => (
-        <SecretField
-          key={field}
-          label={field === "key" ? t("ai.remoteKey") : t("ai.remotePassword")}
-          saved={secretsSet.includes(field)}
-          disabled={disabled || !canKeep}
-          onSave={(value) => void saveSecret(field, value)}
-          onForget={() => void saveSecret(field, null)}
+      {connection.auth.type === "oauth" && (
+        <AiOAuthSection
+          connectionId={connection.id}
+          config={connection.auth}
+          disabled={disabled}
+          onChange={(auth: OAuthConfig) => patch({ auth })}
         />
-      ))}
+      )}
+      {SECRET_FIELDS[connection.auth.type]
+        .filter((field) => PAGE_SETTABLE_SECRETS.has(field))
+        .map((field) => (
+          <SecretField
+            key={field}
+            label={
+              field === "key"
+                ? t("ai.remoteKey")
+                : field === "clientSecret"
+                  ? t("ai.oauthClientSecret")
+                  : t("ai.remotePassword")
+            }
+            saved={secretsSet.includes(field)}
+            disabled={disabled || !canKeep}
+            onSave={(value) => void saveSecret(field, value)}
+            onForget={() => void saveSecret(field, null)}
+          />
+        ))}
       {!canKeep && <p className="ai-server-status">{t("ai.remoteNoSecureStorage")}</p>}
 
       <label className="ai-server-field">

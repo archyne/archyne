@@ -21,7 +21,36 @@ export type AuthConfig =
   /** A key in a header: `Authorization: Bearer …`, `api-key: …`, `x-api-key: …`. */
   | { type: "header"; name: string; prefix?: string }
   /** HTTP Basic; the password is the secret. */
-  | { type: "basic"; username: string };
+  | { type: "basic"; username: string }
+  /** OAuth for a person signing in (AUTH.local.md, phase 2). */
+  | OAuthConfig;
+
+/**
+ * OAuth where a person signs in. The host runs the flow and keeps the tokens;
+ * the page only ever learns whether someone is signed in.
+ */
+export interface OAuthConfig {
+  type: "oauth";
+  /**
+   * `authorization_code`: the system browser opens, the person signs in, and
+   * the answer comes back to a loopback port (RFC 8252). `device_code`: the
+   * person types a short code on another page (RFC 8628) — for identity
+   * providers that refuse loopback redirects.
+   */
+  flow: "authorization_code" | "device_code";
+  /** The authorization server; when empty, found from the service (RFC 9728). */
+  issuer?: string;
+  /** Empty with `register`, which asks the server for one (RFC 7591). */
+  clientId?: string;
+  /** Space-separated, as the server expects them. */
+  scopes?: string;
+  /** RFC 8707 resource indicator, which Entra ID and others need. */
+  resource?: string;
+  /** The `audience` parameter some providers (Auth0) use instead. */
+  audience?: string;
+  /** Register a client with the server when there is no client id. */
+  register?: boolean;
+}
 
 export type AuthType = AuthConfig["type"];
 
@@ -39,12 +68,24 @@ export interface Connection {
   model?: string;
 }
 
-/** The secret each auth method needs, by the field name it is filed under. */
+/**
+ * The secrets each auth method keeps, by the field name they are filed under.
+ * For OAuth: an optional client secret the person types, and what the host
+ * writes itself — the tokens, and a client the server registered for us.
+ */
 export const SECRET_FIELDS: Record<AuthType, string[]> = {
   none: [],
   header: ["key"],
   basic: ["password"],
+  oauth: ["clientSecret", "tokens", "client"],
 };
+
+/**
+ * The secrets a page may set. Only what a person types: a page can never
+ * write a token or a registered client, which only the host's own flows
+ * produce.
+ */
+export const PAGE_SETTABLE_SECRETS = new Set(["key", "password", "clientSecret"]);
 
 /** Header names a connection's extra headers may not set: auth has its own place. */
 const RESERVED_HEADERS = new Set(["authorization", "proxy-authorization", "cookie", "host"]);
@@ -60,6 +101,11 @@ export function connectionProblem(c: Connection): string | null {
   if (c.auth.type === "header" && !isHeaderName(c.auth.name)) return "header-name";
   if (c.auth.type === "basic" && (!c.auth.username || c.auth.username.includes(":"))) {
     return "username";
+  }
+  if (c.auth.type === "oauth") {
+    if (c.auth.flow !== "authorization_code" && c.auth.flow !== "device_code") return "flow";
+    if (c.auth.issuer && !isIssuerUrl(c.auth.issuer)) return "issuer";
+    if (!c.auth.clientId && !c.auth.register) return "client";
   }
   for (const name of Object.keys(c.headers ?? {})) {
     if (!isHeaderName(name) || RESERVED_HEADERS.has(name.toLowerCase())) return "extra-header";
@@ -87,6 +133,12 @@ export function authHeaders(
     case "basic": {
       const password = secrets.password ?? "";
       h.Authorization = `Basic ${base64(`${c.auth.username}:${password}`)}`;
+      break;
+    }
+    case "oauth": {
+      // The host refreshes before it gets here (core.ts); this only reads.
+      const tokens = parseTokens(secrets.tokens);
+      if (tokens) h.Authorization = `Bearer ${tokens.access_token}`;
       break;
     }
     case "none":
@@ -125,4 +177,36 @@ export function formatHeaders(headers: Record<string, string> | undefined): stri
   return Object.entries(headers ?? {})
     .map(([k, v]) => `${k}: ${v}`)
     .join("\n");
+}
+
+/** The tokens the host keeps for an OAuth connection, as stored. */
+export interface StoredTokens {
+  access_token: string;
+  refresh_token?: string;
+  /** Milliseconds since the epoch; absent when the server gave no lifetime. */
+  expires_at?: number;
+  scope?: string;
+}
+
+export function parseTokens(raw: string | undefined): StoredTokens | null {
+  if (!raw) return null;
+  try {
+    const t = JSON.parse(raw) as StoredTokens;
+    return typeof t.access_token === "string" && t.access_token ? t : null;
+  } catch {
+    return null;
+  }
+}
+
+/** An issuer address: https anywhere, plain http only on loopback (for testing). */
+export function isIssuerUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (url.protocol === "https:") return true;
+    return (
+      url.protocol === "http:" && (url.hostname === "localhost" || url.hostname === "127.0.0.1")
+    );
+  } catch {
+    return false;
+  }
 }

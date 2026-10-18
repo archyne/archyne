@@ -33,6 +33,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { downloadAndUnzipVSCode } from "@vscode/test-electron";
 import { _electron as electron, type Frame } from "playwright";
+import { authorizationServer } from "../src/ai/host/authServer.testkit";
 
 let failed = false;
 function check(label: string, ok: boolean, detail: string): void {
@@ -132,6 +133,18 @@ const app = await electron.launch({
 });
 const window = await app.firstWindow();
 
+// The system browser, for the OAuth part below: VS Code opens external links
+// through shell.openExternal in its main process, so the same consenting
+// browser the desktop test uses is patched in there. No real browser opens.
+await app.evaluate(({ shell }) => {
+  shell.openExternal = async (url: string) => {
+    if (!url.includes("/authorize")) return;
+    const consent = await fetch(url, { redirect: "manual" });
+    const back = consent.headers.get("location");
+    if (back) await fetch(back);
+  };
+});
+
 /** The Archyne page: the frame, inside the webview's frames, that holds `.app`. */
 async function archyneFrame(): Promise<Frame> {
   // Generous: a first start initialises a fresh profile and activates the
@@ -206,9 +219,44 @@ check(
   JSON.stringify(chat),
 );
 
+/* ---------- OAuth: sign in through the browser, from the extension host ---------- */
+
+const as = authorizationServer();
+await as.start();
+if ((await page.locator(".ai-server[open]").count()) === 0) {
+  await page.locator(".ai-server summary").click();
+}
+await page.getByRole("button", { name: "Add service" }).click();
+await field("Address").fill(`${as.base}/v1`);
+await page.getByRole("combobox", { name: "Authentication" }).selectOption("oauth");
+await field("Scopes").fill("models.read");
+await page.getByRole("button", { name: "Sign in" }).click();
+await page.waitForSelector('[data-auth="signed-in"]', { timeout: 60_000 });
+await page.getByRole("button", { name: "Check connection" }).click();
+await page.waitForSelector('.ai-server-status[data-state="ok"]', { timeout: 30_000 });
+check(
+  "OAuth signs in through the browser and the extension host calls the service with the token",
+  as.registered.length === 1 &&
+    !!as.log.find((l) => l.body?.grant_type === "authorization_code")?.body?.code_verifier,
+  JSON.stringify(as.log.map((l) => l.path)),
+);
+const tokens = as.issued;
+const afterSignIn = await page.evaluate(() => ({
+  storage: JSON.stringify({ ...localStorage }),
+  html: document.documentElement.outerHTML,
+}));
+check(
+  "no token is in the webview",
+  ![tokens.accessToken, tokens.refreshToken].some(
+    (t) => afterSignIn.storage.includes(t) || afterSignIn.html.includes(t),
+  ),
+  "found a token in the webview",
+);
+
 await app.close();
 service.close();
 service.closeAllConnections();
+as.close();
 
 /** Every file under a directory, for the plain-text search below. */
 function files(dir: string): string[] {
@@ -217,15 +265,17 @@ function files(dir: string): string[] {
     return statSync(path).isDirectory() ? files(path) : [path];
   });
 }
+const secrets = [SECRET, tokens.accessToken, tokens.refreshToken];
 const inClear = files(userData).filter((path) => {
   try {
-    return readFileSync(path).includes(SECRET);
+    const bytes = readFileSync(path);
+    return secrets.some((s) => bytes.includes(s));
   } catch {
     return false;
   }
 });
 check(
-  "nothing in VS Code's profile holds the key in plain text",
+  "nothing in VS Code's profile holds the key or a token in plain text",
   inClear.length === 0,
   inClear.join(", "),
 );

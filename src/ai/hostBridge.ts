@@ -22,7 +22,18 @@ export interface HostAi {
   probe(id: string): Promise<HostProbe>;
   chat(requestId: string, id: string, model: string, messages: ChatMessage[]): Promise<void>;
   cancel(requestId: string): void;
+  /** OAuth: runs the whole sign-in in the host; progress arrives as `ai:auth` events. */
+  signIn(id: string): Promise<void>;
+  cancelSignIn(id: string): void;
+  signOut(id: string): Promise<void>;
+  authStatus(id: string): Promise<AuthStatus>;
   onEvent(callback: (event: HostEvent) => void): () => void;
+}
+
+/** All the page may know about a sign-in: whether, and until when. */
+export interface AuthStatus {
+  signedIn: boolean;
+  expiresAt?: number;
 }
 
 let webviewAi: HostAi | null = null;
@@ -82,6 +93,10 @@ function overWebview(vscode: { postMessage(message: unknown): void }): HostAi {
     probe: (id) => call("probe", [id]),
     chat: (requestId, id, model, messages) => call("chat", [requestId, id, model, messages]),
     cancel: (requestId) => void call("cancel", [requestId]),
+    signIn: (id) => call("signIn", [id]),
+    cancelSignIn: (id) => void call("cancelSignIn", [id]),
+    signOut: (id) => call("signOut", [id]),
+    authStatus: (id) => call("authStatus", [id]),
     onEvent: (callback) => {
       listeners.add(callback);
       return () => listeners.delete(callback);
@@ -117,7 +132,7 @@ export function hostProvider(
       const requestId = `r${Date.now().toString(36)}-${++requestSeq}`;
       return new Promise<string>((resolve, reject) => {
         const stop = ai.onEvent((event) => {
-          if (event.requestId !== requestId) return;
+          if (event.type === "ai:auth" || event.requestId !== requestId) return;
           if (event.type === "ai:chunk") {
             options?.onToken?.(event.text);
             return;

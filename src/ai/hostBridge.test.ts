@@ -27,6 +27,10 @@ function scriptedHost(script: (requestId: string, emit: (e: HostEvent) => void) 
       chats.push({ id, model });
       script(requestId, emit);
     },
+    signIn: async () => {},
+    cancelSignIn: () => {},
+    signOut: async () => {},
+    authStatus: async () => ({ signedIn: false }),
     cancel: (requestId) => {
       cancelled.push(requestId);
       emit({ type: "ai:error", requestId, reason: "aborted", detail: "" });

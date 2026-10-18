@@ -36,6 +36,13 @@ function aiHost(): AiHostLike {
   };
   host = new mod.AiHost({
     fetch: globalThis.fetch,
+    // OAuth sign-in in the system browser, never in a webview of ours
+    // (RFC 8252: the extension must not see the password).
+    openExternal: async (url: string) => {
+      const { protocol } = new URL(url);
+      if (protocol !== "https:" && protocol !== "http:") throw new Error("Not a web address.");
+      await vscode.env.openExternal(vscode.Uri.parse(url));
+    },
     secrets: {
       get: (key: string) => Promise.resolve(ctx.secrets.get(key)),
       set: (key: string, value: string) => Promise.resolve(ctx.secrets.store(key, value)),

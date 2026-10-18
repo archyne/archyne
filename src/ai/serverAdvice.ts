@@ -69,6 +69,12 @@ export function remoteAdvice(
           return t("ai.remoteProblemUsername");
         case "extra-header":
           return t("ai.remoteProblemExtraHeader");
+        case "flow":
+          return t("ai.remoteProblemFlow");
+        case "issuer":
+          return t("ai.remoteProblemIssuer");
+        case "client":
+          return t("ai.remoteProblemClient");
         default:
           return t("ai.remoteProblemUnknown");
       }

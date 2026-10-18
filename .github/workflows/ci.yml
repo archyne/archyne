@@ -327,6 +327,10 @@ jobs:
       # keychain, and Windows always has one (DPAPI).
       - name: Desktop shell, Generate with secrets
         run: npm run test:e2e:desktop-ai
+      # OAuth sign-in against a stand-in authorization server; the system
+      # browser is replaced inside Electron's main process, so none opens.
+      - name: Desktop shell, OAuth sign-in
+        run: npm run test:e2e:desktop-oauth
       # The same through the VS Code extension, in a real VS Code that
       # @vscode/test-electron downloads. The extension is built from the app
       # just built above, as its packaging does.

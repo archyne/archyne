@@ -1585,6 +1585,46 @@ body.resizing-side {
   color: var(--danger, #d13438);
 }
 
+/* Two short fields side by side (header name and prefix; resource and audience). */
+.ai-remote-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.ai-server-field textarea {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  color: var(--text);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  padding: 4px 6px;
+  resize: vertical;
+}
+
+.ai-oauth-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+
+/* The device code a person types elsewhere: large, and easy to copy exactly. */
+.ai-oauth-device p {
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
+}
+
+.ai-oauth-code {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 18px;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  user-select: all;
+}
+
 .ai-thread {
   flex: 1;
   min-height: 0;

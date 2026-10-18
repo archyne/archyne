@@ -100,6 +100,14 @@ contextBridge.exposeInMainWorld("archyne", {
       ipcRenderer.invoke("archyne:ai-chat", { requestId, id, model, messages }),
     /** @param {string} requestId */
     cancel: (requestId) => ipcRenderer.send("archyne:ai-cancel", { requestId }),
+    /** @param {string} id */
+    signIn: (id) => ipcRenderer.invoke("archyne:ai-sign-in", { id }),
+    /** @param {string} id */
+    cancelSignIn: (id) => ipcRenderer.send("archyne:ai-cancel-sign-in", { id }),
+    /** @param {string} id */
+    signOut: (id) => ipcRenderer.invoke("archyne:ai-sign-out", { id }),
+    /** @param {string} id */
+    authStatus: (id) => ipcRenderer.invoke("archyne:ai-auth-status", { id }),
     /** @param {(event: unknown) => void} callback @returns {() => void} unsubscribe */
     onEvent: (callback) => {
       /** @param {Electron.IpcRendererEvent} _event @param {unknown} payload */

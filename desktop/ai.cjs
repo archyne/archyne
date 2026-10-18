@@ -17,7 +17,7 @@
  *     proxy and the OS certificate store — what makes a company gateway behind
  *     a TLS-inspecting proxy reachable at all. Node's fetch does neither.
  */
-const { app, ipcMain, net, safeStorage } = require("electron");
+const { app, ipcMain, net, safeStorage, shell } = require("electron");
 const path = require("node:path");
 const fsp = require("node:fs/promises");
 
@@ -103,6 +103,14 @@ function aiHost() {
   const created = new mod.AiHost({
     fetch: /** @type {typeof fetch} */ ((input, init) => net.fetch(String(input), init)),
     secrets,
+    // OAuth sign-in happens in the system browser, never in a window of
+    // ours (RFC 8252: the app must not see the password). Only web addresses
+    // are handed over — never a file: or custom scheme.
+    openExternal: async (/** @type {string} */ url) => {
+      const { protocol } = new URL(url);
+      if (protocol !== "https:" && protocol !== "http:") throw new Error("Not a web address.");
+      await shell.openExternal(url);
+    },
   });
   host = created;
   return created;
@@ -147,6 +155,27 @@ function registerAiIpc() {
   ipcMain.on("archyne:ai-cancel", (event, { requestId }) => {
     if (!fromApp(event)) return;
     aiHost().cancel(String(requestId));
+  });
+  // OAuth: progress (a device code, then signed in or not) streams as
+  // `archyne:ai-event` like a chat's text; the tokens stay in this process.
+  ipcMain.handle("archyne:ai-sign-in", async (event, { id }) => {
+    if (!fromApp(event)) return;
+    const sender = event.sender;
+    await aiHost().signIn(String(id), (e) => {
+      if (!sender.isDestroyed()) sender.send("archyne:ai-event", e);
+    });
+  });
+  ipcMain.on("archyne:ai-cancel-sign-in", (event, { id }) => {
+    if (!fromApp(event)) return;
+    aiHost().cancelSignIn(String(id));
+  });
+  ipcMain.handle("archyne:ai-sign-out", async (event, { id }) => {
+    if (!fromApp(event)) return;
+    await aiHost().signOut(String(id));
+  });
+  ipcMain.handle("archyne:ai-auth-status", async (event, { id }) => {
+    if (!fromApp(event)) return { signedIn: false };
+    return aiHost().authStatus(String(id));
   });
 }
 

@@ -24,6 +24,10 @@ export interface AiHostLike {
     emit: (event: unknown) => void,
   ): Promise<void>;
   cancel(requestId: string): void;
+  signIn(id: string, emit: (event: unknown) => void): Promise<void>;
+  cancelSignIn(id: string): void;
+  signOut(id: string): Promise<void>;
+  authStatus(id: string): Promise<unknown>;
 }
 
 export interface Call {
@@ -77,6 +81,20 @@ export async function answerCall(
         break;
       case "cancel":
         h.cancel(String(args[0]));
+        break;
+      // OAuth: progress streams as ai:event like a chat's text; the tokens
+      // stay in the extension host.
+      case "signIn":
+        value = await h.signIn(String(args[0]), (event) => post({ type: "ai:event", event }));
+        break;
+      case "cancelSignIn":
+        h.cancelSignIn(String(args[0]));
+        break;
+      case "signOut":
+        value = await h.signOut(String(args[0]));
+        break;
+      case "authStatus":
+        value = await h.authStatus(String(args[0]));
         break;
       default:
         throw new Error("Unknown call.");
