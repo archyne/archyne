@@ -576,6 +576,8 @@ export const en = {
   "ai.oauthClientAuthKey": "Private key (signed assertion)",
   "ai.oauthClientAuthTls": "Client certificate (mutual TLS)",
   "ai.oauthKeyId": "Key ID",
+  "ai.oauthDpop":
+    "Bind tokens to a key kept on this computer (DPoP), if the server supports it",
   "ai.oauthPrivateKey": "Private key (PEM)",
   "ai.tlsClientCertificate": "Present a client certificate (mutual TLS)",
   "ai.tlsHint":

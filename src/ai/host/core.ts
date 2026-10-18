@@ -8,6 +8,7 @@ import {
 import type { ChatMessage } from "../types";
 import {
   authHeaders,
+  parseTokens,
   connectionProblem,
   PAGE_SETTABLE_SECRETS,
   SECRET_FIELDS,
@@ -19,6 +20,7 @@ import { nodeLoopback } from "./loopback";
 import { mtlsFetch } from "./mtls";
 import {
   accessToken,
+  dpopRequest,
   authStatus,
   signIn,
   signOut,
@@ -272,15 +274,32 @@ export class AiHost {
       input: RequestInfo | URL,
       init: RequestInit | undefined,
       force: boolean,
-    ) =>
-      (await this.transportFor(c))(input, {
-        ...init,
-        headers: {
-          ...(init?.headers as Record<string, string> | undefined),
-          ...(await headersFor(force)),
-        },
-        redirect: "error",
-      });
+    ) => {
+      const headers = {
+        ...(init?.headers as Record<string, string> | undefined),
+        ...(await headersFor(force)),
+      };
+      // A DPoP-bound token goes with a proof of the key, not as a bearer
+      // token. Decided by what the server issued: one that does not do DPoP
+      // hands out bearer tokens, and those go the ordinary way.
+      if (c.auth.type === "oauth" && c.auth.dpop) {
+        const stored = parseTokens(await this.env.secrets.get(secretKey(c.id, "tokens")));
+        if (stored && stored.token_type?.toLowerCase() === "dpop") {
+          return dpopRequest(
+            c.auth,
+            this.oauthSecrets(c.id),
+            this.oauthEnv(c),
+            stored.access_token,
+            input,
+            {
+              ...init,
+              headers,
+            },
+          );
+        }
+      }
+      return (await this.transportFor(c))(input, { ...init, headers, redirect: "error" });
+    };
     return (async (input: RequestInfo | URL, init?: RequestInit) => {
       const response = await send(input, init, false);
       if (response.status !== 401 || c.auth.type !== "oauth") return response;

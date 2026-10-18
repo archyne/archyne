@@ -574,6 +574,8 @@ export const messages: Messages = {
   "ai.oauthClientAuthKey": "Chiave privata (asserzione firmata)",
   "ai.oauthClientAuthTls": "Certificato client (TLS reciproco)",
   "ai.oauthKeyId": "ID della chiave",
+  "ai.oauthDpop":
+    "Lega i token a una chiave conservata su questo computer (DPoP), se il server lo supporta",
   "ai.oauthPrivateKey": "Chiave privata (PEM)",
   "ai.tlsClientCertificate": "Presenta un certificato client (TLS reciproco)",
   "ai.tlsHint":

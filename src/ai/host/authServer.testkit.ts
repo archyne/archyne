@@ -1,4 +1,4 @@
-import { createHash, randomBytes, verify, type KeyObject } from "node:crypto";
+import { createHash, createPublicKey, randomBytes, verify, type KeyObject } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import type { AddressInfo } from "node:net";
@@ -42,6 +42,8 @@ export interface AsOptions {
   tls?: TestPki;
   /** What the protected /v1 API wants: the current token (default), or a client certificate alone. */
   serviceAuth?: "bearer" | "certificate";
+  /** Insist on this DPoP nonce in token-endpoint proofs (RFC 9449 §8). */
+  dpopNonce?: string;
 }
 
 /** Which client authentication a token request used, as the server judged it. */
@@ -61,6 +63,8 @@ export function authorizationServer(options: AsOptions = {}) {
     path: string;
     body?: Record<string, string>;
     clientAuth?: ClientAuthSeen;
+    /** The DPoP key thumbprint a proof carried, or why it was refused. */
+    dpop?: string;
   }> = [];
   let base = "";
   const codes = new Map<string, { challenge: string; redirectUri: string; clientId: string }>();
@@ -70,8 +74,11 @@ export function authorizationServer(options: AsOptions = {}) {
   let polls = 0;
   const registered: Array<Record<string, unknown>> = [];
 
-  const issue = (res: ServerResponse) => {
+  /** The DPoP key thumbprint the current tokens are bound to, if any. */
+  let boundJkt: string | null = null;
+  const issue = (res: ServerResponse, jkt: string | null = null) => {
     issued += 1;
+    boundJkt = jkt;
     // Long and unique, so a test that searches a profile for them cannot
     // match a short string by accident (`rt-1` sits inside `start-1`).
     accessToken = `at-${tag}-${issued}`;
@@ -79,7 +86,7 @@ export function authorizationServer(options: AsOptions = {}) {
     json(res, 200, {
       access_token: accessToken,
       refresh_token: refreshToken,
-      token_type: "Bearer",
+      token_type: jkt ? "DPoP" : "Bearer",
       expires_in: options.expiresIn ?? 3600,
     });
   };
@@ -123,6 +130,7 @@ export function authorizationServer(options: AsOptions = {}) {
         return json(res, 200, { resource: `${base}/v1`, authorization_servers: [base] });
       case "/authorize": {
         const p = url.searchParams;
+        log[log.length - 1].body = Object.fromEntries(p);
         if (p.get("code_challenge_method") !== "S256")
           return json(res, 400, { error: "invalid_request" });
         const code = `code-${codes.size + 1}`;
@@ -140,6 +148,31 @@ export function authorizationServer(options: AsOptions = {}) {
       }
       case "/token": {
         const grant = body?.grant_type;
+        // DPoP at the token endpoint: a valid proof binds what is issued.
+        let jkt: string | null = null;
+        const proof = req.headers.dpop as string | undefined;
+        if (proof) {
+          const checked = checkProof(proof, "POST", `${base}/token`, {
+            nonce: options.dpopNonce,
+          });
+          log[log.length - 1].dpop = checked.jkt ?? checked.error;
+          if (checked.error === "use_dpop_nonce") {
+            res.writeHead(400, {
+              "Content-Type": "application/json",
+              "DPoP-Nonce": options.dpopNonce ?? "",
+            });
+            res.end(
+              JSON.stringify({ error: "use_dpop_nonce", error_description: "nonce required" }),
+            );
+            return;
+          }
+          if (!checked.jkt) return json(res, 400, { error: "invalid_dpop_proof" });
+          jkt = checked.jkt;
+        }
+        // A refresh of a bound token must prove the same key.
+        if (grant === "refresh_token" && boundJkt && jkt !== boundJkt) {
+          return json(res, 400, { error: "invalid_dpop_proof" });
+        }
         if (grant === "authorization_code") {
           const pending = codes.get(body?.code ?? "");
           codes.delete(body?.code ?? "");
@@ -153,25 +186,25 @@ export function authorizationServer(options: AsOptions = {}) {
           ) {
             return json(res, 400, { error: "invalid_grant" });
           }
-          return issue(res);
+          return issue(res, jkt);
         }
         if (grant === "urn:ietf:params:oauth:grant-type:device_code") {
           polls += 1;
           if (polls <= (options.pendingPolls ?? 0))
             return json(res, 400, { error: "authorization_pending" });
-          return issue(res);
+          return issue(res, jkt);
         }
         if (grant === "client_credentials") {
           const seen = judgeClient(req, body ?? {}, options.client, base);
           log[log.length - 1].clientAuth = seen;
           if (seen === "refused" || seen === "none")
             return json(res, 401, { error: "invalid_client" });
-          return issue(res);
+          return issue(res, jkt);
         }
         if (grant === "refresh_token") {
           if (body?.refresh_token !== refreshToken)
             return json(res, 400, { error: "invalid_grant" });
-          return issue(res);
+          return issue(res, jkt);
         }
         return json(res, 400, { error: "unsupported_grant_type" });
       }
@@ -192,6 +225,22 @@ export function authorizationServer(options: AsOptions = {}) {
         if (options.serviceAuth === "certificate") {
           if (!peerCn(req)) {
             res.writeHead(401).end("client certificate required");
+            return;
+          }
+          return json(res, 200, { data: [{ id: "secured-model" }] });
+        }
+        if (boundJkt) {
+          // A DPoP-bound token is good only with a proof of its key, for this
+          // request, carrying the token's hash; as a bearer token it is refused.
+          const proof = req.headers.dpop as string | undefined;
+          const checked = proof
+            ? checkProof(proof, req.method ?? "GET", `${base}${url.pathname}`, {
+                ath: createHash("sha256").update(accessToken).digest("base64url"),
+              })
+            : { error: "no proof" };
+          log[log.length - 1].dpop = checked.jkt ?? checked.error;
+          if (req.headers.authorization !== `DPoP ${accessToken}` || checked.jkt !== boundJkt) {
+            res.writeHead(401, { "WWW-Authenticate": 'DPoP error="invalid_token"' }).end();
             return;
           }
           return json(res, 200, { data: [{ id: "secured-model" }] });
@@ -323,4 +372,56 @@ function judgeClient(
     return ok ? "private_key_jwt" : "refused";
   }
   return "none";
+}
+
+/** RFC 7638 thumbprint of an EC public JWK: the required members in order, hashed. */
+function thumbprint(jwk: { crv: string; kty: string; x: string; y: string }): string {
+  const canonical = JSON.stringify({ crv: jwk.crv, kty: jwk.kty, x: jwk.x, y: jwk.y });
+  return createHash("sha256").update(canonical).digest("base64url");
+}
+
+const seenJti = new Set<string>();
+
+/**
+ * Check a DPoP proof as a server must (RFC 9449 §4.3): its type, its key and
+ * signature, the method and URL it was made for, its age, a jti not seen
+ * before, the nonce when one is required, and the token hash on a resource
+ * request. Returns the key's thumbprint, or why it was refused.
+ */
+function checkProof(
+  proof: string,
+  method: string,
+  url: string,
+  want: { nonce?: string; ath?: string },
+): { jkt?: string; error?: string } {
+  const [h, p, sig] = proof.split(".");
+  const head = JSON.parse(Buffer.from(h, "base64url").toString()) as {
+    typ?: string;
+    alg?: string;
+    jwk?: { crv: string; kty: string; x: string; y: string };
+  };
+  const claims = JSON.parse(Buffer.from(p, "base64url").toString()) as {
+    htm?: string;
+    htu?: string;
+    iat?: number;
+    jti?: string;
+    nonce?: string;
+    ath?: string;
+  };
+  if (head.typ !== "dpop+jwt" || head.alg !== "ES256" || !head.jwk) return { error: "header" };
+  const key = createPublicKey({ key: head.jwk, format: "jwk" });
+  const signed = verify(
+    "sha256",
+    Buffer.from(`${h}.${p}`),
+    { key, dsaEncoding: "ieee-p1363" },
+    Buffer.from(sig, "base64url"),
+  );
+  if (!signed) return { error: "signature" };
+  if (claims.htm !== method || claims.htu !== url) return { error: "htm/htu" };
+  if (!claims.iat || Math.abs(Date.now() / 1000 - claims.iat) > 300) return { error: "iat" };
+  if (!claims.jti || seenJti.has(claims.jti)) return { error: "jti" };
+  if (want.nonce && claims.nonce !== want.nonce) return { error: "use_dpop_nonce" };
+  if (want.ath && claims.ath !== want.ath) return { error: "ath" };
+  seenJti.add(claims.jti);
+  return { jkt: thumbprint(head.jwk) };
 }

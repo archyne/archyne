@@ -35,9 +35,11 @@ export interface OAuthEnv {
 
 /** The secrets an OAuth connection reads and writes, by field. */
 export interface OAuthSecrets {
-  get(field: "clientSecret" | "privateKey" | "tokens" | "client"): Promise<string | undefined>;
-  set(field: "tokens" | "client", value: string): Promise<void>;
-  delete(field: "tokens" | "client"): Promise<void>;
+  get(
+    field: "clientSecret" | "privateKey" | "tokens" | "client" | "dpopKey",
+  ): Promise<string | undefined>;
+  set(field: "tokens" | "client" | "dpopKey", value: string): Promise<void>;
+  delete(field: "tokens" | "client" | "dpopKey"): Promise<void>;
 }
 
 /** What the page is told while a device-code sign-in waits for the person. */
@@ -53,14 +55,71 @@ const SIGN_IN_TIMEOUT_MS = 5 * 60_000;
 /** Refresh a little before expiry, so a request never leaves with a token about to lapse. */
 const EXPIRY_MARGIN_MS = 60_000;
 
-function requestOptions(env: OAuthEnv, url: string, signal?: AbortSignal) {
+function requestOptions(
+  env: OAuthEnv,
+  url: string,
+  signal?: AbortSignal,
+  dpop?: oauth.DPoPHandle,
+) {
   return {
     [oauth.customFetch]: env.fetch,
     // Plain http only for a loopback server (a local identity provider, or a
     // test); oauth4webapi refuses it everywhere else, as it should.
     [oauth.allowInsecureRequests]: new URL(url).protocol === "http:",
     signal,
+    DPoP: dpop,
   };
+}
+
+/** One DPoP handle per key, so the server's nonces are remembered between requests. */
+const dpopHandles = new Map<string, oauth.DPoPHandle>();
+
+/**
+ * The connection's DPoP key (RFC 9449), made on first use and kept with its
+ * tokens: a DPoP-bound token works only with the key it was bound to, so the
+ * two have to survive a restart together. Undefined when DPoP is off.
+ */
+async function dpopHandle(
+  config: OAuthConfig,
+  secrets: OAuthSecrets,
+): Promise<oauth.DPoPHandle | undefined> {
+  if (!config.dpop) return undefined;
+  let stored = await secrets.get("dpopKey");
+  if (!stored) {
+    const pair = await oauth.generateKeyPair("ES256", { extractable: true });
+    stored = JSON.stringify({
+      privateKey: await crypto.subtle.exportKey("jwk", pair.privateKey),
+      publicKey: await crypto.subtle.exportKey("jwk", pair.publicKey),
+    });
+    await secrets.set("dpopKey", stored);
+  }
+  const cached = dpopHandles.get(stored);
+  if (cached) return cached;
+  const jwks = JSON.parse(stored) as { privateKey: JsonWebKey; publicKey: JsonWebKey };
+  const alg = { name: "ECDSA", namedCurve: "P-256" };
+  const handle = oauth.DPoP(
+    {},
+    {
+      privateKey: await crypto.subtle.importKey("jwk", jwks.privateKey, alg, false, ["sign"]),
+      // Extractable: the public half travels in every proof's header.
+      publicKey: await crypto.subtle.importKey("jwk", jwks.publicKey, alg, true, ["verify"]),
+    },
+  );
+  dpopHandles.set(stored, handle);
+  return handle;
+}
+
+/**
+ * Once more when the server asks for a DPoP nonce (RFC 9449 §8): the handle
+ * has remembered the nonce from the refusal, and the second proof carries it.
+ */
+async function withNonce<T>(attempt: () => Promise<T>): Promise<T> {
+  try {
+    return await attempt();
+  } catch (err) {
+    if (oauth.isDPoPNonceError(err)) return attempt();
+    throw err;
+  }
 }
 
 /**
@@ -249,14 +308,17 @@ async function clientCredentialsToken(
   const params: Record<string, string> = { ...audienceParams(config) };
   const scope = config.scopes?.trim();
   if (scope) params.scope = scope;
-  const response = await oauth.clientCredentialsGrantRequest(
-    as,
-    client,
-    auth,
-    params,
-    requestOptions(env, as.issuer, signal),
-  );
-  const tokens = await oauth.processClientCredentialsResponse(as, client, response);
+  const dpop = await dpopHandle(config, secrets);
+  const tokens = await withNonce(async () => {
+    const response = await oauth.clientCredentialsGrantRequest(
+      as,
+      client,
+      auth,
+      params,
+      requestOptions(env, as.issuer, signal, dpop),
+    );
+    return oauth.processClientCredentialsResponse(as, client, response);
+  });
   await secrets.set("tokens", store(tokens, env));
   return tokens.access_token;
 }
@@ -272,6 +334,7 @@ function audienceParams(config: OAuthConfig): Record<string, string> {
 function store(tokens: oauth.TokenEndpointResponse, env: OAuthEnv, previous?: StoredTokens) {
   const stored: StoredTokens = {
     access_token: tokens.access_token,
+    token_type: tokens.token_type,
     // A server that does not rotate keeps the old refresh token valid.
     refresh_token: tokens.refresh_token ?? previous?.refresh_token,
     expires_at:
@@ -297,7 +360,8 @@ export async function signIn(
   const as = await discover(config, baseUrl, env);
   const { client, auth } = await clientFor(config, as, secrets, env);
   const scope = config.scopes?.trim() || undefined;
-  const options = requestOptions(env, as.issuer, signal);
+  const dpop = await dpopHandle(config, secrets);
+  const options = requestOptions(env, as.issuer, signal, dpop);
 
   if (config.flow === "client_credentials") {
     // No person: "signing in" is getting the first token, which also proves
@@ -335,6 +399,8 @@ export async function signIn(
         await secrets.set("tokens", store(tokens, env));
         return;
       } catch (err) {
+        // A DPoP nonce request: the handle now has it, and the next poll sends it.
+        if (oauth.isDPoPNonceError(err)) continue;
         if (err instanceof oauth.ResponseBodyError) {
           if (err.error === "authorization_pending") continue;
           if (err.error === "slow_down") {
@@ -365,23 +431,27 @@ export async function signIn(
     if (scope) url.searchParams.set("scope", scope);
     if (nonce) url.searchParams.set("nonce", nonce);
     for (const [k, v] of Object.entries(audienceParams(config))) url.searchParams.set(k, v);
+    // Binds the code itself to the DPoP key (RFC 9449 §10).
+    if (dpop) url.searchParams.set("dpop_jkt", await dpop.calculateThumbprint());
 
     await env.openExternal(url.href);
     const callback = await loopback.waitForCallback(signal);
     // Checks the state, the issuer (RFC 9207) and any error the server sent.
     const params = oauth.validateAuthResponse(as, client, callback, state);
-    const response = await oauth.authorizationCodeGrantRequest(
-      as,
-      client,
-      auth,
-      params,
-      loopback.redirectUri,
-      verifier,
-      { ...options, additionalParameters: audienceParams(config) },
-    );
-    const tokens = await oauth.processAuthorizationCodeResponse(as, client, response, {
-      expectedNonce: nonce,
-      requireIdToken: wantsIdToken,
+    const tokens = await withNonce(async () => {
+      const response = await oauth.authorizationCodeGrantRequest(
+        as,
+        client,
+        auth,
+        params,
+        loopback.redirectUri,
+        verifier,
+        { ...options, additionalParameters: audienceParams(config) },
+      );
+      return oauth.processAuthorizationCodeResponse(as, client, response, {
+        expectedNonce: nonce,
+        requireIdToken: wantsIdToken,
+      });
     });
     await secrets.set("tokens", store(tokens, env));
   } finally {
@@ -422,14 +492,15 @@ export async function accessToken(
   try {
     const as = await discover(config, baseUrl, env);
     const { client, auth } = await clientFor(config, as, secrets, env);
-    const response = await oauth.refreshTokenGrantRequest(
-      as,
-      client,
-      auth,
-      tokens.refresh_token,
-      { ...requestOptions(env, as.issuer), additionalParameters: audienceParams(config) },
-    );
-    const next = await oauth.processRefreshTokenResponse(as, client, response);
+    const dpop = await dpopHandle(config, secrets);
+    const refreshToken = tokens.refresh_token;
+    const next = await withNonce(async () => {
+      const response = await oauth.refreshTokenGrantRequest(as, client, auth, refreshToken, {
+        ...requestOptions(env, as.issuer, undefined, dpop),
+        additionalParameters: audienceParams(config),
+      });
+      return oauth.processRefreshTokenResponse(as, client, response);
+    });
     // Rotation (OAuth 2.1): the new refresh token replaces the old in one write.
     await secrets.set("tokens", store(next, env, tokens));
     return next.access_token;
@@ -466,4 +537,45 @@ export async function authStatus(
 ): Promise<{ signedIn: boolean; expiresAt?: number }> {
   const tokens = parseTokens(await secrets.get("tokens"));
   return tokens ? { signedIn: true, expiresAt: tokens.expires_at } : { signedIn: false };
+}
+
+/**
+ * A request to the service with a DPoP-bound token: the token travels as
+ * `Authorization: DPoP …` with a fresh proof of the key for this method and
+ * URL (RFC 9449 §7). A nonce request is answered once; any other challenge
+ * comes back as the response it was, so the host's 401 handling still runs.
+ */
+export async function dpopRequest(
+  config: OAuthConfig,
+  secrets: OAuthSecrets,
+  env: OAuthEnv,
+  token: string,
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const dpop = await dpopHandle(config, secrets);
+  const url = new URL(
+    typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+  );
+  const headers = new Headers(init?.headers);
+  headers.delete("authorization");
+  try {
+    return await withNonce(() =>
+      oauth.protectedResourceRequest(
+        token,
+        init?.method ?? "GET",
+        url,
+        headers,
+        init?.body as oauth.ProtectedResourceRequestBody | undefined,
+        {
+          ...requestOptions(env, url.href, init?.signal ?? undefined, dpop),
+          [oauth.customFetch]: (u: string, o: RequestInit) =>
+            env.fetch(u, { ...o, redirect: "error" }),
+        },
+      ),
+    );
+  } catch (err) {
+    if (err instanceof oauth.WWWAuthenticateChallengeError) return err.response;
+    throw err;
+  }
 }

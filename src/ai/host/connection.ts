@@ -60,6 +60,12 @@ export interface OAuthConfig {
   clientAuth?: ClientAuthMethod;
   /** The JWK key id to put in a `private_key_jwt` assertion, if the server wants one. */
   keyId?: string;
+  /**
+   * Sender-constrained tokens (DPoP, RFC 9449): every token is bound to a
+   * key the host generates and keeps, and every request proves possession
+   * of it — so a token copied out of somewhere is useless on its own.
+   */
+  dpop?: boolean;
 }
 
 /**
@@ -110,7 +116,7 @@ export const SECRET_FIELDS: Record<AuthType, string[]> = {
   none: [],
   header: ["key"],
   basic: ["password"],
-  oauth: ["clientSecret", "privateKey", "tokens", "client"],
+  oauth: ["clientSecret", "privateKey", "tokens", "client", "dpopKey"],
 };
 
 /**
@@ -237,6 +243,8 @@ export function formatHeaders(headers: Record<string, string> | undefined): stri
 /** The tokens the host keeps for an OAuth connection, as stored. */
 export interface StoredTokens {
   access_token: string;
+  /** `bearer`, or `dpop` for a token bound to the host's DPoP key. */
+  token_type?: string;
   refresh_token?: string;
   /** Milliseconds since the epoch; absent when the server gave no lifetime. */
   expires_at?: number;

@@ -68,6 +68,7 @@ async function setup(asOptions: AsOptions, auth: Partial<Connection["auth"]> = {
     host,
     secrets,
     events,
+    connection,
     signIn: () => host.signIn("sso", (e) => events.push(e)),
     advance: (ms: number) => (clock += ms),
   };
@@ -216,6 +217,81 @@ describe("a machine identity (client credentials)", () => {
       { flow: "client_credentials", clientId: undefined, register: true },
     );
     expect(await host.probe("sso")).toEqual({ state: "invalid", problem: "client" });
+  });
+});
+
+describe("DPoP: tokens bound to a key the host keeps (RFC 9449)", () => {
+  const tokenProofs = (as: { log: Array<{ path: string; dpop?: string }> }) =>
+    as.log.filter((l) => l.path === "/token" && l.dpop).map((l) => l.dpop);
+
+  it("binds the code and the token to the host's key, and proves it on every call", async () => {
+    const { host, events, signIn, as } = await setup({}, { dpop: true });
+    await signIn();
+    expect(events.at(-1)).toMatchObject({ state: "signed-in" });
+    const [jkt] = tokenProofs(as);
+    expect(jkt).toMatch(/^[\w-]{43}$/);
+    expect(as.log.find((l) => l.path === "/authorize")?.body?.dpop_jkt).toBe(jkt);
+    expect(await host.probe("sso")).toMatchObject({ state: "ok" });
+    expect(as.log.filter((l) => l.path === "/v1/models").at(-1)?.dpop).toBe(jkt);
+  });
+
+  it("is useless as a plain bearer token", async () => {
+    const { signIn, as } = await setup({}, { dpop: true });
+    await signIn();
+    const stolen = await fetch(`${as.base}/v1/models`, {
+      headers: { Authorization: `Bearer ${as.issued.accessToken}` },
+    });
+    expect(stolen.status).toBe(401);
+  });
+
+  it("answers a server that asks for a nonce, once", async () => {
+    const { host, events, signIn, as } = await setup({ dpopNonce: "n-2026" }, { dpop: true });
+    await signIn();
+    expect(events.at(-1)).toMatchObject({ state: "signed-in" });
+    const proofs = tokenProofs(as);
+    expect(proofs[0]).toBe("use_dpop_nonce");
+    expect(proofs[1]).toMatch(/^[\w-]{43}$/);
+    expect(await host.probe("sso")).toMatchObject({ state: "ok" });
+  });
+
+  it("refreshes with the same key", async () => {
+    const { host, signIn, as, advance } = await setup({ expiresIn: 120 }, { dpop: true });
+    await signIn();
+    advance(90_000);
+    expect(await host.probe("sso")).toMatchObject({ state: "ok" });
+    const proofs = tokenProofs(as);
+    expect(as.log.some((l) => l.body?.grant_type === "refresh_token")).toBe(true);
+    expect(new Set(proofs).size).toBe(1);
+  });
+
+  it("keeps the key with the tokens, so a restart can still use them", async () => {
+    const { signIn, secrets, connection, as } = await setup({}, { dpop: true });
+    await signIn();
+    const restarted = new AiHost({ fetch, secrets, openExternal: browser });
+    await restarted.setConnections([connection]);
+    expect(await restarted.probe("sso")).toMatchObject({ state: "ok" });
+    expect(new Set(as.log.filter((l) => l.dpop).map((l) => l.dpop)).size).toBe(1);
+  });
+
+  it("binds a machine identity's token too", async () => {
+    const { host, signIn, as } = await setup(
+      { client: { id: "svc-1", secret: "s3cr3t" } },
+      { flow: "client_credentials", clientId: "svc-1", dpop: true },
+    );
+    await host.setSecret("sso", "clientSecret", "s3cr3t");
+    await signIn();
+    expect(tokenProofs(as)).toHaveLength(1);
+    expect(await host.probe("sso")).toMatchObject({ state: "ok" });
+  });
+
+  it("binds a device-code sign-in", async () => {
+    const { host, signIn, as } = await setup(
+      { pendingPolls: 1 },
+      { flow: "device_code", dpop: true },
+    );
+    await signIn();
+    expect(tokenProofs(as).length).toBeGreaterThan(0);
+    expect(await host.probe("sso")).toMatchObject({ state: "ok" });
   });
 });
 

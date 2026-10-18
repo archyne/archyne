@@ -141,6 +141,15 @@ export function AiOAuthSection({
           <option value="tls_client_auth">{t("ai.oauthClientAuthTls")}</option>
         </select>
       </label>
+      <label className="ai-oauth-check">
+        <input
+          type="checkbox"
+          checked={!!config.dpop}
+          disabled={disabled || busy}
+          onChange={(e) => set({ dpop: e.target.checked })}
+        />
+        {t("ai.oauthDpop")}
+      </label>
       {config.clientAuth === "private_key_jwt" && (
         <label className="ai-server-field">
           {t("ai.oauthKeyId")}

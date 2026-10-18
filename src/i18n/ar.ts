@@ -568,6 +568,7 @@ export const messages: Messages = {
   "ai.oauthClientAuthKey": "مفتاح خاص (تأكيد موقّع)",
   "ai.oauthClientAuthTls": "شهادة العميل (TLS متبادل)",
   "ai.oauthKeyId": "معرّف المفتاح",
+  "ai.oauthDpop": "ربط الرموز بمفتاح محفوظ على هذا الحاسوب (DPoP)، إذا كان الخادم يدعم ذلك",
   "ai.oauthPrivateKey": "المفتاح الخاص (PEM)",
   "ai.tlsClientCertificate": "تقديم شهادة عميل (TLS متبادل)",
   "ai.tlsHint":

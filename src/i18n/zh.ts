@@ -552,6 +552,7 @@ export const messages: Messages = {
   "ai.oauthClientAuthKey": "私钥（签名断言）",
   "ai.oauthClientAuthTls": "客户端证书（双向 TLS）",
   "ai.oauthKeyId": "密钥 ID",
+  "ai.oauthDpop": "如果服务器支持，将令牌绑定到保存在这台电脑上的密钥（DPoP）",
   "ai.oauthPrivateKey": "私钥（PEM）",
   "ai.tlsClientCertificate": "出示客户端证书（双向 TLS）",
   "ai.tlsHint":

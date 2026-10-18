@@ -565,6 +565,8 @@ export const messages: Messages = {
   "ai.oauthClientAuthKey": "秘密鍵（署名付きアサーション）",
   "ai.oauthClientAuthTls": "クライアント証明書（相互 TLS）",
   "ai.oauthKeyId": "キー ID",
+  "ai.oauthDpop":
+    "サーバーが対応していれば、トークンをこのコンピューターに保管された鍵に結び付ける（DPoP）",
   "ai.oauthPrivateKey": "秘密鍵（PEM）",
   "ai.tlsClientCertificate": "クライアント証明書を提示する（相互 TLS）",
   "ai.tlsHint":
