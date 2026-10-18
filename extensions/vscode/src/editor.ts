@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { attachAi } from "./ai";
 import { webviewHtml } from "./webview";
 
 /**
@@ -31,6 +32,8 @@ export class ArchyneEditorProvider implements vscode.CustomTextEditorProvider {
       localResourceRoots: [this.appRoot],
     };
     panel.webview.html = await webviewHtml(panel.webview, this.appRoot);
+    // Generate's calls, answered here so no secret ever enters the webview.
+    const ai = attachAi(panel.webview);
 
     /**
      * The text this side last wrote into the document.
@@ -87,6 +90,7 @@ export class ArchyneEditorProvider implements vscode.CustomTextEditorProvider {
 
     panel.onDidDispose(() => {
       received.dispose();
+      ai.dispose();
       changed.dispose();
     });
   }

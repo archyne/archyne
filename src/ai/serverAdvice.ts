@@ -40,3 +40,42 @@ export function serverAdvice(
       return t("ai.serverHttp", { status: status ?? "?" });
   }
 }
+
+/**
+ * The same for a remote service reached through the host. No CORS case here
+ * — the host is not a page — but credentials and plain http are.
+ */
+export function remoteAdvice(
+  t: Translate,
+  reason: string,
+  baseUrl: string,
+  extra?: { status?: number; problem?: string },
+): string {
+  switch (reason) {
+    case "not-local":
+      return t("ai.remoteNotHttps");
+    case "down":
+    case "network":
+      return t("ai.remoteDown", { url: baseUrl });
+    case "no-model":
+      return t("ai.remoteNeedsModel");
+    case "invalid":
+      switch (extra?.problem) {
+        case "protocol":
+          return t("ai.remoteProblemProtocol");
+        case "header-name":
+          return t("ai.remoteProblemHeaderName");
+        case "username":
+          return t("ai.remoteProblemUsername");
+        case "extra-header":
+          return t("ai.remoteProblemExtraHeader");
+        default:
+          return t("ai.remoteProblemUnknown");
+      }
+    default:
+      if (extra?.status === 401 || extra?.status === 403) {
+        return t("ai.remoteUnauthorized", { status: extra.status });
+      }
+      return t("ai.serverHttp", { status: extra?.status ?? "?" });
+  }
+}

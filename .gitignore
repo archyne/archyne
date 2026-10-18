@@ -1,5 +1,7 @@
 node_modules
 dist
+# The host half of Generate, built by `npm run build:host` (vite.host.config.ts).
+dist-host
 *.local
 *.tsbuildinfo
 release
@@ -10,6 +12,7 @@ sbom.json
 # `extensions/vscode` → `npm run build`.
 extensions/*/out
 extensions/*/media/app
+extensions/*/media/host
 extensions/*/*.vsix
 
 # Output of the browser-driven e2e scripts (tests/e2e-*.mts). They write their

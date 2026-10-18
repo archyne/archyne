@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { setAiContext } from "./ai";
 import { ArchyneEditorProvider } from "./editor";
 import { FencePanels } from "./fenceEditor";
 import { FenceLensProvider, OPEN_FENCE } from "./lens";
@@ -15,6 +16,8 @@ import { FenceLensProvider, OPEN_FENCE } from "./lens";
  * Mermaid in a repository actually is: a README, an ADR, a page under `docs/`.
  */
 export function activate(context: vscode.ExtensionContext): void {
+  // Generate's host side keeps its secrets in this context's SecretStorage.
+  setAiContext(context);
   const appRoot = vscode.Uri.joinPath(context.extensionUri, "media", "app");
 
   context.subscriptions.push(

@@ -1,15 +1,26 @@
 import { useEffect, useState } from "react";
 import { useGraphStore } from "../store";
 import { aiMode } from "../ai/provider";
-import { browserEngineAvailable, useAiEngine, type AiEngine } from "../ai/engine";
 import {
+  browserEngineAvailable,
+  hostSynced,
+  LOCAL_CONNECTION_ID,
+  remoteEngineAvailable,
+  useAiEngine,
+  type AiEngine,
+} from "../ai/engine";
+import { hostAi } from "../ai/hostBridge";
+import { AiRemoteSettings } from "./AiRemoteSettings";
+import {
+  isLocalUrl,
   presetOf,
   probeServer,
   SERVER_PRESETS,
   type Reachability,
   type ServerPreset,
+  type ServerSettings,
 } from "../ai/server";
-import { serverAdvice } from "../ai/serverAdvice";
+import { remoteAdvice, serverAdvice } from "../ai/serverAdvice";
 import type { AiModel } from "../ai/types";
 import { useT } from "../i18n";
 
@@ -37,15 +48,23 @@ export function AiPanel() {
   const engine = useAiEngine((s) => s.engine);
   const setEngine = useAiEngine((s) => s.setEngine);
   const server = useAiEngine((s) => s.server);
+  const remote = useAiEngine((s) => s.connections.find((c) => c.id === s.connectionId) ?? null);
   const [request, setRequest] = useState("");
   const t = useT();
 
   const mode = aiMode();
   const working = (turns[turns.length - 1]?.state ?? null) === "working";
   const onServer = engine === "server";
-  // Sending to a server with no model chosen would only come back as an
-  // error, so the composer waits for one instead.
-  const ready = !onServer || server.model !== "";
+  const onRemote = engine === "remote";
+  const onBrowser = engine === "browser";
+  // Sending with no model chosen would only come back as an error, so the
+  // composer waits for one instead.
+  const ready = onServer ? server.model !== "" : onRemote ? !!remote?.model : true;
+  const engines: AiEngine[] = [
+    ...(browserEngineAvailable() ? (["browser"] as const) : []),
+    "server",
+    ...(remoteEngineAvailable() ? (["remote"] as const) : []),
+  ];
 
   const run = () => {
     if (!request.trim() || !ready) return;
@@ -58,7 +77,7 @@ export function AiPanel() {
   return (
     <div className="ai-panel ai-chat">
       <div className="ai-header">
-        {browserEngineAvailable() && (
+        {engines.length > 1 && (
           <label className="ai-model">
             {t("ai.engine")}
             <select
@@ -67,12 +86,17 @@ export function AiPanel() {
               disabled={working}
               onChange={(e) => setEngine(e.target.value as AiEngine)}
             >
-              <option value="browser">{t("ai.engineBrowser")}</option>
+              {engines.includes("browser") && (
+                <option value="browser">{t("ai.engineBrowser")}</option>
+              )}
               <option value="server">{t("ai.engineServer")}</option>
+              {engines.includes("remote") && (
+                <option value="remote">{t("ai.engineRemote")}</option>
+              )}
             </select>
           </label>
         )}
-        {!onServer && (
+        {onBrowser && (
           <label className="ai-model">
             {t("ai.model")}
             <select
@@ -98,8 +122,9 @@ export function AiPanel() {
       </div>
 
       {onServer && <ServerSettingsBlock disabled={working} />}
+      {onRemote && <AiRemoteSettings disabled={working} />}
 
-      {!onServer && mode === "local" && modelStatus.state !== "idle" && (
+      {onBrowser && mode === "local" && modelStatus.state !== "idle" && (
         <div
           className={`ai-model-status ai-model-status--${modelStatus.state}`}
           role="status"
@@ -137,9 +162,15 @@ export function AiPanel() {
               )}
               {turn.state === "error" && (
                 <p className="ai-error">
-                  {turn.reason
-                    ? serverAdvice(t, turn.reason, server.baseUrl)
-                    : t("ai.failed", { error: turn.error ?? "" })}
+                  {/* An error status is shown as the service gave it — its
+                      own words say more than a generic line could. */}
+                  {!turn.reason || turn.reason === "http"
+                    ? t("ai.failed", { error: turn.error ?? "" })
+                    : onRemote
+                      ? remoteAdvice(t, turn.reason, remote?.baseUrl ?? "", {
+                          problem: turn.error ?? undefined,
+                        })
+                      : serverAdvice(t, turn.reason, server.baseUrl)}
                 </p>
               )}
               {turn.state === "done" && (
@@ -171,7 +202,13 @@ export function AiPanel() {
           className="ai-request"
           rows={2}
           value={request}
-          placeholder={ready ? t("ai.placeholder") : t("ai.serverNeedsModel")}
+          placeholder={
+            ready
+              ? t("ai.placeholder")
+              : onRemote
+                ? t("ai.remoteNeedsModel")
+                : t("ai.serverNeedsModel")
+          }
           disabled={working || !ready}
           onChange={(e) => setRequest(e.target.value)}
           onKeyDown={(e) => {
@@ -213,6 +250,19 @@ export function AiPanel() {
  * every preset, so the model list is never typed by hand and a refusal is
  * explained before a request is ever sent.
  */
+/**
+ * Check the local server — through the host when there is one, which has no
+ * CORS to satisfy, and directly from the page otherwise. Only ever a loopback
+ * address: the local engine must not become a way to reach anything else.
+ */
+async function probeLocal(server: ServerSettings): Promise<Reachability> {
+  const ai = hostAi();
+  if (!ai || !isLocalUrl(server.baseUrl)) return probeServer(server);
+  await hostSynced();
+  const result = await ai.probe(LOCAL_CONNECTION_ID);
+  return result.state === "invalid" ? { state: "not-local" } : result;
+}
+
 function ServerSettingsBlock({ disabled }: { disabled: boolean }) {
   const server = useAiEngine((s) => s.server);
   const setServer = useAiEngine((s) => s.setServer);
@@ -223,12 +273,12 @@ function ServerSettingsBlock({ disabled }: { disabled: boolean }) {
 
   const check = async (baseUrl: string) => {
     setResult("checking");
-    setResult(await probeServer({ ...useAiEngine.getState().server, baseUrl }));
+    setResult(await probeLocal({ ...useAiEngine.getState().server, baseUrl }));
   };
 
   useEffect(() => {
     let live = true;
-    void probeServer(useAiEngine.getState().server).then((r) => {
+    void probeLocal(useAiEngine.getState().server).then((r) => {
       if (live) setResult(r);
     });
     return () => {

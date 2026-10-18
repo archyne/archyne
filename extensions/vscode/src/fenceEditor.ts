@@ -8,6 +8,7 @@ import {
   wouldBreakFence,
   type Fence,
 } from "./fences";
+import { attachAi } from "./ai";
 import { webviewHtml } from "./webview";
 
 /**
@@ -81,7 +82,10 @@ export class FencePanels {
 
     const binding = new FenceBinding(panel, document, fence);
     this.bindings.add(binding);
+    // Generate's calls, answered here so no secret ever enters the webview.
+    const ai = attachAi(panel.webview);
     panel.onDidDispose(() => {
+      ai.dispose();
       binding.dispose();
       this.bindings.delete(binding);
     });

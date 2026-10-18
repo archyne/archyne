@@ -76,4 +76,36 @@ contextBridge.exposeInMainWorld("archyne", {
    * @param {string[]} urls
    */
   fetchIcons: (urls) => ipcRenderer.invoke("archyne:fetch-icons", { urls }),
+
+  /**
+   * Generate through the shell (desktop/ai.cjs): the page describes the
+   * services it may call and sends conversations; the shell keeps the
+   * secrets, makes the requests and streams the answers back. A secret goes
+   * in through `setSecret` and never comes out — `secretFields` only says
+   * which are set.
+   */
+  ai: {
+    /** @param {unknown[]} list */
+    setConnections: (list) => ipcRenderer.invoke("archyne:ai-connections", list),
+    /** @param {string} id @param {string} field @param {string | null} value */
+    setSecret: (id, field, value) =>
+      ipcRenderer.invoke("archyne:ai-secret", { id, field, value }),
+    /** @param {string} id */
+    secretFields: (id) => ipcRenderer.invoke("archyne:ai-secret-fields", { id }),
+    canKeepSecrets: () => ipcRenderer.invoke("archyne:ai-can-keep-secrets"),
+    /** @param {string} id */
+    probe: (id) => ipcRenderer.invoke("archyne:ai-probe", { id }),
+    /** @param {string} requestId @param {string} id @param {string} model @param {unknown[]} messages */
+    chat: (requestId, id, model, messages) =>
+      ipcRenderer.invoke("archyne:ai-chat", { requestId, id, model, messages }),
+    /** @param {string} requestId */
+    cancel: (requestId) => ipcRenderer.send("archyne:ai-cancel", { requestId }),
+    /** @param {(event: unknown) => void} callback @returns {() => void} unsubscribe */
+    onEvent: (callback) => {
+      /** @param {Electron.IpcRendererEvent} _event @param {unknown} payload */
+      const listener = (_event, payload) => callback(payload);
+      ipcRenderer.on("archyne:ai-event", listener);
+      return () => ipcRenderer.removeListener("archyne:ai-event", listener);
+    },
+  },
 });

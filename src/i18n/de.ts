@@ -509,6 +509,42 @@ export const messages: Messages = {
   "ai.serverHttp": "Der Server antwortete mit Fehler {status}.",
   "ai.serverNeedsModel": "Wähle zuerst ein Modell in den Einstellungen des lokalen Servers.",
   "ai.serverGeneric": "den Server",
+  "ai.engineRemote": "Entfernter Dienst",
+  "ai.remoteService": "Dienst",
+  "ai.remoteNone": "Noch kein Dienst. Füge einen hinzu, um zu beginnen.",
+  "ai.remoteAdd": "Dienst hinzufügen",
+  "ai.remoteRemove": "Dienst entfernen",
+  "ai.remoteNewName": "Neuer Dienst",
+  "ai.remoteName": "Name",
+  "ai.remoteAuth": "Authentifizierung",
+  "ai.remoteAuthNone": "Keine",
+  "ai.remoteAuthHeader": "API-Schlüssel in einem Header",
+  "ai.remoteAuthBasic": "Benutzername und Passwort (Basic)",
+  "ai.remoteHeaderName": "Header",
+  "ai.remoteHeaderPrefix": "Präfix",
+  "ai.remoteKey": "API-Schlüssel",
+  "ai.remoteUsername": "Benutzername",
+  "ai.remotePassword": "Passwort",
+  "ai.remoteSecretSaved": "Gespeichert — gib einen neuen ein, um ihn zu ersetzen",
+  "ai.remoteSecretForget": "Vergessen",
+  "ai.remoteHeaders": "Zusätzliche Header, einer pro Zeile (Name: Wert)",
+  "ai.remoteHint":
+    "Schlüssel und Passwörter bleiben im sicheren Speicher dieses Computers und werden nie wieder angezeigt.",
+  "ai.remoteNoSecureStorage":
+    "Dieses System bietet keinen sicheren Speicher, daher können Schlüssel und Passwörter nicht gespeichert werden.",
+  "ai.remoteNotHttps":
+    "Unverschlüsseltes http ist nur für einen Server auf diesem Computer erlaubt. Verwende eine https-Adresse.",
+  "ai.remoteDown": "{url} ist nicht erreichbar.",
+  "ai.remoteUnauthorized":
+    "Der Dienst hat die Zugangsdaten abgelehnt ({status}). Prüfe Schlüssel oder Passwort.",
+  "ai.remoteProblemProtocol": "Dieses Protokoll wird noch nicht unterstützt.",
+  "ai.remoteProblemHeaderName": "Der Header-Name ist ungültig.",
+  "ai.remoteProblemUsername":
+    "Der Benutzername darf nicht leer sein und keinen Doppelpunkt enthalten.",
+  "ai.remoteProblemExtraHeader":
+    "Ein zusätzlicher Header hat einen ungültigen Namen oder setzt Authorization oder Cookie, die zur Authentifizierung gehören.",
+  "ai.remoteProblemUnknown": "Dieser Dienst ist noch nicht eingerichtet.",
+  "ai.remoteNeedsModel": "Wähle zuerst einen Dienst und ein Modell.",
 
   "tpl.title": "Mit einer Vorlage beginnen",
   "tpl.blank": "Leeres Diagramm",

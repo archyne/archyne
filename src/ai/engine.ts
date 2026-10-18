@@ -1,42 +1,64 @@
 import { create } from "zustand";
+import { hostAi } from "./hostBridge";
+import type { Connection } from "./host/connection";
+import { newConnectionId } from "./host/connection";
 import { aiMode } from "./mode";
 import { SERVER_PRESETS, type ServerSettings } from "./server";
 
 /**
- * Which engine answers a Generate request, and how to reach the local server
- * when that is the one.
+ * Which engine answers a Generate request, and how to reach the services that
+ * are not in the page.
  *
  * Kept in the browser's storage under its own key, apart from the editing
- * preferences in `prefs.ts`: these are about an outside program the person
- * runs, and losing them (a cleared profile, a private window) costs nothing
- * worse than picking the server again.
+ * preferences in `prefs.ts`: these are about outside programs the person
+ * runs or uses. Nothing secret is stored here — keys and passwords live in
+ * the host (desktop/ai.cjs, extensions/vscode/src/ai.ts) and never come back.
  *
  *   - `browser`: the engine this build carries — the in-tab model in a
  *     `local` build, the stub on a dev server. Not offered when the build
  *     carries none (`off`).
  *   - `server`: an OpenAI-compatible server on this machine (`server.ts`).
- *     Always available, which is what lets a release build offer Generate
- *     at all without shipping a model.
+ *     Always available. In the desktop app and VS Code it is reached through
+ *     the host like a remote service, which spares it the page's CORS.
+ *   - `remote`: a service anywhere, with credentials — desktop and VS Code
+ *     only, because only a host can keep a secret (AUTH.local.md).
  */
-export type AiEngine = "browser" | "server";
+export type AiEngine = "browser" | "server" | "remote";
 
 const STORAGE_KEY = "graph:ai-engine";
+
+/** The connection id the local server goes by when the host carries it. */
+export const LOCAL_CONNECTION_ID = "local";
 
 interface Stored {
   engine?: AiEngine;
   server?: Partial<ServerSettings>;
+  connections?: Connection[];
+  connectionId?: string | null;
 }
 
 interface EngineState {
   engine: AiEngine;
   server: ServerSettings;
+  connections: Connection[];
+  connectionId: string | null;
   setEngine: (engine: AiEngine) => void;
   setServer: (patch: Partial<ServerSettings>) => void;
+  /** Adds an empty connection, selects it, and returns its id. */
+  addConnection: (label: string) => string;
+  updateConnection: (id: string, patch: Partial<Connection>) => void;
+  removeConnection: (id: string) => void;
+  selectConnection: (id: string) => void;
 }
 
 /** Whether this build carries an engine of its own for the `browser` choice. */
 export function browserEngineAvailable(): boolean {
   return aiMode() !== "off";
+}
+
+/** Whether a host can carry remote services (desktop, VS Code). */
+export function remoteEngineAvailable(): boolean {
+  return hostAi() !== null;
 }
 
 function load(): Stored {
@@ -54,33 +76,118 @@ const DEFAULT_SERVER: ServerSettings = {
   apiKey: "",
 };
 
-/** The stored choice, made safe for the build it is read in. */
-export function initialEngine(stored: Stored, browserAvailable: boolean): AiEngine {
-  if (!browserAvailable) return "server";
-  return stored.engine === "server" ? "server" : "browser";
+/** The stored choice, made safe for the build and the shell it is read in. */
+export function initialEngine(
+  stored: Stored,
+  browserAvailable: boolean,
+  remoteAvailable = false,
+): AiEngine {
+  if (stored.engine === "server") return "server";
+  if (stored.engine === "remote" && remoteAvailable) return "remote";
+  return browserAvailable ? "browser" : "server";
+}
+
+/** The local server, described as a connection for the host to carry. */
+export function localConnection(server: ServerSettings): Connection {
+  return {
+    id: LOCAL_CONNECTION_ID,
+    label: "Local server",
+    baseUrl: server.baseUrl,
+    protocol: "openai",
+    auth: { type: "none" },
+    model: server.model,
+  };
+}
+
+let lastSync: Promise<void> = Promise.resolve();
+
+/**
+ * Tell the host which connections exist. Every host call waits for the last
+ * of these first (`hostSynced`), so a probe right after an edit never asks
+ * about the connection as it was a moment ago.
+ */
+function syncHost(state: Pick<EngineState, "server" | "connections">): void {
+  const ai = hostAi();
+  if (!ai) return;
+  const list = [localConnection(state.server), ...state.connections];
+  lastSync = lastSync.then(() => ai.setConnections(list)).catch(() => undefined);
+}
+
+/** Resolves once the host has the connections as they stand now. */
+export function hostSynced(): Promise<void> {
+  return lastSync;
 }
 
 const stored = load();
 
 export const useAiEngine = create<EngineState>((set, get) => {
   const persist = () => {
-    const { engine, server } = get();
+    const { engine, server, connections, connectionId } = get();
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ engine, server }));
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ engine, server, connections, connectionId }),
+      );
     } catch {
       // Storage unavailable; the choice still holds for this session.
     }
   };
-  return {
-    engine: initialEngine(stored, browserEngineAvailable()),
+  const changed = () => {
+    persist();
+    syncHost(get());
+  };
+  const connections = Array.isArray(stored.connections) ? stored.connections : [];
+  const initial = {
+    engine: initialEngine(stored, browserEngineAvailable(), remoteEngineAvailable()),
     server: { ...DEFAULT_SERVER, ...stored.server },
+    connections,
+    connectionId:
+      stored.connectionId && connections.some((c) => c.id === stored.connectionId)
+        ? stored.connectionId
+        : (connections[0]?.id ?? null),
+  };
+  syncHost(initial);
+  return {
+    ...initial,
     setEngine: (engine) => {
       if (engine === "browser" && !browserEngineAvailable()) return;
+      if (engine === "remote" && !remoteEngineAvailable()) return;
       set({ engine });
       persist();
     },
     setServer: (patch) => {
       set({ server: { ...get().server, ...patch } });
+      changed();
+    },
+    addConnection: (label) => {
+      const id = newConnectionId();
+      const fresh: Connection = {
+        id,
+        label,
+        baseUrl: "https://",
+        protocol: "openai",
+        auth: { type: "header", name: "Authorization", prefix: "Bearer " },
+      };
+      set({ connections: [...get().connections, fresh], connectionId: id });
+      changed();
+      return id;
+    },
+    updateConnection: (id, patch) => {
+      set({
+        connections: get().connections.map((c) => (c.id === id ? { ...c, ...patch, id } : c)),
+      });
+      changed();
+    },
+    removeConnection: (id) => {
+      const rest = get().connections.filter((c) => c.id !== id);
+      set({
+        connections: rest,
+        connectionId: get().connectionId === id ? (rest[0]?.id ?? null) : get().connectionId,
+      });
+      changed();
+    },
+    selectConnection: (id) => {
+      set({ connectionId: id });
       persist();
     },
   };

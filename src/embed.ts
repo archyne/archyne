@@ -1,6 +1,6 @@
 import { useGraphStore } from "./store";
 import { buildExport, DEFAULT_EXPORT_OPTIONS, type ExportOptions } from "./export";
-import { inWebview } from "./host";
+import { vscodeApi } from "./host";
 
 /**
  * Embed mode: when loaded as `/?embed=1` inside an iframe, Archyne speaks a
@@ -89,8 +89,8 @@ export function parseAllowedOrigins(search: string): string[] | typeof ANY_ORIGI
  * and the webview CSP, not an origin string.
  */
 function transport(): Transport | null {
-  if (inWebview()) {
-    const vscode = window.acquireVsCodeApi!();
+  const vscode = vscodeApi();
+  if (vscode) {
     return {
       post: (msg) => vscode.postMessage(msg),
       // Only the extension host can post into its own webview.

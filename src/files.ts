@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { useGraphStore } from "./store";
+import type { HostAi } from "./ai/hostBridge";
 
 /**
  * Opening and saving `.mmd` files.
@@ -59,6 +60,8 @@ interface DesktopBridge {
     icons: Array<{ name: string; svg: string }>;
     failed: string[];
   }>;
+  /** Generate through the shell, which keeps the secrets (desktop/ai.cjs). */
+  ai?: HostAi;
 }
 
 function desktop(): DesktopBridge | null {

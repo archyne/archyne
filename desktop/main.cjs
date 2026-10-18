@@ -2,14 +2,16 @@
  * Archyne desktop shell: a thin Electron window around the static build.
  *
  * Everything still runs locally in the renderer — no backend. The shell
- * reaches the network in exactly one place, `archyne:fetch-icons`, and only
- * because a link the user pasted asked it to; see the notes there.
+ * reaches the network in two places, each only because the user asked:
+ * `archyne:fetch-icons`, for a link they pasted (see the notes there), and
+ * the Generate engines in ./ai.cjs, for a service they configured.
  */
 const { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const fsp = require("node:fs/promises");
 const { unzipSync } = require("fflate");
+const { registerAiIpc } = require("./ai.cjs");
 
 /**
  * .mmd file passed on the command line (double-click / "open with").
@@ -368,6 +370,7 @@ if (!gotLock) {
 
   void app.whenReady().then(() => {
     registerIpc();
+    registerAiIpc();
     createWindow(fileArg(process.argv.slice(1)));
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

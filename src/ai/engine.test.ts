@@ -15,6 +15,13 @@ describe("the engine a page starts with", () => {
     expect(initialEngine({ engine: "browser" }, false)).toBe("server");
   });
 
+  it("keeps a remote service only where a host can carry one", () => {
+    expect(initialEngine({ engine: "remote" }, true, true)).toBe("remote");
+    // The same storage read in a plain browser tab: no host, no remote.
+    expect(initialEngine({ engine: "remote" }, true, false)).toBe("browser");
+    expect(initialEngine({ engine: "remote" }, false, false)).toBe("server");
+  });
+
   it("treats a stored value it does not know as the default", () => {
     expect(initialEngine({ engine: "cloud" as never }, true)).toBe("browser");
   });

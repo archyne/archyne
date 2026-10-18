@@ -322,3 +322,8 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+      # Generate through the desktop shell, in real Electron. Here rather than
+      # on Linux because the shell refuses to keep a secret without a system
+      # keychain, and Windows always has one (DPAPI).
+      - name: Desktop shell, Generate with secrets
+        run: npm run test:e2e:desktop-ai

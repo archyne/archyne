@@ -70,6 +70,23 @@ export function isLocalUrl(baseUrl: string): boolean {
   }
 }
 
+/**
+ * The rule for a host process (desktop main, VS Code extension host), which
+ * has no page CSP to stay inside: any `https:` address, and `http:` only on
+ * loopback — so a credential is never sent in clear text over a network.
+ */
+export function isHostReachableUrl(baseUrl: string): boolean {
+  try {
+    const url = new URL(baseUrl);
+    return url.protocol === "https:" || (url.protocol === "http:" && loopback(url.hostname));
+  } catch {
+    return false;
+  }
+}
+
+/** Which addresses an engine may use; the page's is loopback, a host's wider. */
+export type UrlPolicy = (baseUrl: string) => boolean;
+
 /** `http://localhost:1234/v1/` + `models`, without doubling the slash. */
 function endpoint(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/${path}`;
@@ -116,8 +133,9 @@ type Fetch = typeof fetch;
 export async function probeServer(
   settings: ServerSettings,
   fetchImpl: Fetch = fetch,
+  allowed: UrlPolicy = isLocalUrl,
 ): Promise<Reachability> {
-  if (!isLocalUrl(settings.baseUrl)) return { state: "not-local" };
+  if (!allowed(settings.baseUrl)) return { state: "not-local" };
   const url = endpoint(settings.baseUrl, "models");
   let response: Response;
   try {
@@ -234,14 +252,18 @@ export function stripThinking(text: string): string {
   return text.replace(/<think>[\s\S]*?(<\/think>|$)/g, "").trim();
 }
 
-export function serverProvider(settings: ServerSettings, fetchImpl: Fetch = fetch): AiProvider {
+export function serverProvider(
+  settings: ServerSettings,
+  fetchImpl: Fetch = fetch,
+  allowed: UrlPolicy = isLocalUrl,
+): AiProvider {
   return {
     kind: "server",
-    available: () => isLocalUrl(settings.baseUrl) && settings.model !== "",
+    available: () => allowed(settings.baseUrl) && settings.model !== "",
     async generate(chat: ChatMessage[], options?: GenerateOptions): Promise<string> {
       if (options?.signal?.aborted) throw abortError();
       if (!settings.model) throw new ServerError("No model is chosen.", "no-model");
-      if (!isLocalUrl(settings.baseUrl)) {
+      if (!allowed(settings.baseUrl)) {
         throw new ServerError("The server address is not on this machine.", "not-local");
       }
       let response: Response;
@@ -260,7 +282,7 @@ export function serverProvider(settings: ServerSettings, fetchImpl: Fetch = fetc
         });
       } catch (err) {
         if (options?.signal?.aborted) throw abortError();
-        const why = await probeServer(settings, fetchImpl);
+        const why = await probeServer(settings, fetchImpl, allowed);
         throw new ServerError(
           err instanceof Error ? err.message : String(err),
           why.state === "ok" ? "down" : why.state,
