@@ -517,6 +517,13 @@ export const messages: Messages = {
   "ai.remoteNewName": "Neuer Dienst",
   "ai.remoteName": "Name",
   "ai.remoteAuth": "Authentifizierung",
+  "ai.remoteProtocol": "Art des Dienstes",
+  "ai.remoteProtocolOpenai": "OpenAI-kompatibel",
+  "ai.remoteDeployment": "Bereitstellung",
+  "ai.remoteAnthropicHint":
+    "Die API von Anthropic. Der Schlüssel gehört in den Header x-api-key.",
+  "ai.remoteAzureHint":
+    "Adresse: https://<Ressource>.openai.azure.com/openai/v1, oder .services.ai.azure.com für AI Foundry. Die Bereitstellung ist der Name, den Sie dem Modell in Azure gegeben haben. Für Microsoft Entra OAuth mit dem Scope https://ai.azure.com/.default verwenden.",
   "ai.remoteAuthNone": "Keine",
   "ai.remoteAuthHeader": "API-Schlüssel in einem Header",
   "ai.remoteAuthBasic": "Benutzername und Passwort (Basic)",

@@ -8,13 +8,13 @@
  */
 
 /**
- * The dialect a service speaks. Only `openai` is implemented; the others are
- * decided (AUTH.local.md, 2026-10-18) and named now so stored connections
- * never have to be migrated when they arrive.
+ * The dialect a service speaks (see `dialects.ts`). All five are decided
+ * (AUTH.local.md, 2026-10-18) and named now, so stored connections never have
+ * to be migrated as the rest arrive.
  */
 export type Protocol = "openai" | "anthropic" | "bedrock" | "vertex" | "azure";
 
-export const IMPLEMENTED_PROTOCOLS: readonly Protocol[] = ["openai"];
+export const IMPLEMENTED_PROTOCOLS: readonly Protocol[] = ["openai", "azure", "anthropic"];
 
 export type AuthConfig =
   | { type: "none" }

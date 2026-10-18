@@ -88,6 +88,24 @@ export function AiRemoteSettings({ disabled }: { disabled: boolean }) {
   );
 }
 
+/**
+ * What choosing a kind of service fills in: its public address when it has
+ * one, and the header its key goes in. Only ever over what is still a default,
+ * so nothing the person typed is lost by changing their mind.
+ */
+const PROTOCOL_DEFAULTS: Record<
+  "openai" | "anthropic" | "azure",
+  { baseUrl: string; header: { name: string; prefix?: string }; hint?: MessageKey }
+> = {
+  openai: { baseUrl: "", header: { name: "Authorization", prefix: "Bearer " } },
+  anthropic: {
+    baseUrl: "https://api.anthropic.com/v1",
+    header: { name: "x-api-key" },
+    hint: "ai.remoteAnthropicHint",
+  },
+  azure: { baseUrl: "", header: { name: "api-key" }, hint: "ai.remoteAzureHint" },
+};
+
 function ConnectionForm({
   connection,
   disabled,
@@ -147,6 +165,27 @@ function ConnectionForm({
     patch({ auth });
   };
 
+  const setProtocol = (protocol: keyof typeof PROTOCOL_DEFAULTS) => {
+    const was = PROTOCOL_DEFAULTS[connection.protocol as keyof typeof PROTOCOL_DEFAULTS];
+    const next = PROTOCOL_DEFAULTS[protocol];
+    const p: Partial<Connection> = { protocol, model: "" };
+    // A new service starts at a bare "https://"; that is not an address yet.
+    const typed = connection.baseUrl !== "https://" && connection.baseUrl !== "";
+    if (!typed || connection.baseUrl === was?.baseUrl) p.baseUrl = next.baseUrl || "https://";
+    const auth = connection.auth;
+    if (
+      auth.type === "none" ||
+      (auth.type === "header" && was && auth.name === was.header.name)
+    ) {
+      p.auth = { type: "header", ...next.header };
+    }
+    setResult(null);
+    patch(p);
+  };
+  const defaults = PROTOCOL_DEFAULTS[connection.protocol as keyof typeof PROTOCOL_DEFAULTS];
+  // A deployment is a name the person gave, not one the service lists.
+  const typedModel = connection.protocol === "azure";
+
   const models = result && result !== "checking" && result.state === "ok" ? result.models : [];
   const options =
     connection.model && !models.includes(connection.model)
@@ -164,6 +203,20 @@ function ConnectionForm({
           onChange={(e) => patch({ label: e.target.value })}
         />
       </label>
+      <label className="ai-server-field">
+        {t("ai.remoteProtocol")}
+        <select
+          value={connection.protocol}
+          aria-label={t("ai.remoteProtocol")}
+          disabled={disabled}
+          onChange={(e) => setProtocol(e.target.value as keyof typeof PROTOCOL_DEFAULTS)}
+        >
+          <option value="openai">{t("ai.remoteProtocolOpenai")}</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="azure">Azure OpenAI / AI Foundry</option>
+        </select>
+      </label>
+      {defaults?.hint && <p className="ai-server-hint">{t(defaults.hint)}</p>}
       <label className="ai-server-field">
         {t("ai.serverAddress")}
         <input
@@ -285,24 +338,37 @@ function ConnectionForm({
       </label>
       <p className="ai-server-hint">{t("ai.remoteHint")}</p>
 
-      <label className="ai-server-field">
-        {t("ai.serverModel")}
-        <select
-          value={connection.model ?? ""}
-          aria-label={t("ai.serverModel")}
-          disabled={disabled || options.length === 0}
-          onChange={(e) => patch({ model: e.target.value })}
-        >
-          <option value="" disabled>
-            {t("ai.serverPickModel")}
-          </option>
-          {options.map((id) => (
-            <option key={id} value={id}>
-              {id}
+      {typedModel ? (
+        <label className="ai-server-field">
+          {t("ai.remoteDeployment")}
+          <input
+            type="text"
+            value={connection.model ?? ""}
+            spellCheck={false}
+            disabled={disabled}
+            onChange={(e) => patch({ model: e.target.value.trim() })}
+          />
+        </label>
+      ) : (
+        <label className="ai-server-field">
+          {t("ai.serverModel")}
+          <select
+            value={connection.model ?? ""}
+            aria-label={t("ai.serverModel")}
+            disabled={disabled || options.length === 0}
+            onChange={(e) => patch({ model: e.target.value })}
+          >
+            <option value="" disabled>
+              {t("ai.serverPickModel")}
             </option>
-          ))}
-        </select>
-      </label>
+            {options.map((id) => (
+              <option key={id} value={id}>
+                {id}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <div className="ai-server-check">
         <button
           type="button"

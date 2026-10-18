@@ -509,6 +509,12 @@ export const messages: Messages = {
   "ai.remoteNewName": "خدمة جديدة",
   "ai.remoteName": "الاسم",
   "ai.remoteAuth": "المصادقة",
+  "ai.remoteProtocol": "نوع الخدمة",
+  "ai.remoteProtocolOpenai": "متوافق مع OpenAI",
+  "ai.remoteDeployment": "النشر",
+  "ai.remoteAnthropicHint": "واجهة Anthropic البرمجية. يوضع المفتاح في الترويسة x-api-key.",
+  "ai.remoteAzureHint":
+    "العنوان: https://<المورد>.openai.azure.com/openai/v1، أو ‎.services.ai.azure.com لـ AI Foundry. النشر هو الاسم الذي أعطيته للنموذج في Azure. لـ Microsoft Entra استخدم OAuth بالنطاق https://ai.azure.com/.default.",
   "ai.remoteAuthNone": "بدون",
   "ai.remoteAuthHeader": "مفتاح API في ترويسة",
   "ai.remoteAuthBasic": "اسم المستخدم وكلمة المرور (Basic)",

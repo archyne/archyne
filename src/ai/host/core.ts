@@ -16,6 +16,7 @@ import {
   type Connection,
   type OAuthConfig,
 } from "./connection";
+import { dialectFor } from "./dialects";
 import { nodeLoopback } from "./loopback";
 import { mtlsFetch } from "./mtls";
 import {
@@ -141,7 +142,12 @@ export class AiHost {
     if (!c) return { state: "invalid", problem: "unknown" };
     const problem = connectionProblem(c);
     if (problem) return { state: "invalid", problem };
-    return probeServer({ baseUrl: c.baseUrl, model: "" }, this.fetchFor(c), isHostReachableUrl);
+    return probeServer(
+      { baseUrl: c.baseUrl, model: "" },
+      this.fetchFor(c),
+      isHostReachableUrl,
+      dialectFor(c.protocol) ?? undefined,
+    );
   }
 
   /** Answer one turn, streaming the running text through `emit`. */
@@ -165,6 +171,7 @@ export class AiHost {
         { baseUrl: c.baseUrl, model },
         this.fetchFor(c),
         isHostReachableUrl,
+        dialectFor(c.protocol) ?? undefined,
       );
       const text = await provider.generate(messages, {
         signal: ctrl.signal,

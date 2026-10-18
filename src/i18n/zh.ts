@@ -497,6 +497,12 @@ export const messages: Messages = {
   "ai.remoteNewName": "新服务",
   "ai.remoteName": "名称",
   "ai.remoteAuth": "身份验证",
+  "ai.remoteProtocol": "服务类型",
+  "ai.remoteProtocolOpenai": "兼容 OpenAI",
+  "ai.remoteDeployment": "部署",
+  "ai.remoteAnthropicHint": "Anthropic 自己的 API。密钥放在 x-api-key 请求头中。",
+  "ai.remoteAzureHint":
+    "地址：https://<资源>.openai.azure.com/openai/v1，AI Foundry 则为 .services.ai.azure.com。部署是你在 Azure 中为模型起的名称。使用 Microsoft Entra 时，请选择 OAuth，范围为 https://ai.azure.com/.default。",
   "ai.remoteAuthNone": "无",
   "ai.remoteAuthHeader": "请求头中的 API 密钥",
   "ai.remoteAuthBasic": "用户名和密码（Basic）",

@@ -123,6 +123,48 @@ export type Reachability =
 type Fetch = typeof fetch;
 
 /**
+ * How one family of APIs is spoken: where its models are listed, what a turn
+ * looks like on the wire, and where the answer is in each streamed event.
+ * The OpenAI dialect is what every local server speaks; the host adds the
+ * hosted ones (`host/dialects.ts`), so the page never carries them.
+ */
+export interface Dialect {
+  /** Under the base, where the models are listed; null when the API keeps no such list. */
+  modelsPath: string | null;
+  /** Under the base, where a turn is sent. */
+  chatPath(model: string): string;
+  /** Headers the dialect itself needs, beside the credentials. */
+  headers?: Record<string, string>;
+  body(model: string, chat: ChatMessage[]): unknown;
+  /** The answer text one stream event carries, if any; throws on an error event. */
+  piece(event: unknown): string | undefined;
+  /** Whether a loopback server may relay some of its models to a cloud (Ollama). */
+  relays?: boolean;
+}
+
+export const OPENAI_DIALECT: Dialect = {
+  modelsPath: "models",
+  chatPath: () => "chat/completions",
+  body: (model, chat) => ({
+    model,
+    messages: chat,
+    stream: true,
+    // The same answer for the same request: an edit, not a muse.
+    temperature: 0,
+  }),
+  // Only `delta.content` is the answer. Reasoning models served by LM Studio
+  // send their thinking as `delta.reasoning_content`, which is not part of it;
+  // others put it inline in `<think>…</think>`, which `stripThinking` removes
+  // once the text is whole.
+  piece: (event) => {
+    const piece = (event as { choices?: Array<{ delta?: { content?: unknown } }> }).choices?.[0]
+      ?.delta?.content;
+    return typeof piece === "string" ? piece : undefined;
+  },
+  relays: true,
+};
+
+/**
  * Ask the server for its models, and when that fails, find out why.
  *
  * A browser reports a CORS refusal and a closed port identically — a bare
@@ -134,12 +176,14 @@ export async function probeServer(
   settings: ServerSettings,
   fetchImpl: Fetch = fetch,
   allowed: UrlPolicy = isLocalUrl,
+  dialect: Dialect = OPENAI_DIALECT,
 ): Promise<Reachability> {
   if (!allowed(settings.baseUrl)) return { state: "not-local" };
-  const url = endpoint(settings.baseUrl, "models");
+  if (dialect.modelsPath === null) return { state: "ok", models: [], remote: [] };
+  const url = endpoint(settings.baseUrl, dialect.modelsPath);
   let response: Response;
   try {
-    response = await fetchImpl(url, { headers: headers(settings) });
+    response = await fetchImpl(url, { headers: { ...headers(settings), ...dialect.headers } });
   } catch {
     try {
       await fetchImpl(url, { mode: "no-cors" });
@@ -155,7 +199,7 @@ export async function probeServer(
   const models = (body?.data ?? [])
     .map((m) => (typeof m.id === "string" ? m.id : ""))
     .filter((id) => id && !/embed/i.test(id));
-  const remote = await remoteModels(settings, models, fetchImpl);
+  const remote = dialect.relays ? await remoteModels(settings, models, fetchImpl) : [];
   return { state: "ok", models, remote };
 }
 
@@ -208,17 +252,13 @@ function abortError(): DOMException {
 }
 
 /**
- * Read an OpenAI-style server-sent-events stream, calling `onPiece` with each
- * piece of answer text.
- *
- * Only `delta.content` is the answer. Reasoning models served by LM Studio
- * send their thinking as `delta.reasoning_content`, which is not part of it;
- * others put it inline in `<think>…</think>`, which `stripThinking` removes
- * once the text is whole.
+ * Read a server-sent-events stream, calling `onPiece` with each piece of
+ * answer text as the dialect finds it in an event.
  */
 export async function readStream(
   body: ReadableStream<Uint8Array>,
   onPiece: (piece: string) => void,
+  pick: Dialect["piece"] = OPENAI_DIALECT.piece,
 ): Promise<void> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -234,15 +274,15 @@ export async function readStream(
       if (!line.startsWith("data:")) continue;
       const data = line.slice(5).trim();
       if (data === "[DONE]") return;
+      let event: unknown;
       try {
-        const event = JSON.parse(data) as {
-          choices?: Array<{ delta?: { content?: unknown } }>;
-        };
-        const piece = event.choices?.[0]?.delta?.content;
-        if (typeof piece === "string" && piece) onPiece(piece);
+        event = JSON.parse(data);
       } catch {
         // A keep-alive or a line this dialect does not define; not the answer.
+        continue;
       }
+      const piece = pick(event);
+      if (piece) onPiece(piece);
     }
   }
 }
@@ -256,6 +296,7 @@ export function serverProvider(
   settings: ServerSettings,
   fetchImpl: Fetch = fetch,
   allowed: UrlPolicy = isLocalUrl,
+  dialect: Dialect = OPENAI_DIALECT,
 ): AiProvider {
   return {
     kind: "server",
@@ -268,21 +309,18 @@ export function serverProvider(
       }
       let response: Response;
       try {
-        response = await fetchImpl(endpoint(settings.baseUrl, "chat/completions"), {
-          method: "POST",
-          headers: headers(settings),
-          signal: options?.signal,
-          body: JSON.stringify({
-            model: settings.model,
-            messages: chat,
-            stream: true,
-            // The same answer for the same request: an edit, not a muse.
-            temperature: 0,
-          }),
-        });
+        response = await fetchImpl(
+          endpoint(settings.baseUrl, dialect.chatPath(settings.model)),
+          {
+            method: "POST",
+            headers: { ...headers(settings), ...dialect.headers },
+            signal: options?.signal,
+            body: JSON.stringify(dialect.body(settings.model, chat)),
+          },
+        );
       } catch (err) {
         if (options?.signal?.aborted) throw abortError();
-        const why = await probeServer(settings, fetchImpl, allowed);
+        const why = await probeServer(settings, fetchImpl, allowed, dialect);
         throw new ServerError(
           err instanceof Error ? err.message : String(err),
           why.state === "ok" ? "down" : why.state,
@@ -297,10 +335,14 @@ export function serverProvider(
       }
       let text = "";
       try {
-        await readStream(response.body, (piece) => {
-          text += piece;
-          options?.onToken?.(stripThinking(text));
-        });
+        await readStream(
+          response.body,
+          (piece) => {
+            text += piece;
+            options?.onToken?.(stripThinking(text));
+          },
+          dialect.piece,
+        );
       } catch (err) {
         if (options?.signal?.aborted) throw abortError();
         throw err;

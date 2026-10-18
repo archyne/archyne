@@ -506,6 +506,12 @@ export const messages: Messages = {
   "ai.remoteNewName": "新しいサービス",
   "ai.remoteName": "名前",
   "ai.remoteAuth": "認証",
+  "ai.remoteProtocol": "サービスの種類",
+  "ai.remoteProtocolOpenai": "OpenAI 互換",
+  "ai.remoteDeployment": "デプロイ",
+  "ai.remoteAnthropicHint": "Anthropic の API です。キーは x-api-key ヘッダーに入れます。",
+  "ai.remoteAzureHint":
+    "アドレス: https://<リソース>.openai.azure.com/openai/v1（AI Foundry の場合は .services.ai.azure.com）。デプロイは Azure でモデルに付けた名前です。Microsoft Entra では、スコープ https://ai.azure.com/.default の OAuth を使います。",
   "ai.remoteAuthNone": "なし",
   "ai.remoteAuthHeader": "ヘッダー内の API キー",
   "ai.remoteAuthBasic": "ユーザー名とパスワード (Basic)",

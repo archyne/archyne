@@ -517,6 +517,12 @@ export const en = {
   "ai.remoteNewName": "New service",
   "ai.remoteName": "Name",
   "ai.remoteAuth": "Authentication",
+  "ai.remoteProtocol": "Kind of service",
+  "ai.remoteProtocolOpenai": "OpenAI-compatible",
+  "ai.remoteDeployment": "Deployment",
+  "ai.remoteAnthropicHint": "Anthropic's own API. The key goes in the x-api-key header.",
+  "ai.remoteAzureHint":
+    "Address: https://<resource>.openai.azure.com/openai/v1, or .services.ai.azure.com for AI Foundry. The deployment is the name you gave the model in Azure. For Microsoft Entra, use OAuth with the scope https://ai.azure.com/.default.",
   "ai.remoteAuthNone": "None",
   "ai.remoteAuthHeader": "API key in a header",
   "ai.remoteAuthBasic": "Username and password (Basic)",
