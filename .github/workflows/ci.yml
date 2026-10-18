@@ -327,3 +327,14 @@ jobs:
       # keychain, and Windows always has one (DPAPI).
       - name: Desktop shell, Generate with secrets
         run: npm run test:e2e:desktop-ai
+      # The same through the VS Code extension, in a real VS Code that
+      # @vscode/test-electron downloads. The extension is built from the app
+      # just built above, as its packaging does.
+      - name: Build the VS Code extension
+        working-directory: extensions/vscode
+        run: |
+          npm ci
+          npm run bundle
+          npm run compile
+      - name: VS Code extension, Generate with secrets
+        run: npm run test:e2e:vscode-ai

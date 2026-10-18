@@ -2,6 +2,9 @@ node_modules
 dist
 # The host half of Generate, built by `npm run build:host` (vite.host.config.ts).
 dist-host
+
+# VS Code downloaded by @vscode/test-electron for tests/e2e-vscode-ai.mts.
+.vscode-test
 *.local
 *.tsbuildinfo
 release
