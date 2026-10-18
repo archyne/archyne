@@ -19,6 +19,7 @@ import {
 import { dialectFor } from "./dialects";
 import { nodeLoopback } from "./loopback";
 import { mtlsFetch } from "./mtls";
+import { signRequest } from "./sigv4";
 import {
   accessToken,
   dpopRequest,
@@ -305,6 +306,13 @@ export class AiHost {
           );
         }
       }
+      if (c.auth.type === "sigv4") {
+        return (await this.transportFor(c))(input, {
+          ...init,
+          headers: await this.signed(c.id, c.auth, String(input), init, headers),
+          redirect: "error",
+        });
+      }
       return (await this.transportFor(c))(input, { ...init, headers, redirect: "error" });
     };
     return (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -312,6 +320,36 @@ export class AiHost {
       if (response.status !== 401 || c.auth.type !== "oauth") return response;
       return send(input, init, true);
     }) as typeof fetch;
+  }
+
+  /**
+   * A request's headers with its AWS signature, made last, over exactly the
+   * method, address, headers and body that are sent.
+   */
+  private async signed(
+    connectionId: string,
+    auth: { region: string; service?: string },
+    url: string,
+    init: RequestInit | undefined,
+    headers: Record<string, string>,
+  ): Promise<Record<string, string>> {
+    const get = (field: string) => this.env.secrets.get(secretKey(connectionId, field));
+    const [accessKeyId, secretAccessKey, sessionToken] = await Promise.all(
+      SECRET_FIELDS.sigv4.map(get),
+    );
+    if (!accessKeyId || !secretAccessKey) {
+      throw new Error("An access key ID and its secret are needed.");
+    }
+    if (init?.body !== undefined && typeof init.body !== "string") {
+      throw new Error("Only a text body can be signed.");
+    }
+    return signRequest(
+      url,
+      { method: init?.method ?? "GET", headers, body: init?.body },
+      { accessKeyId, secretAccessKey, sessionToken },
+      { region: auth.region, service: auth.service || "bedrock" },
+      new Date((this.env.now ?? Date.now)()),
+    );
   }
 
   private oauthSecrets(connectionId: string): OAuthSecrets {

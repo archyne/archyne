@@ -524,6 +524,18 @@ export const messages: Messages = {
     "Die API von Anthropic. Der Schlüssel gehört in den Header x-api-key.",
   "ai.remoteAzureHint":
     "Adresse: https://<Ressource>.openai.azure.com/openai/v1, oder .services.ai.azure.com für AI Foundry. Die Bereitstellung ist der Name, den Sie dem Modell in Azure gegeben haben. Für Microsoft Entra OAuth mit dem Scope https://ai.azure.com/.default verwenden.",
+  "ai.remoteAuthSigv4": "AWS-Signatur (SigV4)",
+  "ai.awsRegion": "Region",
+  "ai.awsService": "Signaturname",
+  "ai.awsAccessKeyId": "Zugriffsschlüssel-ID",
+  "ai.awsSecretAccessKey": "Geheimer Zugriffsschlüssel",
+  "ai.awsSessionToken": "Sitzungstoken (nur bei temporären Anmeldedaten)",
+  "ai.remoteBedrockHint":
+    "Adresse: https://bedrock-runtime.<Region>.amazonaws.com. Mit einem AWS-Zugriffsschlüssel signieren (SigV4) oder einen Bedrock-API-Schlüssel als Bearer-Token in den Authorization-Header setzen. Zum Auflisten der Modelle sind die Berechtigungen bedrock:ListInferenceProfiles und bedrock:ListFoundationModels nötig; ohne sie die Modell-ID eingeben.",
+  "ai.remoteBedrockModel": "Modell-ID oder Inferenzprofil",
+  "ai.remoteProblemRegion": "Die Region ist ungültig; sie sieht aus wie eu-west-1.",
+  "ai.remoteProblemService":
+    "Der Signaturname darf nur Kleinbuchstaben, Ziffern und Bindestriche enthalten.",
   "ai.remoteAuthNone": "Keine",
   "ai.remoteAuthHeader": "API-Schlüssel in einem Header",
   "ai.remoteAuthBasic": "Benutzername und Passwort (Basic)",

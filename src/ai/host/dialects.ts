@@ -1,3 +1,5 @@
+import { EventStreamCodec } from "@smithy/core/event-streams";
+import { fromUtf8, toUtf8 } from "@smithy/util-utf8";
 import { OPENAI_DIALECT, ServerError, type Dialect } from "../server";
 import type { ChatMessage } from "../types";
 import type { Protocol } from "./connection";
@@ -58,6 +60,137 @@ export const ANTHROPIC_DIALECT: Dialect = {
 };
 
 /**
+ * Amazon Bedrock's Converse API (`POST {base}/model/{id}/converse-stream`,
+ * base `https://bedrock-runtime.{region}.amazonaws.com`), one shape for every
+ * model Bedrock serves.
+ *
+ * The stream is not SSE but AWS's binary event stream: length-prefixed
+ * messages, each with typed headers naming the event and a JSON payload.
+ * Only `contentBlockDelta.delta.text` is the answer; `reasoningContent`
+ * deltas are the model thinking, and an `exception` message is an error that
+ * arrived after the 200.
+ *
+ * No `temperature` and no `maxTokens`: Converse passes them through to the
+ * model, and what one model requires another refuses — the newest Claude
+ * models reject any temperature but the default, some models cap the output
+ * below a budget that suits another. The model's defaults suit a diagram.
+ */
+export const BEDROCK_DIALECT: Dialect = {
+  modelsPath: null,
+  chatPath: (model) => `model/${encodeURIComponent(model)}/converse-stream`,
+  body: (_model: string, chat: ChatMessage[]) => {
+    const system = chat.filter((m) => m.role === "system").map((m) => ({ text: m.content }));
+    // Converse wants the turns to alternate; two in a row become one.
+    const messages: Array<{ role: string; content: Array<{ text: string }> }> = [];
+    for (const m of chat) {
+      if (m.role === "system") continue;
+      const last = messages.at(-1);
+      if (last?.role === m.role) last.content.push({ text: m.content });
+      else messages.push({ role: m.role, content: [{ text: m.content }] });
+    }
+    return { ...(system.length ? { system } : {}), messages };
+  },
+  read: readEventStream,
+  listModels: bedrockModels,
+};
+
+/** AWS's event stream, read as it arrives: each message once it is whole. */
+async function readEventStream(
+  body: ReadableStream<Uint8Array>,
+  onPiece: (piece: string) => void,
+): Promise<void> {
+  const codec = new EventStreamCodec(toUtf8, fromUtf8);
+  const reader = body.getReader();
+  let buffer = new Uint8Array(0);
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    const joined = new Uint8Array(buffer.length + value.length);
+    joined.set(buffer);
+    joined.set(value, buffer.length);
+    buffer = joined;
+    // Each message starts with its own total length, big-endian.
+    while (buffer.length >= 4) {
+      const total = new DataView(buffer.buffer, buffer.byteOffset).getUint32(0);
+      if (buffer.length < total) break;
+      // Checks both CRCs; a corrupted message throws rather than misleads.
+      const message = codec.decode(buffer.subarray(0, total));
+      buffer = buffer.slice(total);
+      const header = (name: string) => {
+        const h = message.headers[name];
+        return h && h.type === "string" ? h.value : undefined;
+      };
+      const payload = JSON.parse(toUtf8(message.body) || "{}") as {
+        message?: unknown;
+        delta?: { text?: unknown };
+      };
+      const kind = header(":message-type");
+      if (kind === "exception" || kind === "error") {
+        const name = header(":exception-type") ?? header(":error-code") ?? "error";
+        const why = typeof payload.message === "string" ? `: ${payload.message}` : "";
+        throw new ServerError(`The service reported ${name}${why}`, "http");
+      }
+      if (
+        header(":event-type") === "contentBlockDelta" &&
+        typeof payload.delta?.text === "string"
+      ) {
+        onPiece(payload.delta.text);
+      }
+    }
+  }
+}
+
+/**
+ * What a person can name as the model: the inference profiles first — the
+ * newest models are served only through one — then the base models that
+ * stream text on demand. Both lists come from Bedrock's control plane, the
+ * runtime's host without `-runtime`, signed the same way.
+ *
+ * Listing needs `bedrock:ListInferenceProfiles` and
+ * `bedrock:ListFoundationModels`, which a key allowed only to invoke may
+ * lack; the panel takes a typed model id all the same.
+ */
+async function bedrockModels(
+  baseUrl: string,
+  fetchImpl: typeof fetch,
+): Promise<string[] | { status: number }> {
+  const runtime = new URL(baseUrl);
+  if (!/^bedrock-runtime(-fips)?\./.test(runtime.hostname)) return [];
+  const control = `${runtime.protocol}//${runtime.host.replace("bedrock-runtime", "bedrock")}`;
+  const profiles = await fetchImpl(`${control}/inference-profiles?maxResults=1000`);
+  if (!profiles.ok) return { status: profiles.status };
+  const models = await fetchImpl(`${control}/foundation-models?byOutputModality=TEXT`);
+  if (!models.ok) return { status: models.status };
+  const p = (await profiles.json()) as {
+    inferenceProfileSummaries?: Array<{ inferenceProfileId?: unknown; status?: unknown }>;
+  };
+  const m = (await models.json()) as {
+    modelSummaries?: Array<{
+      modelId?: unknown;
+      responseStreamingSupported?: unknown;
+      inferenceTypesSupported?: unknown;
+    }>;
+  };
+  const ids: string[] = [];
+  for (const profile of p.inferenceProfileSummaries ?? []) {
+    if (typeof profile.inferenceProfileId === "string" && profile.status !== "INACTIVE") {
+      ids.push(profile.inferenceProfileId);
+    }
+  }
+  for (const model of m.modelSummaries ?? []) {
+    if (
+      typeof model.modelId === "string" &&
+      model.responseStreamingSupported !== false &&
+      Array.isArray(model.inferenceTypesSupported) &&
+      model.inferenceTypesSupported.includes("ON_DEMAND")
+    ) {
+      ids.push(model.modelId);
+    }
+  }
+  return ids;
+}
+
+/**
  * The dialect for each protocol a connection can name.
  *
  * Azure OpenAI and AI Foundry are the OpenAI dialect: their v1 API
@@ -73,6 +206,8 @@ export function dialectFor(protocol: Protocol): Dialect | null {
       return OPENAI_DIALECT;
     case "anthropic":
       return ANTHROPIC_DIALECT;
+    case "bedrock":
+      return BEDROCK_DIALECT;
     default:
       return null;
   }

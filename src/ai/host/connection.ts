@@ -14,7 +14,12 @@
  */
 export type Protocol = "openai" | "anthropic" | "bedrock" | "vertex" | "azure";
 
-export const IMPLEMENTED_PROTOCOLS: readonly Protocol[] = ["openai", "azure", "anthropic"];
+export const IMPLEMENTED_PROTOCOLS: readonly Protocol[] = [
+  "openai",
+  "azure",
+  "anthropic",
+  "bedrock",
+];
 
 export type AuthConfig =
   | { type: "none" }
@@ -23,7 +28,13 @@ export type AuthConfig =
   /** HTTP Basic; the password is the secret. */
   | { type: "basic"; username: string }
   /** OAuth for a person signing in (AUTH.local.md, phase 2). */
-  | OAuthConfig;
+  | OAuthConfig
+  /**
+   * AWS Signature Version 4: every request signed with an access key, for
+   * Amazon Bedrock and anything else behind AWS IAM. The key id, the secret
+   * and an optional session token are secrets.
+   */
+  | { type: "sigv4"; region: string; service?: string };
 
 /**
  * OAuth where a person signs in. The host runs the flow and keeps the tokens;
@@ -117,6 +128,7 @@ export const SECRET_FIELDS: Record<AuthType, string[]> = {
   header: ["key"],
   basic: ["password"],
   oauth: ["clientSecret", "privateKey", "tokens", "client", "dpopKey"],
+  sigv4: ["accessKeyId", "secretAccessKey", "sessionToken"],
 };
 
 /**
@@ -129,6 +141,9 @@ export const PAGE_SETTABLE_SECRETS = new Set([
   "password",
   "clientSecret",
   "privateKey",
+  "accessKeyId",
+  "secretAccessKey",
+  "sessionToken",
   ...TLS_SECRET_FIELDS,
 ]);
 
@@ -160,6 +175,10 @@ export function connectionProblem(c: Connection): string | null {
       return "client";
     }
   }
+  if (c.auth.type === "sigv4") {
+    if (!/^[a-z]{2}(-[a-z]+)+-\d+$/.test(c.auth.region)) return "region";
+    if (c.auth.service !== undefined && !/^[a-z0-9-]+$/.test(c.auth.service)) return "service";
+  }
   if (c.clientCertificate && !c.baseUrl.startsWith("https:")) return "tls-https";
   if (
     c.auth.type === "oauth" &&
@@ -170,6 +189,9 @@ export function connectionProblem(c: Connection): string | null {
   }
   for (const name of Object.keys(c.headers ?? {})) {
     if (!isHeaderName(name) || RESERVED_HEADERS.has(name.toLowerCase())) return "extra-header";
+    // The signature's own headers are the signer's to write.
+    if (c.auth.type === "sigv4" && name.toLowerCase().startsWith("x-amz-"))
+      return "extra-header";
   }
   return null;
 }
@@ -202,6 +224,9 @@ export function authHeaders(
       if (tokens) h.Authorization = `Bearer ${tokens.access_token}`;
       break;
     }
+    case "sigv4":
+      // Signed per request, over the method, address and body (core.ts).
+      break;
     case "none":
       break;
   }
@@ -288,6 +313,8 @@ function wantedAuthSecrets(auth: AuthConfig): string[] {
       return ["key"];
     case "basic":
       return ["password"];
+    case "sigv4":
+      return ["accessKeyId", "secretAccessKey", "sessionToken"];
     case "oauth":
       switch (auth.clientAuth) {
         case "private_key_jwt":

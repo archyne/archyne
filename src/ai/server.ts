@@ -136,10 +136,32 @@ export interface Dialect {
   /** Headers the dialect itself needs, beside the credentials. */
   headers?: Record<string, string>;
   body(model: string, chat: ChatMessage[]): unknown;
-  /** The answer text one stream event carries, if any; throws on an error event. */
-  piece(event: unknown): string | undefined;
+  /**
+   * The answer text one server-sent event carries, if any; throws on an
+   * error event. For a dialect whose stream is SSE.
+   */
+  piece?(event: unknown): string | undefined;
+  /** Reads a stream that is not SSE (AWS's binary event stream), throwing on an error in it. */
+  read?(body: ReadableStream<Uint8Array>, onPiece: (piece: string) => void): Promise<void>;
+  /**
+   * Lists the models its own way, when one GET under the base is not how
+   * (another host, several lists); the status instead when refused.
+   */
+  listModels?(baseUrl: string, fetchImpl: Fetch): Promise<string[] | { status: number }>;
   /** Whether a loopback server may relay some of its models to a cloud (Ollama). */
   relays?: boolean;
+}
+
+/**
+ * Only `delta.content` is the answer. Reasoning models served by LM Studio
+ * send their thinking as `delta.reasoning_content`, which is not part of it;
+ * others put it inline in `<think>…</think>`, which `stripThinking` removes
+ * once the text is whole.
+ */
+function openaiPiece(event: unknown): string | undefined {
+  const piece = (event as { choices?: Array<{ delta?: { content?: unknown } }> }).choices?.[0]
+    ?.delta?.content;
+  return typeof piece === "string" ? piece : undefined;
 }
 
 export const OPENAI_DIALECT: Dialect = {
@@ -152,15 +174,7 @@ export const OPENAI_DIALECT: Dialect = {
     // The same answer for the same request: an edit, not a muse.
     temperature: 0,
   }),
-  // Only `delta.content` is the answer. Reasoning models served by LM Studio
-  // send their thinking as `delta.reasoning_content`, which is not part of it;
-  // others put it inline in `<think>…</think>`, which `stripThinking` removes
-  // once the text is whole.
-  piece: (event) => {
-    const piece = (event as { choices?: Array<{ delta?: { content?: unknown } }> }).choices?.[0]
-      ?.delta?.content;
-    return typeof piece === "string" ? piece : undefined;
-  },
+  piece: openaiPiece,
   relays: true,
 };
 
@@ -179,6 +193,17 @@ export async function probeServer(
   dialect: Dialect = OPENAI_DIALECT,
 ): Promise<Reachability> {
   if (!allowed(settings.baseUrl)) return { state: "not-local" };
+  if (dialect.listModels) {
+    let listed: string[] | { status: number };
+    try {
+      listed = await dialect.listModels(settings.baseUrl, fetchImpl);
+    } catch {
+      return { state: "down" };
+    }
+    return Array.isArray(listed)
+      ? { state: "ok", models: listed, remote: [] }
+      : { state: "http", status: listed.status };
+  }
   if (dialect.modelsPath === null) return { state: "ok", models: [], remote: [] };
   const url = endpoint(settings.baseUrl, dialect.modelsPath);
   let response: Response;
@@ -258,7 +283,7 @@ function abortError(): DOMException {
 export async function readStream(
   body: ReadableStream<Uint8Array>,
   onPiece: (piece: string) => void,
-  pick: Dialect["piece"] = OPENAI_DIALECT.piece,
+  pick: (event: unknown) => string | undefined = openaiPiece,
 ): Promise<void> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -335,14 +360,13 @@ export function serverProvider(
       }
       let text = "";
       try {
-        await readStream(
-          response.body,
-          (piece) => {
-            text += piece;
-            options?.onToken?.(stripThinking(text));
-          },
-          dialect.piece,
-        );
+        const onPiece = (piece: string) => {
+          text += piece;
+          options?.onToken?.(stripThinking(text));
+        };
+        await (dialect.read
+          ? dialect.read(response.body, onPiece)
+          : readStream(response.body, onPiece, dialect.piece));
       } catch (err) {
         if (options?.signal?.aborted) throw abortError();
         throw err;

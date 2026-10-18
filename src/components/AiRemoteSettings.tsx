@@ -32,9 +32,23 @@ export function AiRemoteSettings({ disabled }: { disabled: boolean }) {
   const removeConnection = useAiEngine((s) => s.removeConnection);
   const selectConnection = useAiEngine((s) => s.selectConnection);
   const current = connections.find((c) => c.id === connectionId) ?? null;
+  // Open when a service is shown that still needs a model, decided then and
+  // not on every keystroke: picking a model from the list folds it away,
+  // typing one (a deployment, a Bedrock model id) does not, or the form would
+  // close on the first letter.
+  const [shown, setShown] = useState({ id: connectionId, open: !current?.model });
+  if (shown.id !== connectionId) setShown({ id: connectionId, open: !current?.model });
+  const open = shown.id === connectionId ? shown.open : !current?.model;
 
   return (
-    <details className="ai-server" open={!current?.model}>
+    <details
+      className="ai-server"
+      open={open}
+      onToggle={(e) => {
+        const now = e.currentTarget.open;
+        if (now !== open) setShown({ id: connectionId, open: now });
+      }}
+    >
       <summary>
         {t("ai.serverSummary", {
           model: current
@@ -80,7 +94,12 @@ export function AiRemoteSettings({ disabled }: { disabled: boolean }) {
         )}
       </div>
       {current ? (
-        <ConnectionForm key={current.id} connection={current} disabled={disabled} />
+        <ConnectionForm
+          key={current.id}
+          connection={current}
+          disabled={disabled}
+          onPicked={() => setShown({ id: current.id, open: false })}
+        />
       ) : (
         <p className="ai-server-hint">{t("ai.remoteNone")}</p>
       )}
@@ -90,28 +109,57 @@ export function AiRemoteSettings({ disabled }: { disabled: boolean }) {
 
 /**
  * What choosing a kind of service fills in: its public address when it has
- * one, and the header its key goes in. Only ever over what is still a default,
- * so nothing the person typed is lost by changing their mind.
+ * one, and how it authenticates. Only ever over what is still a default, so
+ * nothing the person typed is lost by changing their mind.
  */
 const PROTOCOL_DEFAULTS: Record<
-  "openai" | "anthropic" | "azure",
-  { baseUrl: string; header: { name: string; prefix?: string }; hint?: MessageKey }
+  "openai" | "anthropic" | "azure" | "bedrock",
+  { baseUrl: string; auth: AuthConfig; hint?: MessageKey }
 > = {
-  openai: { baseUrl: "", header: { name: "Authorization", prefix: "Bearer " } },
+  openai: {
+    baseUrl: "",
+    auth: { type: "header", name: "Authorization", prefix: "Bearer " },
+  },
   anthropic: {
     baseUrl: "https://api.anthropic.com/v1",
-    header: { name: "x-api-key" },
+    auth: { type: "header", name: "x-api-key" },
     hint: "ai.remoteAnthropicHint",
   },
-  azure: { baseUrl: "", header: { name: "api-key" }, hint: "ai.remoteAzureHint" },
+  azure: {
+    baseUrl: "",
+    auth: { type: "header", name: "api-key" },
+    hint: "ai.remoteAzureHint",
+  },
+  bedrock: {
+    baseUrl: bedrockRuntime("us-east-1"),
+    auth: { type: "sigv4", region: "us-east-1" },
+    hint: "ai.remoteBedrockHint",
+  },
 };
+
+function bedrockRuntime(region: string): string {
+  return `https://bedrock-runtime.${region}.amazonaws.com`;
+}
+
+/** The region in a Bedrock runtime address, so the signature can default to it. */
+function regionOf(baseUrl: string): string | null {
+  try {
+    const host = new URL(baseUrl).hostname;
+    return /^bedrock-runtime(?:-fips)?\.([a-z0-9-]+)\.amazonaws\.com$/.exec(host)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
 
 function ConnectionForm({
   connection,
   disabled,
+  onPicked,
 }: {
   connection: Connection;
   disabled: boolean;
+  /** A model was picked from the list: the settings can fold away. */
+  onPicked: () => void;
 }) {
   const t = useT();
   const update = useAiEngine((s) => s.updateConnection);
@@ -161,7 +209,9 @@ function ConnectionForm({
           ? { type, username: "" }
           : type === "oauth"
             ? { type, flow: "authorization_code", register: true, scopes: "" }
-            : { type: "none" };
+            : type === "sigv4"
+              ? { type, region: regionOf(connection.baseUrl) ?? "us-east-1" }
+              : { type: "none" };
     patch({ auth });
   };
 
@@ -173,18 +223,33 @@ function ConnectionForm({
     const typed = connection.baseUrl !== "https://" && connection.baseUrl !== "";
     if (!typed || connection.baseUrl === was?.baseUrl) p.baseUrl = next.baseUrl || "https://";
     const auth = connection.auth;
-    if (
-      auth.type === "none" ||
-      (auth.type === "header" && was && auth.name === was.header.name)
-    ) {
-      p.auth = { type: "header", ...next.header };
+    if (auth.type === "none" || (was && JSON.stringify(auth) === JSON.stringify(was.auth))) {
+      p.auth = next.auth;
     }
     setResult(null);
     patch(p);
   };
   const defaults = PROTOCOL_DEFAULTS[connection.protocol as keyof typeof PROTOCOL_DEFAULTS];
-  // A deployment is a name the person gave, not one the service lists.
-  const typedModel = connection.protocol === "azure";
+  // A deployment is a name the person gave, not one the service lists; a
+  // Bedrock model may be one only a profile or an ARN names. Typed, then,
+  // with what the service did list offered alongside.
+  const typedModel = connection.protocol === "azure" || connection.protocol === "bedrock";
+  const suggest = connection.protocol === "bedrock";
+  const setRegion = (region: string) => {
+    const was = connection.auth.type === "sigv4" ? connection.auth : null;
+    const p: Partial<Connection> = {
+      auth: { type: "sigv4", region, ...(was?.service ? { service: was.service } : {}) },
+    };
+    // The address follows the region while it is still the default one for it.
+    if (
+      was &&
+      connection.baseUrl === bedrockRuntime(was.region) &&
+      /^[a-z0-9-]+$/.test(region)
+    ) {
+      p.baseUrl = bedrockRuntime(region);
+    }
+    patch(p);
+  };
 
   const models = result && result !== "checking" && result.state === "ok" ? result.models : [];
   const options =
@@ -214,6 +279,7 @@ function ConnectionForm({
           <option value="openai">{t("ai.remoteProtocolOpenai")}</option>
           <option value="anthropic">Anthropic</option>
           <option value="azure">Azure OpenAI / AI Foundry</option>
+          <option value="bedrock">Amazon Bedrock</option>
         </select>
       </label>
       {defaults?.hint && <p className="ai-server-hint">{t(defaults.hint)}</p>}
@@ -239,6 +305,7 @@ function ConnectionForm({
           <option value="header">{t("ai.remoteAuthHeader")}</option>
           <option value="basic">{t("ai.remoteAuthBasic")}</option>
           <option value="oauth">{t("ai.remoteAuthOAuth")}</option>
+          <option value="sigv4">{t("ai.remoteAuthSigv4")}</option>
         </select>
       </label>
 
@@ -292,6 +359,39 @@ function ConnectionForm({
           />
         </label>
       )}
+      {connection.auth.type === "sigv4" && (
+        <div className="ai-remote-row">
+          <label className="ai-server-field">
+            {t("ai.awsRegion")}
+            <input
+              type="text"
+              value={connection.auth.region}
+              spellCheck={false}
+              disabled={disabled}
+              onChange={(e) => setRegion(e.target.value.trim())}
+            />
+          </label>
+          <label className="ai-server-field">
+            {t("ai.awsService")}
+            <input
+              type="text"
+              value={connection.auth.service ?? ""}
+              placeholder="bedrock"
+              spellCheck={false}
+              disabled={disabled}
+              onChange={(e) =>
+                patch({
+                  auth: {
+                    type: "sigv4",
+                    region: (connection.auth as { region: string }).region,
+                    ...(e.target.value.trim() ? { service: e.target.value.trim() } : {}),
+                  },
+                })
+              }
+            />
+          </label>
+        </div>
+      )}
       {connection.auth.type === "oauth" && (
         <AiOAuthSection
           connectionId={connection.id}
@@ -340,14 +440,22 @@ function ConnectionForm({
 
       {typedModel ? (
         <label className="ai-server-field">
-          {t("ai.remoteDeployment")}
+          {t(suggest ? "ai.remoteBedrockModel" : "ai.remoteDeployment")}
           <input
             type="text"
             value={connection.model ?? ""}
+            list={suggest ? `ai-models-${connection.id}` : undefined}
             spellCheck={false}
             disabled={disabled}
             onChange={(e) => patch({ model: e.target.value.trim() })}
           />
+          {suggest && (
+            <datalist id={`ai-models-${connection.id}`}>
+              {models.map((id) => (
+                <option key={id} value={id} />
+              ))}
+            </datalist>
+          )}
         </label>
       ) : (
         <label className="ai-server-field">
@@ -356,7 +464,10 @@ function ConnectionForm({
             value={connection.model ?? ""}
             aria-label={t("ai.serverModel")}
             disabled={disabled || options.length === 0}
-            onChange={(e) => patch({ model: e.target.value })}
+            onChange={(e) => {
+              patch({ model: e.target.value });
+              onPicked();
+            }}
           >
             <option value="" disabled>
               {t("ai.serverPickModel")}
@@ -478,6 +589,9 @@ const SECRET_LABELS: Record<string, MessageKey> = {
   tlsKey: "ai.tlsKey",
   tlsPassphrase: "ai.tlsPassphrase",
   tlsCa: "ai.tlsCa",
+  accessKeyId: "ai.awsAccessKeyId",
+  secretAccessKey: "ai.awsSecretAccessKey",
+  sessionToken: "ai.awsSessionToken",
 };
 
 /** PEM blocks span lines; everything else is one. */

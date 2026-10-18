@@ -1,8 +1,9 @@
 /**
  * The hosted dialects through the desktop shell, set up in the panel: an
- * Anthropic Messages service and an Azure OpenAI deployment, each a stand-in
- * on a loopback port that answers only in its own dialect and only with its
- * own key header.
+ * Anthropic Messages service, an Azure OpenAI deployment and Amazon Bedrock,
+ * each a stand-in on a loopback port that answers only in its own dialect and
+ * only with its own credentials — for Bedrock, a SigV4 signature checked the
+ * way AWS checks it, over the request as it arrived.
  *
  * What only the real app can show: that choosing a kind of service in the
  * panel fills in what it should, that the choice reaches the shell, and that
@@ -17,6 +18,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _electron as electron } from "playwright";
+import { bedrockEvent, verifySigV4 } from "../src/ai/host/sigv4.testkit";
 
 let failed = false;
 function check(label: string, ok: boolean, detail: string): void {
@@ -29,7 +31,9 @@ function check(label: string, ok: boolean, detail: string): void {
 
 const ANTHROPIC_KEY = "sk-ant-e2e-51c9";
 const AZURE_KEY = "azure-e2e-0d77";
-const seen: Array<{ url: string; body?: Record<string, unknown> }> = [];
+const AWS_KEYS = { accessKeyId: "AKIDE2EBEDROCK", secretAccessKey: "e2e/bedrock+secret" };
+const AWS_SCOPE = { region: "eu-central-1", service: "bedrock" };
+const seen: Array<{ url: string; body?: Record<string, unknown>; signature?: string }> = [];
 
 /** The user's document, out of the envelope prompt.ts wraps it in. */
 function documentOf(text: string): string {
@@ -38,12 +42,16 @@ function documentOf(text: string): string {
   return text.slice(start + "It looks like this:\n\n".length, end).trim();
 }
 
-function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+function readRaw(req: IncomingMessage): Promise<string> {
   return new Promise((resolve) => {
     let body = "";
     req.on("data", (c) => (body += c));
-    req.on("end", () => resolve(JSON.parse(body) as Record<string, unknown>));
+    req.on("end", () => resolve(body));
   });
+}
+
+async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+  return JSON.parse(await readRaw(req)) as Record<string, unknown>;
 }
 
 const sse = (name: string, data: unknown) =>
@@ -112,6 +120,38 @@ const service = createServer(async (req, res) => {
       res.writeHead(200, { "Content-Type": "text/event-stream" });
       res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: answer } }] })}\n\n`);
       res.end("data: [DONE]\n\n");
+      return;
+    }
+  }
+  if (url.startsWith("/bedrock/")) {
+    const raw = await readRaw(req);
+    const signature = await verifySigV4(
+      {
+        method: req.method ?? "GET",
+        url: `${base}${url}`,
+        headers: req.headers,
+        body: raw || undefined,
+      },
+      AWS_KEYS,
+      AWS_SCOPE,
+    );
+    const body = raw ? (JSON.parse(raw) as Record<string, unknown>) : undefined;
+    seen.push({ url, body, signature: signature.ok ? "ok" : signature.why });
+    if (!signature.ok) {
+      res
+        .writeHead(403)
+        .end('{"message":"The request signature we calculated does not match"}');
+      return;
+    }
+    if (req.method === "POST" && /^\/bedrock\/model\/[^/]+\/converse-stream$/.test(url)) {
+      const messages = body!.messages as Array<{ content: Array<{ text: string }> }>;
+      const answer = `${documentOf(messages.at(-1)!.content.at(-1)!.text)}\n  aws["Via Converse"]`;
+      res.writeHead(200, { "Content-Type": "application/vnd.amazon.eventstream" });
+      res.write(bedrockEvent("messageStart", { role: "assistant" }));
+      res.write(
+        bedrockEvent("contentBlockDelta", { contentBlockIndex: 0, delta: { text: answer } }),
+      );
+      res.end(bedrockEvent("messageStop", { stopReason: "end_turn" }));
       return;
     }
   }
@@ -227,9 +267,58 @@ check(
   JSON.stringify(azureCall?.body?.model),
 );
 
+/* ---------- Amazon Bedrock, signed with SigV4 ---------- */
+
+await openSettings();
+await page.getByRole("button", { name: "Add service" }).click();
+await kind.selectOption("bedrock");
+check(
+  "choosing Bedrock fills in the runtime address and a SigV4 signature for its region",
+  (await field("Address").inputValue()) === "https://bedrock-runtime.us-east-1.amazonaws.com" &&
+    (await page.getByRole("combobox", { name: "Authentication" }).inputValue()) === "sigv4" &&
+    (await field("Region").inputValue()) === "us-east-1",
+  await field("Address").inputValue(),
+);
+await field("Region").fill("eu-central-1");
+check(
+  "the address follows the region while it is still the default",
+  (await field("Address").inputValue()) ===
+    "https://bedrock-runtime.eu-central-1.amazonaws.com",
+  await field("Address").inputValue(),
+);
+await field("Address").fill(`${base}/bedrock`);
+for (const [label, value] of [
+  ["Access key ID", AWS_KEYS.accessKeyId],
+  ["Secret access key", AWS_KEYS.secretAccessKey],
+] as const) {
+  await field(label).fill(value);
+  await field(label).press("Enter");
+}
+await field("Model ID or inference profile").fill("eu.anthropic.claude-e2e-v1:0");
+await page.waitForTimeout(300);
+await send("add a step from Bedrock");
+const converse = seen.filter((s) => s.url.endsWith("/converse-stream")).at(-1);
+check(
+  "the turn reached the stand-in signed, the signature valid over what arrived",
+  converse?.signature === "ok" &&
+    converse.url === "/bedrock/model/eu.anthropic.claude-e2e-v1%3A0/converse-stream",
+  JSON.stringify(converse ? { url: converse.url, signature: converse.signature } : null),
+);
+check("the Converse answer lands", await onCanvas("Via Converse"), "");
+const awsView = await page.evaluate(() => ({
+  storage: JSON.stringify({ ...localStorage }),
+  html: document.documentElement.outerHTML,
+}));
+check(
+  "the secret access key is not in the page",
+  !awsView.storage.includes(AWS_KEYS.secretAccessKey) &&
+    !awsView.html.includes(AWS_KEYS.secretAccessKey),
+  "found in the page",
+);
+
 await app.close();
 service.close();
 service.closeAllConnections();
 rmSync(userData, { recursive: true, force: true });
 if (failed) process.exit(1);
-console.log("\nAnthropic and Azure OpenAI work through the desktop shell");
+console.log("\nAnthropic, Azure OpenAI and Amazon Bedrock work through the desktop shell");

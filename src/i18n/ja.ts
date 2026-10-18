@@ -512,6 +512,17 @@ export const messages: Messages = {
   "ai.remoteAnthropicHint": "Anthropic の API です。キーは x-api-key ヘッダーに入れます。",
   "ai.remoteAzureHint":
     "アドレス: https://<リソース>.openai.azure.com/openai/v1（AI Foundry の場合は .services.ai.azure.com）。デプロイは Azure でモデルに付けた名前です。Microsoft Entra では、スコープ https://ai.azure.com/.default の OAuth を使います。",
+  "ai.remoteAuthSigv4": "AWS 署名（SigV4）",
+  "ai.awsRegion": "リージョン",
+  "ai.awsService": "署名名",
+  "ai.awsAccessKeyId": "アクセスキー ID",
+  "ai.awsSecretAccessKey": "シークレットアクセスキー",
+  "ai.awsSessionToken": "セッショントークン（一時的な認証情報の場合のみ）",
+  "ai.remoteBedrockHint":
+    "アドレス: https://bedrock-runtime.<リージョン>.amazonaws.com。AWS アクセスキーで署名する（SigV4）か、Bedrock の API キーを Bearer トークンとして Authorization ヘッダーに入れます。モデルの一覧には bedrock:ListInferenceProfiles と bedrock:ListFoundationModels の権限が必要です。権限がない場合はモデル ID を入力してください。",
+  "ai.remoteBedrockModel": "モデル ID または推論プロファイル",
+  "ai.remoteProblemRegion": "リージョンが正しくありません。eu-west-1 のような形式です。",
+  "ai.remoteProblemService": "署名名に使えるのは小文字、数字、ハイフンだけです。",
   "ai.remoteAuthNone": "なし",
   "ai.remoteAuthHeader": "ヘッダー内の API キー",
   "ai.remoteAuthBasic": "ユーザー名とパスワード (Basic)",

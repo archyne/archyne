@@ -515,6 +515,17 @@ export const messages: Messages = {
   "ai.remoteAnthropicHint": "واجهة Anthropic البرمجية. يوضع المفتاح في الترويسة x-api-key.",
   "ai.remoteAzureHint":
     "العنوان: https://<المورد>.openai.azure.com/openai/v1، أو ‎.services.ai.azure.com لـ AI Foundry. النشر هو الاسم الذي أعطيته للنموذج في Azure. لـ Microsoft Entra استخدم OAuth بالنطاق https://ai.azure.com/.default.",
+  "ai.remoteAuthSigv4": "توقيع AWS ‏(SigV4)",
+  "ai.awsRegion": "المنطقة",
+  "ai.awsService": "اسم التوقيع",
+  "ai.awsAccessKeyId": "معرّف مفتاح الوصول",
+  "ai.awsSecretAccessKey": "مفتاح الوصول السري",
+  "ai.awsSessionToken": "رمز الجلسة (لبيانات الاعتماد المؤقتة فقط)",
+  "ai.remoteBedrockHint":
+    "العنوان: https://bedrock-runtime.<المنطقة>.amazonaws.com. وقّع بمفتاح وصول AWS ‏(SigV4)، أو ضع مفتاح API لـ Bedrock في الترويسة Authorization كرمز Bearer. يتطلب سرد النماذج الصلاحيتين bedrock:ListInferenceProfiles وbedrock:ListFoundationModels؛ وبدونهما اكتب معرّف النموذج.",
+  "ai.remoteBedrockModel": "معرّف النموذج أو ملف تعريف الاستدلال",
+  "ai.remoteProblemRegion": "المنطقة غير صالحة؛ شكلها مثل eu-west-1.",
+  "ai.remoteProblemService": "لا يجوز أن يحتوي اسم التوقيع إلا على أحرف صغيرة وأرقام وشرطات.",
   "ai.remoteAuthNone": "بدون",
   "ai.remoteAuthHeader": "مفتاح API في ترويسة",
   "ai.remoteAuthBasic": "اسم المستخدم وكلمة المرور (Basic)",

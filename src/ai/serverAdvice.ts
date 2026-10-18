@@ -79,6 +79,10 @@ export function remoteAdvice(
           return t("ai.remoteProblemTlsHttps");
         case "tls-client-auth":
           return t("ai.remoteProblemTlsClientAuth");
+        case "region":
+          return t("ai.remoteProblemRegion");
+        case "service":
+          return t("ai.remoteProblemService");
         default:
           return t("ai.remoteProblemUnknown");
       }

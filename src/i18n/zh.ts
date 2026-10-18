@@ -503,6 +503,17 @@ export const messages: Messages = {
   "ai.remoteAnthropicHint": "Anthropic 自己的 API。密钥放在 x-api-key 请求头中。",
   "ai.remoteAzureHint":
     "地址：https://<资源>.openai.azure.com/openai/v1，AI Foundry 则为 .services.ai.azure.com。部署是你在 Azure 中为模型起的名称。使用 Microsoft Entra 时，请选择 OAuth，范围为 https://ai.azure.com/.default。",
+  "ai.remoteAuthSigv4": "AWS 签名（SigV4）",
+  "ai.awsRegion": "区域",
+  "ai.awsService": "签名名称",
+  "ai.awsAccessKeyId": "访问密钥 ID",
+  "ai.awsSecretAccessKey": "秘密访问密钥",
+  "ai.awsSessionToken": "会话令牌（仅限临时凭证）",
+  "ai.remoteBedrockHint":
+    "地址：https://bedrock-runtime.<区域>.amazonaws.com。使用 AWS 访问密钥签名（SigV4），或将 Bedrock API 密钥作为 Bearer 令牌放入 Authorization 请求头。列出模型需要 bedrock:ListInferenceProfiles 和 bedrock:ListFoundationModels 权限；没有这些权限时，请直接输入模型 ID。",
+  "ai.remoteBedrockModel": "模型 ID 或推理配置文件",
+  "ai.remoteProblemRegion": "区域无效，格式应类似 eu-west-1。",
+  "ai.remoteProblemService": "签名名称只能包含小写字母、数字和连字符。",
   "ai.remoteAuthNone": "无",
   "ai.remoteAuthHeader": "请求头中的 API 密钥",
   "ai.remoteAuthBasic": "用户名和密码（Basic）",

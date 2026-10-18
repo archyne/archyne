@@ -523,6 +523,18 @@ export const en = {
   "ai.remoteAnthropicHint": "Anthropic's own API. The key goes in the x-api-key header.",
   "ai.remoteAzureHint":
     "Address: https://<resource>.openai.azure.com/openai/v1, or .services.ai.azure.com for AI Foundry. The deployment is the name you gave the model in Azure. For Microsoft Entra, use OAuth with the scope https://ai.azure.com/.default.",
+  "ai.remoteAuthSigv4": "AWS signature (SigV4)",
+  "ai.awsRegion": "Region",
+  "ai.awsService": "Signing name",
+  "ai.awsAccessKeyId": "Access key ID",
+  "ai.awsSecretAccessKey": "Secret access key",
+  "ai.awsSessionToken": "Session token (temporary credentials only)",
+  "ai.remoteBedrockHint":
+    "Address: https://bedrock-runtime.<region>.amazonaws.com. Sign with an AWS access key (SigV4), or put a Bedrock API key in the Authorization header as a Bearer token. Listing the models needs the bedrock:ListInferenceProfiles and bedrock:ListFoundationModels permissions; without them, type the model ID.",
+  "ai.remoteBedrockModel": "Model ID or inference profile",
+  "ai.remoteProblemRegion": "The region is not valid; it looks like eu-west-1.",
+  "ai.remoteProblemService":
+    "The signing name may contain only lowercase letters, digits and hyphens.",
   "ai.remoteAuthNone": "None",
   "ai.remoteAuthHeader": "API key in a header",
   "ai.remoteAuthBasic": "Username and password (Basic)",

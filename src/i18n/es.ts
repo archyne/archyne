@@ -518,6 +518,18 @@ export const messages: Messages = {
   "ai.remoteAnthropicHint": "La API de Anthropic. La clave va en la cabecera x-api-key.",
   "ai.remoteAzureHint":
     "Dirección: https://<recurso>.openai.azure.com/openai/v1, o .services.ai.azure.com para AI Foundry. La implementación es el nombre que diste al modelo en Azure. Para Microsoft Entra, usa OAuth con el ámbito https://ai.azure.com/.default.",
+  "ai.remoteAuthSigv4": "Firma de AWS (SigV4)",
+  "ai.awsRegion": "Región",
+  "ai.awsService": "Nombre de firma",
+  "ai.awsAccessKeyId": "ID de clave de acceso",
+  "ai.awsSecretAccessKey": "Clave de acceso secreta",
+  "ai.awsSessionToken": "Token de sesión (solo credenciales temporales)",
+  "ai.remoteBedrockHint":
+    "Dirección: https://bedrock-runtime.<región>.amazonaws.com. Firma con una clave de acceso de AWS (SigV4) o pon una clave de API de Bedrock en la cabecera Authorization como token Bearer. Para listar los modelos hacen falta los permisos bedrock:ListInferenceProfiles y bedrock:ListFoundationModels; sin ellos, escribe el ID del modelo.",
+  "ai.remoteBedrockModel": "ID del modelo o perfil de inferencia",
+  "ai.remoteProblemRegion": "La región no es válida; tiene la forma eu-west-1.",
+  "ai.remoteProblemService":
+    "El nombre de firma solo puede contener minúsculas, dígitos y guiones.",
   "ai.remoteAuthNone": "Ninguna",
   "ai.remoteAuthHeader": "Clave de API en una cabecera",
   "ai.remoteAuthBasic": "Usuario y contraseña (Basic)",

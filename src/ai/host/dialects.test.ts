@@ -166,9 +166,9 @@ describe("Anthropic Messages", () => {
   });
 
   it("finds no answer in an event it does not define", () => {
-    expect(ANTHROPIC_DIALECT.piece({ type: "ping" })).toBeUndefined();
+    expect(ANTHROPIC_DIALECT.piece!({ type: "ping" })).toBeUndefined();
     expect(
-      ANTHROPIC_DIALECT.piece({
+      ANTHROPIC_DIALECT.piece!({
         type: "content_block_delta",
         delta: { type: "input_json_delta", partial_json: "{" },
       }),

@@ -98,7 +98,7 @@ describe("connectionProblem", () => {
   });
 
   it("refuses what would make a broken or dangerous request", () => {
-    expect(connectionProblem({ ...GATEWAY, protocol: "bedrock" })).toBe("protocol");
+    expect(connectionProblem({ ...GATEWAY, protocol: "vertex" })).toBe("protocol");
     expect(connectionProblem({ ...GATEWAY, auth: { type: "header", name: "bad name" } })).toBe(
       "header-name",
     );
