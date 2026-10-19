@@ -97,6 +97,30 @@ Reports are in scope where diagram content reaches the extension host as
 anything other than text, where the webview can read outside that directory,
 or where an edit is applied to a document other than the one being viewed.
 
+### Generate's model connections
+
+Generate sends the diagram and the user's request to a model the user
+configures ([docs/generate.md](docs/generate.md)) — never to a service of
+Archyne's. Two boundaries carry the weight:
+
+- **The web build reaches loopback only.** Its `connect-src` names
+  `http://localhost:*` and `http://127.0.0.1:*` for this and nothing else, so
+  the page cannot send a diagram to another machine whatever it is told.
+- **The page never holds a credential.** In the desktop app and VS Code, keys,
+  passwords, private keys and OAuth tokens are given once to the host process
+  (Electron's main process, or the extension host), stored there — `safeStorage`
+  or VS Code's `SecretStorage`; on Linux without a keyring, refused rather than
+  kept in plain text — and never sent back. The host makes every request:
+  `https` only off this machine, redirects refused, a credential attached only
+  to requests made for its own connection. A page may set the secrets a person types
+  but never a token or a registered client, which only the host's own flows
+  produce.
+
+Reports are in scope where a secret can be read back by the page or is sent
+with a request that is not its own connection's, where the web build can reach a
+non-loopback address, or where an OAuth flow can be completed with a forged
+state, a substituted code or another issuer's response.
+
 ## Out of scope
 
 - Vulnerabilities in dependencies with no exploitable path in Archyne (report

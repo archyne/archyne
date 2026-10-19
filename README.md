@@ -252,6 +252,26 @@ arrives as the box it looks like rather than as an empty subgraph.
 > with the output elsewhere:
 > `npx electron-builder --win -c.directories.output=%LOCALAPPDATA%\archyne-release`
 
+## Generate — edit a diagram by asking
+
+**More → Generate** turns a request in your own words ("add a retry after the
+payment fails") into an edit of the diagram on screen, one undoable step at a
+time. Archyne ships no model and runs no service: Generate uses one you
+choose.
+
+- **A model on your own computer** — Ollama, LM Studio or any server that
+  speaks the OpenAI API, in every build. The web version can reach only
+  `localhost`, so the diagram stays on your machine.
+- **A hosted service**, in the desktop app and VS Code — anything
+  OpenAI-compatible, Anthropic, Azure OpenAI / AI Foundry, Amazon Bedrock or
+  Google Vertex AI, signing in with a key, OAuth (browser, device code,
+  machine or service-account identities, DPoP), AWS Signature V4 or a client
+  certificate. Secrets stay in the OS keychain or VS Code's secret storage;
+  the page never holds one.
+
+Setup, the CORS settings the web version needs, and where secrets go:
+[docs/generate.md](docs/generate.md).
+
 ## Embedding Archyne in another app
 
 Load the app with `?embed=1` inside an iframe and talk to it over
