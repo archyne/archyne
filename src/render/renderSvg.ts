@@ -736,7 +736,17 @@ function edgeLabelMarkup(text: string, at: { x: number; y: number }): string {
  * only a name can point at a definition in this document.
  */
 function edgeAttrs(edge: FlowEdge): string {
-  const named = (m: unknown) => (typeof m === "string" && m ? m : null);
+  // Flowchart edges carry their arrowhead as an object, not a marker id;
+  // map it to the plain arrow so `<-->` keeps both heads.
+  const named = (m: unknown) => {
+    if (typeof m === "string" && m) {
+      return m;
+    } else if (typeof m === "object" && m) {
+      return "arch-arrow";
+    } else {
+      return null;
+    }
+  }
   const end = named(edge.markerEnd);
   const start = named(edge.markerStart);
 
