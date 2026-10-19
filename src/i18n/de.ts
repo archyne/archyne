@@ -465,6 +465,7 @@ export const messages: Messages = {
   "ai.newHint": "Diese Unterhaltung vergessen und neu beginnen",
   "ai.send": "Senden",
   "ai.sendHint": "Senden (Eingabetaste)",
+  "ai.thread": "Unterhaltung",
   "ai.seed":
     "Verlangen Sie ein Diagramm und es wird hier gezeichnet. Jede weitere Bitte ändert das Diagramm auf dem Bildschirm.",
   "ai.cancel": "Stopp",

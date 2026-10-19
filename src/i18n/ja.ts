@@ -455,6 +455,7 @@ export const messages: Messages = {
   "ai.newHint": "この会話を忘れて最初からやり直す",
   "ai.send": "送信",
   "ai.sendHint": "送信（Enter）",
+  "ai.thread": "会話",
   "ai.seed": "図を頼むとここに描かれます。それ以降の各依頼は、画面に出ている図を変更します。",
   "ai.cancel": "停止",
   "ai.cancelHint": "生成を停止する",

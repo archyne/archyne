@@ -1635,6 +1635,11 @@ body.resizing-side {
   padding: 2px 2px 10px;
 }
 
+.ai-thread:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .ai-seed {
   margin: 8px 2px 0;
   font-size: 12px;

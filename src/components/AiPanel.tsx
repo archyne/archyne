@@ -148,7 +148,10 @@ export function AiPanel() {
         </div>
       )}
 
-      <div className="ai-thread">
+      {/* A tabstop, because it scrolls: with the settings open it can be a few
+          lines tall, and the keyboard must be able to read past the fold.
+          A region, not a log: a log would read every streamed token aloud. */}
+      <div className="ai-thread" tabIndex={0} role="region" aria-label={t("ai.thread")}>
         {turns.length === 0 && <p className="ai-seed">{t("ai.seed")}</p>}
         {turns.map((turn) => (
           <div className="ai-turn" key={turn.id}>

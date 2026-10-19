@@ -340,6 +340,10 @@ jobs:
       # stand-ins that answer only in their own dialect and credentials.
       - name: Desktop shell, hosted dialects
         run: npm run test:e2e:desktop-protocols
+      # The remote-service settings exist only where a host keeps secrets, so
+      # the web build's axe audit never sees them; this audits every variant.
+      - name: Desktop shell, accessibility of the remote settings
+        run: npm run test:e2e:desktop-a11y
       # The same through the VS Code extension, in a real VS Code that
       # @vscode/test-electron downloads. The extension is built from the app
       # just built above, as its packaging does.

@@ -459,6 +459,7 @@ export const messages: Messages = {
   "ai.newHint": "انسَ هذه المحادثة وابدأ من جديد",
   "ai.send": "إرسال",
   "ai.sendHint": "إرسال (إدخال)",
+  "ai.thread": "المحادثة",
   "ai.seed": "اطلب مخططًا وسيُرسم هنا. كل طلب لاحق يغيّر المخطط الظاهر على الشاشة.",
   "ai.cancel": "إيقاف",
   "ai.cancelHint": "إيقاف التوليد",

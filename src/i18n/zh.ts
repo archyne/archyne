@@ -449,6 +449,7 @@ export const messages: Messages = {
   "ai.newHint": "忘记此对话并重新开始",
   "ai.send": "发送",
   "ai.sendHint": "发送（Enter）",
+  "ai.thread": "对话",
   "ai.seed": "请求一个图，它会绘制在这里。之后的每个请求都会修改屏幕上当前的图。",
   "ai.cancel": "停止",
   "ai.cancelHint": "停止生成",

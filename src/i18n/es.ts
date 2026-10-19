@@ -460,6 +460,7 @@ export const messages: Messages = {
   "ai.newHint": "Olvidar esta conversación y empezar de nuevo",
   "ai.send": "Enviar",
   "ai.sendHint": "Enviar (Intro)",
+  "ai.thread": "Conversación",
   "ai.seed":
     "Pide un diagrama y se dibujará aquí. Cada petición posterior cambia el diagrama que tienes en pantalla.",
   "ai.cancel": "Detener",

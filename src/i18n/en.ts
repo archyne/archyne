@@ -466,6 +466,7 @@ export const en = {
   "ai.newHint": "Forget this conversation and start again",
   "ai.send": "Send",
   "ai.sendHint": "Send (Enter)",
+  "ai.thread": "Conversation",
   "ai.seed":
     "Ask for a diagram and it is drawn here. Every further request changes the diagram you have on screen.",
   "ai.cancel": "Stop",
