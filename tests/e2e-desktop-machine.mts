@@ -6,14 +6,16 @@
  * serves HTTPS from a throwaway CA, which the panel is given as a company CA.
  *
  * What only the real app can show: that the multi-line PEM fields reach the
- * shell and nothing comes back; that the shell's mTLS transport, private-key
+ * shell and nothing comes back; that a certificate and its key chosen as one
+ * file, in the shell's own dialog, are read by the shell and never pass
+ * through the page; that the shell's mTLS transport, private-key
  * assertion and DPoP proofs all hold together on one connection; and that
  * neither key appears in the page or in clear on disk.
  *
  * Run:  npm run build, then npx tsx tests/e2e-desktop-machine.mts
  */
 import { generateKeyPairSync } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _electron as electron } from "playwright";
@@ -42,6 +44,18 @@ const userData = mkdtempSync(join(tmpdir(), "archyne-machine-"));
 const app = await electron.launch({
   args: ["desktop/main.cjs", `--user-data-dir=${userData}`],
 });
+// The shell's file dialog, answered from here with a PEM file that holds the
+// client certificate and its key, the way many tools export them.
+const certFile = join(userData, "client-with-key.pem");
+writeFileSync(certFile, `${pki.client.cert}\n${pki.client.key}`);
+await app.evaluate(({ dialog }, file) => {
+  const g = globalThis as unknown as { titles: string[] };
+  g.titles = [];
+  dialog.showOpenDialog = (async (...args: unknown[]) => {
+    g.titles.push((args.at(-1) as { title?: string }).title ?? "");
+    return { canceled: false, filePaths: [file] };
+  }) as typeof dialog.showOpenDialog;
+}, certFile);
 const page = await app.firstWindow();
 await page.waitForSelector(".app", { timeout: 60_000 });
 await page.getByRole("button", { name: "More" }).click();
@@ -75,8 +89,22 @@ await page.getByLabel(/Bind tokens to a key/).check();
 await page.getByLabel(/Present a client certificate/).check();
 
 await paste(pem("Private key (PEM)"), privatePem);
-await paste(pem("Client certificate (PEM)"), pki.client.cert);
-await paste(pem("Certificate key (PEM)"), pki.client.key);
+await page
+  .locator(".ai-server-field", { hasText: "Client certificate (PEM)" })
+  .getByRole("button", { name: "Choose file…" })
+  .first()
+  .click();
+await pem("Certificate key (PEM)").and(page.locator('[data-saved="true"]')).waitFor({
+  timeout: 15_000,
+});
+const titles = await app.evaluate(() => (globalThis as unknown as { titles: string[] }).titles);
+check(
+  "one file, chosen in the shell's dialog, fills the certificate and its key",
+  titles.length === 1 &&
+    titles[0] === "Archyne — client certificate" &&
+    (await pem("Client certificate (PEM)").getAttribute("data-saved")) === "true",
+  JSON.stringify(titles),
+);
 await paste(pem("Extra trusted CA"), pki.ca);
 await page.waitForTimeout(500);
 

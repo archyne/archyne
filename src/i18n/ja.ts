@@ -555,6 +555,14 @@ export const messages: Messages = {
   "ai.vaultSecretHint":
     "必要なときに保管庫から読み取り、メモリ上にだけ保持します。初回は、送信する前に Archyne が確認します。",
   "ai.remoteVaultFailed": "保管庫からシークレットを読み取れませんでした: {detail}",
+  "ai.secretFromFile": "ファイルを選択…",
+  "ai.tlsPfx": "証明書と鍵 (.pfx / .p12 ファイルから)",
+  "ai.fileTooLarge": "このファイルは証明書や鍵としては大きすぎます。",
+  "ai.fileEmpty": "このファイルは空です。",
+  "ai.fileNotCertificate":
+    "このファイルには証明書 (PEM、DER、または .pfx / .p12) が含まれていません。",
+  "ai.fileNotKey": "このファイルには秘密鍵 (PEM または PKCS#8 DER) が含まれていません。",
+  "ai.fileUnreadable": "このファイルはここでは読み込めませんでした。",
   "ai.oauthFlowAssertion": "署名付きアサーション（サービスアカウント）",
   "ai.oauthAssertionHint":
     "下に秘密鍵を貼り付けるか、Google サービスアカウントの JSON 鍵ファイルをそのまま貼り付けます。発行者と鍵 ID はファイルに含まれています。",

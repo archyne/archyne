@@ -28,6 +28,7 @@ export interface AiHostLike {
   cancelSignIn(id: string): void;
   signOut(id: string): Promise<void>;
   authStatus(id: string): Promise<unknown>;
+  importSecretFile(id: string, field: string): Promise<unknown>;
 }
 
 export interface Call {
@@ -95,6 +96,9 @@ export async function answerCall(
         break;
       case "authStatus":
         value = await h.authStatus(String(args[0]));
+        break;
+      case "importSecretFile":
+        value = await h.importSecretFile(String(args[0]), String(args[1]));
         break;
       default:
         throw new Error("Unknown call.");

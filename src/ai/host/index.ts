@@ -5,6 +5,6 @@
  * (extensions/vscode/scripts/bundle-app.mjs). One implementation, two hosts.
  */
 export { AiHost, secretKey } from "./core";
-export type { HostEnv, HostEvent, SecretStore } from "./core";
+export type { HostEnv, HostEvent, ImportResult, PickedFile, SecretStore } from "./core";
 export type { AskText } from "./vaultAsk";
 export type { Connection } from "./connection";

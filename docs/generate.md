@@ -119,6 +119,16 @@ offline_access` (the second keeps you signed in past the hour).
 - **A client certificate** (mutual TLS) — on its own or alongside any of the
   above, with an extra trusted CA for a company's own certificates.
 
+Certificates and keys can be pasted as PEM, or loaded with **Choose file…**:
+a PEM or DER certificate, a private key (PEM, or PKCS#8 DER), a Google
+service account's JSON key, or a **.pfx / .p12** bundle — the certificate
+and its key in one file, as Windows exports them, opened with the
+passphrase field. A PEM file that holds both the certificate and its key
+fills both fields. The file dialog is the app's own and the app reads the
+file itself, so its contents never pass through the page; what is kept is
+a copy, so moving or deleting the file afterwards changes nothing — and a
+renewed certificate has to be loaded again.
+
 ## Where your secrets go
 
 A key, a password, a private key or a token is handed once to the part of

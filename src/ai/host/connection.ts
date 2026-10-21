@@ -131,7 +131,14 @@ export interface Connection {
 }
 
 /** The secrets of a client certificate, whatever the auth method. */
-export const TLS_SECRET_FIELDS = ["tlsCert", "tlsKey", "tlsPassphrase", "tlsCa"];
+export const TLS_SECRET_FIELDS = ["tlsCert", "tlsKey", "tlsPassphrase", "tlsCa", "tlsPfx"];
+
+/**
+ * The client-certificate fields a person fills in. `tlsPfx` — a PKCS#12
+ * bundle, base64, standing for the certificate and its key together — is
+ * only ever loaded from a file (`secretFile.ts`), so it is not among them.
+ */
+const TLS_INPUT_FIELDS = ["tlsCert", "tlsKey", "tlsPassphrase", "tlsCa"];
 
 /**
  * Where a connection's credentials go: the service's origin and, for OAuth,
@@ -357,7 +364,7 @@ export function isIssuerUrl(value: string): boolean {
  * that will be used, so the form never invites a key nobody reads.
  */
 export function wantedSecrets(auth: AuthConfig, clientCertificate = false): string[] {
-  return [...wantedAuthSecrets(auth), ...(clientCertificate ? TLS_SECRET_FIELDS : [])];
+  return [...wantedAuthSecrets(auth), ...(clientCertificate ? TLS_INPUT_FIELDS : [])];
 }
 
 function wantedAuthSecrets(auth: AuthConfig): string[] {

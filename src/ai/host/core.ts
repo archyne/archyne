@@ -31,7 +31,8 @@ import {
   vaultProblem,
   type SecretRef,
 } from "./vault";
-import { askText, type AskText, type VaultAsk } from "./vaultAsk";
+import { FILE_EXTENSIONS, FILE_FIELDS, MAX_FILE_BYTES, readSecretFile } from "./secretFile";
+import { askText, fieldName, type AskText, type VaultAsk } from "./vaultAsk";
 import {
   accessToken,
   dpopRequest,
@@ -80,7 +81,29 @@ export interface HostEnv {
    * may go where a connection would send it. Without it, none is sent.
    */
   confirm?: (text: AskText, ask: VaultAsk) => Promise<boolean>;
+  /**
+   * Lets the person choose a file, in the host's own dialog, for a
+   * certificate or a key; null when they cancel. The page never sees the
+   * file, its name, or its contents.
+   */
+  pickFile?: (request: { title: string; extensions: string[] }) => Promise<PickedFile | null>;
 }
+
+/** A file the person chose: its name, its size, and a way to read it. */
+export interface PickedFile {
+  name: string;
+  size: number;
+  read(): Promise<Uint8Array>;
+}
+
+/** What loading a file into a secret field came to — never the contents. */
+export type ImportResult =
+  | { saved: string[] }
+  | { cancelled: true }
+  | {
+      problem:
+        "too-large" | "empty" | "not-certificate" | "not-key" | "unsupported" | "invalid";
+    };
 
 /** A vault could not give a secret: not signed in, no such secret, refused. */
 export class VaultError extends Error {
@@ -357,6 +380,42 @@ export class AiHost {
       await this.bind(connectionId);
       await this.env.secrets.set(key, value);
     });
+  }
+
+  /**
+   * Load a certificate or a key from a file the person chooses in the host's
+   * own dialog. The contents are checked for what the field needs and kept
+   * like a typed secret; the page learns only which fields were saved. A
+   * PKCS#12 bundle stands for the certificate and its key, so keeping one
+   * drops the other, either way.
+   */
+  async importSecretFile(connectionId: string, field: string): Promise<ImportResult> {
+    if (!FILE_FIELDS.has(field)) return { problem: "invalid" };
+    await this.settled();
+    if (!this.connections.has(connectionId)) return { problem: "invalid" };
+    if (!this.env.pickFile) return { problem: "unsupported" };
+    const picked = await this.env.pickFile({
+      title: `Archyne — ${fieldName(this.locale, field)}`,
+      extensions: FILE_EXTENSIONS[field],
+    });
+    if (!picked) return { cancelled: true };
+    if (picked.size > MAX_FILE_BYTES) return { problem: "too-large" };
+    const read = readSecretFile(field, picked.name, await picked.read());
+    if ("problem" in read) return read;
+    const saved = read.secrets.map((s) => s.field);
+    const replaced = saved.includes("tlsPfx")
+      ? ["tlsCert", "tlsKey"]
+      : saved.some((f) => f === "tlsCert" || f === "tlsKey")
+        ? ["tlsPfx"]
+        : [];
+    await this.change(async () => {
+      await this.bind(connectionId);
+      for (const { field: f, value } of read.secrets) {
+        await this.env.secrets.set(secretKey(connectionId, f), value);
+      }
+      for (const f of replaced) await this.env.secrets.delete(secretKey(connectionId, f));
+    });
+    return { saved };
   }
 
   /** Which of a connection's typed secrets are set — the page shows "saved", never the value. */
@@ -641,9 +700,10 @@ export class AiHost {
   private async transportFor(c: Connection): Promise<typeof fetch> {
     if (!c.clientCertificate) return this.env.fetch;
     const get = (field: string) => this.secret(c, field);
-    const [cert, key, passphrase, ca] = await Promise.all(
-      ["tlsCert", "tlsKey", "tlsPassphrase", "tlsCa"].map(get),
+    const [cert, key, passphrase, ca, pfx] = await Promise.all(
+      ["tlsCert", "tlsKey", "tlsPassphrase", "tlsCa", "tlsPfx"].map(get),
     );
+    if (pfx) return mtlsFetch({ pfx: Buffer.from(pfx, "base64"), passphrase, ca });
     if (!cert || !key) throw new Error("A client certificate and its key are needed.");
     return mtlsFetch({ cert, key, passphrase, ca });
   }

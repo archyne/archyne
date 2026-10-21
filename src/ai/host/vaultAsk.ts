@@ -53,6 +53,7 @@ const STRINGS: Record<string, Strings> = {
       tlsKey: "certificate key",
       tlsPassphrase: "certificate passphrase",
       tlsCa: "trusted CA",
+      tlsPfx: "certificate and key (PKCS#12)",
     },
   },
   it: {
@@ -74,6 +75,7 @@ const STRINGS: Record<string, Strings> = {
       tlsKey: "chiave del certificato",
       tlsPassphrase: "passphrase del certificato",
       tlsCa: "CA attendibile",
+      tlsPfx: "certificato e chiave (PKCS#12)",
     },
   },
   de: {
@@ -95,6 +97,7 @@ const STRINGS: Record<string, Strings> = {
       tlsKey: "Zertifikatsschlüssel",
       tlsPassphrase: "Zertifikatspassphrase",
       tlsCa: "vertrauenswürdige CA",
+      tlsPfx: "Zertifikat und Schlüssel (PKCS#12)",
     },
   },
   es: {
@@ -116,6 +119,7 @@ const STRINGS: Record<string, Strings> = {
       tlsKey: "clave del certificado",
       tlsPassphrase: "frase de contraseña del certificado",
       tlsCa: "CA de confianza",
+      tlsPfx: "certificado y clave (PKCS#12)",
     },
   },
   ja: {
@@ -137,6 +141,7 @@ const STRINGS: Record<string, Strings> = {
       tlsKey: "証明書の鍵",
       tlsPassphrase: "証明書のパスフレーズ",
       tlsCa: "信頼する CA",
+      tlsPfx: "証明書と鍵 (PKCS#12)",
     },
   },
   zh: {
@@ -158,6 +163,7 @@ const STRINGS: Record<string, Strings> = {
       tlsKey: "证书密钥",
       tlsPassphrase: "证书密码",
       tlsCa: "受信任的 CA",
+      tlsPfx: "证书和密钥（PKCS#12）",
     },
   },
   ar: {
@@ -179,13 +185,23 @@ const STRINGS: Record<string, Strings> = {
       tlsKey: "مفتاح الشهادة",
       tlsPassphrase: "عبارة مرور الشهادة",
       tlsCa: "جهة التصديق الموثوقة",
+      tlsPfx: "الشهادة والمفتاح (PKCS#12)",
     },
   },
 };
 
+function strings(locale: string): Strings {
+  return STRINGS[locale.toLowerCase().split(/[-_]/)[0]] ?? STRINGS.en;
+}
+
+/** What a secret field is called, in the language closest to `locale`. */
+export function fieldName(locale: string, field: string): string {
+  return strings(locale).fields[field] ?? field;
+}
+
 /** The question in the language closest to `locale` (`it-IT` → it), English otherwise. */
 export function askText(locale: string, ask: VaultAsk): AskText {
-  const s = STRINGS[locale.toLowerCase().split(/[-_]/)[0]] ?? STRINGS.en;
+  const s = strings(locale);
   const detail = s.detail
     .replace("{secret}", ask.secret)
     .replace("{vault}", ask.vault)

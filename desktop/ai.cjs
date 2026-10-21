@@ -174,6 +174,29 @@ function aiHost() {
         : await dialog.showMessageBox(options);
       return response === 1;
     },
+    // A certificate or key from a file: the shell's own dialog, and the
+    // shell reads the file, so the page sees neither the path nor the bytes.
+    pickFile: async (/** @type {{ title: string, extensions: string[] }} */ request) => {
+      const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+      const options = {
+        title: request.title,
+        properties: /** @type {Array<"openFile">} */ (["openFile"]),
+        filters: [
+          {
+            name: request.extensions.map((e) => e.toUpperCase()).join(", "),
+            extensions: request.extensions,
+          },
+          { name: "*", extensions: ["*"] },
+        ],
+      };
+      const { canceled, filePaths } = parent
+        ? await dialog.showOpenDialog(parent, options)
+        : await dialog.showOpenDialog(options);
+      if (canceled || !filePaths[0]) return null;
+      const file = filePaths[0];
+      const { size } = await fsp.stat(file);
+      return { name: path.basename(file), size, read: () => fsp.readFile(file) };
+    },
   });
   host = created;
   return created;
@@ -239,6 +262,10 @@ function registerAiIpc() {
   ipcMain.handle("archyne:ai-auth-status", async (event, { id }) => {
     if (!fromApp(event)) return { signedIn: false };
     return aiHost().authStatus(String(id));
+  });
+  ipcMain.handle("archyne:ai-import-secret", async (event, { id, field }) => {
+    if (!fromApp(event)) return { problem: "invalid" };
+    return aiHost().importSecretFile(String(id), String(field));
   });
 }
 

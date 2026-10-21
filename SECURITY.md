@@ -114,7 +114,9 @@ Archyne's. Two boundaries carry the weight:
   `https` only off this machine, redirects refused, a credential attached only
   to requests made for its own connection. A page may set the secrets a person types
   but never a token or a registered client, which only the host's own flows
-  produce. What a connection keeps is bound to where it was kept for — the
+  produce. A certificate or key loaded from a file is chosen in the host's own
+  dialog and read by the host, so neither the file nor its contents pass
+  through the page. What a connection keeps is bound to where it was kept for — the
   service's origin and, for OAuth, the authorization server — and the binding
   is stored with it: a connection the page points elsewhere, even while the
   host is not running, arrives there with no secrets at all.

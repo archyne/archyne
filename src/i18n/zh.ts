@@ -545,6 +545,13 @@ export const messages: Messages = {
   "ai.vaultSecretHint":
     "需要时从保管库读取，只保存在内存中。首次发送前，Archyne 会征求你的同意。",
   "ai.remoteVaultFailed": "无法从保管库读取机密：{detail}",
+  "ai.secretFromFile": "选择文件…",
+  "ai.tlsPfx": "证书和密钥（来自 .pfx / .p12 文件）",
+  "ai.fileTooLarge": "该文件太大，不可能是证书或密钥。",
+  "ai.fileEmpty": "该文件为空。",
+  "ai.fileNotCertificate": "该文件不包含证书（PEM、DER 或 .pfx / .p12 包）。",
+  "ai.fileNotKey": "该文件不包含私钥（PEM 或 PKCS#8 DER）。",
+  "ai.fileUnreadable": "无法在此处加载该文件。",
   "ai.oauthFlowAssertion": "签名断言（服务账号）",
   "ai.oauthAssertionHint":
     "在下方粘贴私钥，或原样粘贴 Google 服务账号的 JSON 密钥文件：其中已包含签发者和密钥 ID。",

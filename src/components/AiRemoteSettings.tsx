@@ -192,6 +192,9 @@ function ConnectionForm({
   const [canKeep, setCanKeep] = useState(true);
   const [result, setResult] = useState<HostProbe | "checking" | null>(null);
   const [headersText, setHeadersText] = useState(() => formatHeaders(connection.headers));
+  const [fileProblem, setFileProblem] = useState<{ field: string; key: MessageKey } | null>(
+    null,
+  );
   const patch = (p: Partial<Connection>) => update(connection.id, p);
 
   // What the host already holds for this connection, and whether it can hold
@@ -234,6 +237,20 @@ function ConnectionForm({
     await ai.setSecret(connection.id, field, value);
     setSecretsSet(await ai.secretFields(connection.id));
   };
+
+  // A certificate or key from a file, which the host opens and reads; what
+  // comes back is which fields were saved, or why the file would not do.
+  const importFile = async (field: string) => {
+    setFileProblem(null);
+    await hostSynced();
+    const result = await ai.importSecretFile(connection.id, field);
+    if ("problem" in result) {
+      setFileProblem({ field, key: FILE_PROBLEMS[result.problem] ?? "ai.fileUnreadable" });
+    }
+    setSecretsSet(await ai.secretFields(connection.id));
+  };
+  // A PKCS#12 bundle stands for the certificate and its key together.
+  const bundled = secretsSet.includes("tlsPfx");
 
   const setAuth = (type: AuthConfig["type"]) => {
     const auth: AuthConfig =
@@ -447,8 +464,25 @@ function ConnectionForm({
         {t("ai.tlsClientCertificate")}
       </label>
       {connection.clientCertificate && <p className="ai-server-hint">{t("ai.tlsHint")}</p>}
+      {connection.clientCertificate && bundled && (
+        <div className="ai-server-field">
+          <span>{t("ai.tlsPfx")}</span>
+          <p className="ai-server-hint" data-saved="true">
+            {t("ai.remoteSecretSaved")}
+          </p>
+          <button
+            type="button"
+            className="editor-action"
+            disabled={disabled || !canKeep}
+            onClick={() => void saveSecret("tlsPfx", null)}
+          >
+            {t("ai.remoteSecretForget")}
+          </button>
+        </div>
+      )}
       {wantedSecrets(connection.auth, connection.clientCertificate)
         .filter((field) => PAGE_SETTABLE_SECRETS.has(field))
+        .filter((field) => !(bundled && (field === "tlsCert" || field === "tlsKey")))
         .map((field) => (
           <SecretField
             key={field}
@@ -460,6 +494,7 @@ function ConnectionForm({
                 : (SECRET_LABELS[field] ?? "ai.remotePassword"),
             )}
             multiline={MULTILINE_SECRETS.has(field)}
+            pemLabel={field === "tlsCert" || field === "tlsCa" ? "CERTIFICATE" : "PRIVATE KEY"}
             saved={secretsSet.includes(field)}
             disabled={disabled || !canKeep}
             onSave={(value) => void saveSecret(field, value)}
@@ -471,6 +506,8 @@ function ConnectionForm({
               if (ref && secretsSet.includes(field)) void saveSecret(field, null);
               setFromVault(field, ref);
             }}
+            onFile={FILE_FIELDS.has(field) ? () => void importFile(field) : undefined}
+            problem={fileProblem?.field === field ? t(fileProblem.key) : undefined}
           />
         ))}
       {!canKeep && <p className="ai-server-status">{t("ai.remoteNoSecureStorage")}</p>}
@@ -581,23 +618,32 @@ function SecretField({
   saved,
   disabled,
   multiline = false,
+  pemLabel = "PRIVATE KEY",
   onSave,
   onForget,
   vaults,
   fromVault,
   onFromVault,
+  onFile,
+  problem,
 }: {
   label: string;
   saved: boolean;
   disabled: boolean;
   /** A PEM key spans lines; it is pasted, saved on leaving the field, and emptied. */
   multiline?: boolean;
+  /** What the pasted PEM begins with, shown as the empty field's hint. */
+  pemLabel?: string;
   onSave: (value: string) => void;
   onForget: () => void;
   /** The vaults the value may be read from instead; none, and the choice is not offered. */
   vaults: Connection[];
   fromVault?: SecretRef;
   onFromVault: (ref: SecretRef | undefined) => void;
+  /** Offers to load the value from a file, in the host's own dialog. */
+  onFile?: () => void;
+  /** Why the last file chosen for this field would not do. */
+  problem?: string;
 }) {
   const t = useT();
   const [value, setValue] = useState("");
@@ -667,7 +713,7 @@ function SecretField({
               value={value}
               autoComplete="off"
               spellCheck={false}
-              placeholder={saved ? t("ai.remoteSecretSaved") : "-----BEGIN PRIVATE KEY-----"}
+              placeholder={saved ? t("ai.remoteSecretSaved") : `-----BEGIN ${pemLabel}-----`}
               disabled={disabled}
               data-saved={saved || undefined}
               onChange={(e) => setValue(e.target.value)}
@@ -690,10 +736,34 @@ function SecretField({
           )}
         </label>
       )}
-      {saved && !vault && (
-        <button type="button" className="editor-action" disabled={disabled} onClick={onForget}>
-          {t("ai.remoteSecretForget")}
-        </button>
+      {!vault && (onFile || saved) && (
+        <div className="ai-secret-actions">
+          {onFile && (
+            <button
+              type="button"
+              className="editor-action"
+              disabled={disabled}
+              onClick={onFile}
+            >
+              {t("ai.secretFromFile")}
+            </button>
+          )}
+          {saved && (
+            <button
+              type="button"
+              className="editor-action"
+              disabled={disabled}
+              onClick={onForget}
+            >
+              {t("ai.remoteSecretForget")}
+            </button>
+          )}
+        </div>
+      )}
+      {problem && (
+        <p className="ai-server-status" role="status">
+          {problem}
+        </p>
       )}
     </div>
   );
@@ -713,6 +783,17 @@ const SECRET_LABELS: Record<string, MessageKey> = {
   secretAccessKey: "ai.awsSecretAccessKey",
   sessionToken: "ai.awsSessionToken",
 };
+
+/** Why a file chosen for a secret would not do. */
+const FILE_PROBLEMS: Partial<Record<string, MessageKey>> = {
+  "too-large": "ai.fileTooLarge",
+  empty: "ai.fileEmpty",
+  "not-certificate": "ai.fileNotCertificate",
+  "not-key": "ai.fileNotKey",
+};
+
+/** The fields a file can be loaded into (src/ai/host/secretFile.ts). */
+const FILE_FIELDS = new Set(["tlsCert", "tlsKey", "tlsCa", "privateKey"]);
 
 /** PEM blocks span lines; everything else is one. */
 const MULTILINE_SECRETS = new Set(["privateKey", "tlsCert", "tlsKey", "tlsCa"]);

@@ -564,6 +564,14 @@ export const messages: Messages = {
   "ai.vaultSecretHint":
     "Letto dalla cassaforte quando serve e tenuto solo in memoria. La prima volta, Archyne ti chiede conferma prima di inviarlo.",
   "ai.remoteVaultFailed": "Impossibile leggere un segreto dalla cassaforte: {detail}",
+  "ai.secretFromFile": "Scegli file…",
+  "ai.tlsPfx": "Certificato e chiave (da un file .pfx / .p12)",
+  "ai.fileTooLarge": "Il file è troppo grande per essere un certificato o una chiave.",
+  "ai.fileEmpty": "Il file è vuoto.",
+  "ai.fileNotCertificate":
+    "Il file non contiene un certificato (PEM, DER o un pacchetto .pfx / .p12).",
+  "ai.fileNotKey": "Il file non contiene una chiave privata (PEM o DER PKCS#8).",
+  "ai.fileUnreadable": "Non è stato possibile caricare il file qui.",
   "ai.oauthFlowAssertion": "Asserzione firmata (account di servizio)",
   "ai.oauthAssertionHint":
     "Incolla qui sotto la chiave privata, oppure il file di chiave JSON di un account di servizio Google così com'è: contiene l'emittente e l'ID della chiave.",

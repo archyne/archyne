@@ -1562,6 +1562,13 @@ body.resizing-side {
   align-self: flex-start;
 }
 
+/* Choose a file, Forget: side by side under the field. */
+.ai-secret-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .ai-server-presets [aria-pressed="true"] {
   border-color: var(--accent);
   color: var(--text);

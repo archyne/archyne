@@ -557,6 +557,13 @@ export const messages: Messages = {
   "ai.vaultSecretHint":
     "يُقرأ من الخزنة عند الحاجة ويُحفظ في الذاكرة فقط. في المرة الأولى يسألك Archyne قبل إرساله.",
   "ai.remoteVaultFailed": "تعذّرت قراءة سرّ من الخزنة: {detail}",
+  "ai.secretFromFile": "اختيار ملف…",
+  "ai.tlsPfx": "الشهادة والمفتاح (من ملف ‎.pfx / .p12)",
+  "ai.fileTooLarge": "الملف أكبر من أن يكون شهادة أو مفتاحًا.",
+  "ai.fileEmpty": "الملف فارغ.",
+  "ai.fileNotCertificate": "لا يحتوي الملف على شهادة (PEM أو DER أو حزمة ‎.pfx / .p12).",
+  "ai.fileNotKey": "لا يحتوي الملف على مفتاح خاص (PEM أو PKCS#8 DER).",
+  "ai.fileUnreadable": "تعذّر تحميل الملف هنا.",
   "ai.oauthFlowAssertion": "تأكيد موقَّع (حساب خدمة)",
   "ai.oauthAssertionHint":
     "الصق المفتاح الخاص أدناه، أو ملف مفتاح JSON لحساب خدمة Google كما هو: فهو يتضمن المُصدِر ومعرّف المفتاح.",

@@ -16,9 +16,12 @@
  */
 export interface ClientCertificate {
   /** PEM certificate, with its chain if the server needs one. */
-  cert: string;
+  cert?: string;
   /** PEM private key. */
-  key: string;
+  key?: string;
+  /** Or both at once: a PKCS#12 bundle (.pfx, .p12), as Windows exports them. */
+  pfx?: Buffer;
+  /** The key's, or the bundle's. */
   passphrase?: string;
   /** Extra trusted roots, PEM, added to Node's own — a company CA. */
   ca?: string;
@@ -60,6 +63,7 @@ export function mtlsFetch(tls: ClientCertificate): typeof fetch {
           headers,
           cert: tls.cert,
           key: tls.key,
+          pfx: tls.pfx,
           passphrase: tls.passphrase || undefined,
           ca: tls.ca ? [...rootCertificates, tls.ca] : undefined,
           signal: init?.signal ?? undefined,

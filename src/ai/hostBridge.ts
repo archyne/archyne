@@ -1,6 +1,6 @@
 import { vscodeApi } from "../host";
 import type { Connection } from "./host/connection";
-import type { HostEvent } from "./host/core";
+import type { HostEvent, ImportResult } from "./host/core";
 import { ServerError, type Reachability } from "./server";
 import type { AiProvider, ChatMessage, GenerateOptions } from "./types";
 
@@ -29,6 +29,8 @@ export interface HostAi {
   cancelSignIn(id: string): void;
   signOut(id: string): Promise<void>;
   authStatus(id: string): Promise<AuthStatus>;
+  /** A certificate or key from a file the person picks in the host's dialog; never its contents. */
+  importSecretFile(id: string, field: string): Promise<ImportResult>;
   onEvent(callback: (event: HostEvent) => void): () => void;
 }
 
@@ -99,6 +101,7 @@ function overWebview(vscode: { postMessage(message: unknown): void }): HostAi {
     cancelSignIn: (id) => void call("cancelSignIn", [id]),
     signOut: (id) => call("signOut", [id]),
     authStatus: (id) => call("authStatus", [id]),
+    importSecretFile: (id, field) => call("importSecretFile", [id, field]),
     onEvent: (callback) => {
       listeners.add(callback);
       return () => listeners.delete(callback);

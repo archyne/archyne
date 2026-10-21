@@ -561,6 +561,14 @@ export const messages: Messages = {
   "ai.vaultSecretHint":
     "Se lee del almacén cuando hace falta y solo se guarda en memoria. La primera vez, Archyne te pregunta antes de enviarlo.",
   "ai.remoteVaultFailed": "No se pudo leer un secreto del almacén: {detail}",
+  "ai.secretFromFile": "Elegir archivo…",
+  "ai.tlsPfx": "Certificado y clave (de un archivo .pfx / .p12)",
+  "ai.fileTooLarge": "El archivo es demasiado grande para ser un certificado o una clave.",
+  "ai.fileEmpty": "El archivo está vacío.",
+  "ai.fileNotCertificate":
+    "El archivo no contiene ningún certificado (PEM, DER o un paquete .pfx / .p12).",
+  "ai.fileNotKey": "El archivo no contiene ninguna clave privada (PEM o DER PKCS#8).",
+  "ai.fileUnreadable": "No se pudo cargar el archivo aquí.",
   "ai.oauthFlowAssertion": "Aserción firmada (cuenta de servicio)",
   "ai.oauthAssertionHint":
     "Pega abajo la clave privada, o el archivo de clave JSON de una cuenta de servicio de Google tal cual: incluye el emisor y el ID de la clave.",

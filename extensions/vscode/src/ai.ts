@@ -45,6 +45,26 @@ function aiHost(): AiHostLike {
     },
     // Before a secret from a vault first goes somewhere: a modal of VS Code's
     // own, which the webview can neither draw nor answer. Dismissing it is no.
+    // A certificate or key from a file: VS Code's own dialog, read here, so
+    // the webview sees neither the path nor the bytes.
+    pickFile: async (request: { title: string; extensions: string[] }) => {
+      const [uri] =
+        (await vscode.window.showOpenDialog({
+          title: request.title,
+          canSelectMany: false,
+          filters: {
+            [request.extensions.map((e) => e.toUpperCase()).join(", ")]: request.extensions,
+            "*": ["*"],
+          },
+        })) ?? [];
+      if (!uri) return null;
+      const { size } = await vscode.workspace.fs.stat(uri);
+      return {
+        name: path.basename(uri.fsPath),
+        size,
+        read: () => Promise.resolve(vscode.workspace.fs.readFile(uri)),
+      };
+    },
     confirm: async (text: { message: string; detail: string; allow: string }) =>
       (await vscode.window.showWarningMessage(
         text.message,

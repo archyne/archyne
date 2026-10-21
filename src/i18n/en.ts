@@ -566,6 +566,14 @@ export const en = {
   "ai.vaultSecretHint":
     "Read from the vault when needed and kept in memory only. The first time, Archyne asks you before sending it.",
   "ai.remoteVaultFailed": "Could not read a secret from the vault: {detail}",
+  "ai.secretFromFile": "Choose file…",
+  "ai.tlsPfx": "Certificate and key (from a .pfx / .p12 file)",
+  "ai.fileTooLarge": "That file is too large to be a certificate or a key.",
+  "ai.fileEmpty": "That file is empty.",
+  "ai.fileNotCertificate":
+    "That file holds no certificate (PEM, DER, or a .pfx / .p12 bundle).",
+  "ai.fileNotKey": "That file holds no private key (PEM, or PKCS#8 DER).",
+  "ai.fileUnreadable": "That file could not be loaded here.",
   "ai.oauthFlowAssertion": "Signed assertion (service account)",
   "ai.oauthAssertionHint":
     "Paste the private key below, or a Google service account's JSON key file as it is: it carries the issuer and the key ID.",

@@ -109,6 +109,9 @@ contextBridge.exposeInMainWorld("archyne", {
     signOut: (id) => ipcRenderer.invoke("archyne:ai-sign-out", { id }),
     /** @param {string} id */
     authStatus: (id) => ipcRenderer.invoke("archyne:ai-auth-status", { id }),
+    /** @param {string} id @param {string} field */
+    importSecretFile: (id, field) =>
+      ipcRenderer.invoke("archyne:ai-import-secret", { id, field }),
     /** @param {(event: unknown) => void} callback @returns {() => void} unsubscribe */
     onEvent: (callback) => {
       /** @param {Electron.IpcRendererEvent} _event @param {unknown} payload */
