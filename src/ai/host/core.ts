@@ -7,7 +7,9 @@ import {
 } from "../server";
 import type { ChatMessage } from "../types";
 import {
+  ALL_SECRET_FIELDS,
   authHeaders,
+  credentialTarget,
   parseTokens,
   connectionProblem,
   PAGE_SETTABLE_SECRETS,
@@ -84,6 +86,9 @@ export type HostEvent =
       detail?: string;
     };
 
+/** Where a connection's secrets were kept for: its `credentialTarget` when they were. */
+const BOUND_TO = "boundTo";
+
 /** The key a secret is filed under; one namespace per connection. */
 export function secretKey(connectionId: string, field: string): string {
   return `archyne.ai.${connectionId}.${field}`;
@@ -93,23 +98,67 @@ export class AiHost {
   private connections = new Map<string, Connection>();
   private running = new Map<string, AbortController>();
   private signingIn = new Map<string, AbortController>();
+  /**
+   * Changes to the connections and their secrets, one at a time and in the
+   * order they came; what reads them waits for those already asked for, so a
+   * check right after a key is typed sees the key.
+   */
+  private changes: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly env: HostEnv) {}
+
+  private change<T>(run: () => Promise<T>): Promise<T> {
+    const next = this.changes.then(run);
+    this.changes = next.catch(() => undefined);
+    return next;
+  }
+
+  private settled(): Promise<unknown> {
+    return this.changes;
+  }
 
   /**
    * Replace the list of connections. The secrets of a connection that is no
    * longer listed are deleted, so removing a service in the panel really
    * removes its key — or its tokens — rather than leaving them in the keychain.
+   *
+   * What a connection keeps is bound to where it was kept for (its
+   * `credentialTarget`, filed beside the secrets when the first is kept, so
+   * it outlives a restart). The page owns the connection's address; were a
+   * moved address to keep its secrets, a page could send a saved key or token
+   * to any host it chose. Moved, then, the connection starts again with none.
    */
-  async setConnections(list: Connection[]): Promise<void> {
-    const next = new Map(list.filter(isConnection).map((c) => [c.id, c]));
-    for (const [id, old] of this.connections) {
-      if (next.has(id)) continue;
-      for (const field of secretFieldsOf(old)) {
-        await this.env.secrets.delete(secretKey(id, field));
+  setConnections(list: Connection[]): Promise<void> {
+    return this.change(async () => {
+      const next = new Map(list.filter(isConnection).map((c) => [c.id, c]));
+      for (const id of this.connections.keys()) {
+        if (!next.has(id)) await this.forget(id);
       }
+      for (const c of next.values()) {
+        const bound = await this.env.secrets.get(secretKey(c.id, BOUND_TO));
+        if (bound === undefined || bound === credentialTarget(c)) continue;
+        this.signingIn.get(c.id)?.abort();
+        await this.forget(c.id);
+      }
+      this.connections = next;
+    });
+  }
+
+  /** File a connection's binding before the first secret it keeps. */
+  private async bind(connectionId: string): Promise<void> {
+    const c = this.connections.get(connectionId);
+    if (!c) throw new Error("No such connection.");
+    const key = secretKey(connectionId, BOUND_TO);
+    if ((await this.env.secrets.get(key)) === undefined) {
+      await this.env.secrets.set(key, credentialTarget(c));
     }
-    this.connections = next;
+  }
+
+  /** Delete everything filed for a connection, whatever its auth method was. */
+  private async forget(connectionId: string): Promise<void> {
+    for (const field of [...ALL_SECRET_FIELDS, BOUND_TO]) {
+      await this.env.secrets.delete(secretKey(connectionId, field));
+    }
   }
 
   /**
@@ -117,15 +166,20 @@ export class AiHost {
    * Tokens and registered clients are not among them: only the host's own
    * flows write those, so a page can never plant one.
    */
-  async setSecret(connectionId: string, field: string, value: string | null): Promise<void> {
-    if (!PAGE_SETTABLE_SECRETS.has(field)) throw new Error("Not a secret field.");
-    const key = secretKey(connectionId, field);
-    if (value === null || value === "") await this.env.secrets.delete(key);
-    else await this.env.secrets.set(key, value);
+  setSecret(connectionId: string, field: string, value: string | null): Promise<void> {
+    if (!PAGE_SETTABLE_SECRETS.has(field))
+      return Promise.reject(new Error("Not a secret field."));
+    return this.change(async () => {
+      const key = secretKey(connectionId, field);
+      if (value === null || value === "") return this.env.secrets.delete(key);
+      await this.bind(connectionId);
+      await this.env.secrets.set(key, value);
+    });
   }
 
   /** Which of a connection's typed secrets are set — the page shows "saved", never the value. */
   async secretFields(connectionId: string): Promise<string[]> {
+    await this.settled();
     const c = this.connections.get(connectionId);
     if (!c) return [];
     const set: string[] = [];
@@ -140,6 +194,7 @@ export class AiHost {
   async probe(
     connectionId: string,
   ): Promise<Reachability | { state: "invalid"; problem: string }> {
+    await this.settled();
     const c = this.connections.get(connectionId);
     if (!c) return { state: "invalid", problem: "unknown" };
     const problem = connectionProblem(c);
@@ -160,15 +215,19 @@ export class AiHost {
     messages: ChatMessage[],
     emit: (event: HostEvent) => void,
   ): Promise<void> {
+    // Registered before waiting, so a cancel that comes meanwhile is not lost.
+    const ctrl = new AbortController();
+    this.running.set(requestId, ctrl);
+    await this.settled();
     const c = this.connections.get(connectionId);
     const problem = c ? connectionProblem(c) : "unknown";
     if (!c || problem) {
+      this.running.delete(requestId);
       emit({ type: "ai:error", requestId, reason: "invalid", detail: problem ?? "unknown" });
       return;
     }
-    const ctrl = new AbortController();
-    this.running.set(requestId, ctrl);
     try {
+      if (ctrl.signal.aborted) throw new DOMException("Generation cancelled", "AbortError");
       const provider = serverProvider(
         { baseUrl: c.baseUrl, model },
         this.fetchFor(c),
@@ -205,6 +264,7 @@ export class AiHost {
    * then signed in or not) goes to `emit`; the tokens stay here.
    */
   async signIn(connectionId: string, emit: (event: HostEvent) => void): Promise<void> {
+    await this.settled();
     const c = this.connections.get(connectionId);
     if (!c || c.auth.type !== "oauth" || connectionProblem(c)) {
       emit({ type: "ai:auth", connectionId, state: "error", detail: "invalid" });
@@ -247,6 +307,7 @@ export class AiHost {
   }
 
   async authStatus(connectionId: string): Promise<{ signedIn: boolean; expiresAt?: number }> {
+    await this.settled();
     const c = this.connections.get(connectionId);
     if (!c || c.auth.type !== "oauth") return { signedIn: false };
     return authStatus(this.oauthSecrets(c.id));
@@ -357,7 +418,11 @@ export class AiHost {
     const s = this.env.secrets;
     return {
       get: (field) => s.get(secretKey(connectionId, field)),
-      set: (field, value) => s.set(secretKey(connectionId, field), value),
+      // Tokens and registered clients are bound like a typed secret.
+      set: async (field, value) => {
+        await this.bind(connectionId);
+        await s.set(secretKey(connectionId, field), value);
+      },
       delete: (field) => s.delete(secretKey(connectionId, field)),
     };
   }

@@ -12,11 +12,14 @@ import { useI18n, useT } from "../i18n";
  */
 export function AiOAuthSection({
   connectionId,
+  target,
   config,
   disabled,
   onChange,
 }: {
   connectionId: string;
+  /** Where the credentials go; when it moves, the host has signed the person out. */
+  target: string;
   config: OAuthConfig;
   disabled: boolean;
   onChange: (config: OAuthConfig) => void;
@@ -58,7 +61,7 @@ export function AiOAuthSection({
       live = false;
       stop();
     };
-  }, [ai, connectionId]);
+  }, [ai, connectionId, target]);
 
   if (!ai) return null;
 

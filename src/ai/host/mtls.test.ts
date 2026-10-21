@@ -34,7 +34,17 @@ function memorySecrets(): SecretStore {
   };
 }
 
-async function setup(as: AsOptions, connection: Partial<Connection>, cert = () => pki.client) {
+/**
+ * A host with one connection to the stand-in, and its certificate saved. The
+ * connection may be a function of the stand-in's address, for an issuer that
+ * is the stand-in itself: it has to be in place before the certificate is
+ * saved, since the host forgets secrets when the issuer changes.
+ */
+async function setup(
+  as: AsOptions,
+  connection: Partial<Connection> | ((base: string) => Partial<Connection>),
+  cert = () => pki.client,
+) {
   const server = authorizationServer({ tls: pki, ...as });
   await server.start();
   servers.push(server);
@@ -47,7 +57,7 @@ async function setup(as: AsOptions, connection: Partial<Connection>, cert = () =
       protocol: "openai",
       auth: { type: "none" },
       clientCertificate: true,
-      ...connection,
+      ...(typeof connection === "function" ? connection(server.base) : connection),
     } as Connection,
   ]);
   const { cert: pem, key } = cert();
@@ -94,35 +104,19 @@ describe("a client certificate", () => {
   });
 
   it("authenticates a machine client at the token endpoint (tls_client_auth)", async () => {
+    // The issuer is the stand-in itself; it runs over the same mTLS transport.
     const { host, server } = await setup(
       { client: { id: "svc-1", certificateCn: "svc-1" } },
-      {
+      (base) => ({
         auth: {
           type: "oauth",
           flow: "client_credentials",
-          issuer: undefined,
+          issuer: base,
           clientId: "svc-1",
           clientAuth: "tls_client_auth",
         },
-      },
+      }),
     );
-    // The issuer is the stand-in itself; it runs over the same mTLS transport.
-    await host.setConnections([
-      {
-        id: "m",
-        label: "Gateway behind mTLS",
-        baseUrl: `${server.base}/v1`,
-        protocol: "openai",
-        auth: {
-          type: "oauth",
-          flow: "client_credentials",
-          issuer: server.base,
-          clientId: "svc-1",
-          clientAuth: "tls_client_auth",
-        },
-        clientCertificate: true,
-      },
-    ]);
     const events: HostEvent[] = [];
     await host.signIn("m", (e) => events.push(e));
     expect(events.at(-1)).toMatchObject({ state: "signed-in" });

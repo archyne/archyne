@@ -56,16 +56,56 @@ async function writeStore(store) {
   // file — and with it every saved secret — behind.
   const temp = `${file}.tmp`;
   await fsp.writeFile(temp, JSON.stringify(store), { encoding: "utf8", mode: 0o600 });
-  await fsp.rename(temp, file);
+  // Windows refuses a rename over a file something else has open for a
+  // moment — an antivirus scanning what was just written. Try again briefly.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await fsp.rename(temp, file);
+      return;
+    } catch (err) {
+      const code = /** @type {NodeJS.ErrnoException} */ (err).code;
+      if (attempt >= 5 || (code !== "EPERM" && code !== "EBUSY" && code !== "EACCES"))
+        throw err;
+      await new Promise((resolve) => setTimeout(resolve, 20 * attempt));
+    }
+  }
+}
+
+/**
+ * The store as this process knows it: read from the file once, then kept
+ * here and written back on each change. This process is the file's only
+ * user, and a read never opening the file is what lets a write's rename
+ * through on Windows.
+ * @type {Promise<Record<string, string>> | null}
+ */
+let loaded = null;
+function store() {
+  loaded ??= readStore();
+  return loaded;
+}
+
+/**
+ * One change at a time, each written before the next is made: two writes at
+ * once would race for the same temporary file.
+ */
+let changing = Promise.resolve();
+/** @param {(store: Record<string, string>) => boolean} change true when the store changed */
+function changeStore(change) {
+  const next = changing.then(async () => {
+    const current = await store();
+    if (change(current)) await writeStore(current);
+  });
+  changing = next.catch(() => undefined);
+  return next;
 }
 
 /** @type {import("../src/ai/host/index").SecretStore} */
 const secrets = {
   async get(key) {
-    const store = await readStore();
-    if (!store[key] || !canKeepSecrets()) return undefined;
+    const sealed = (await store())[key];
+    if (!sealed || !canKeepSecrets()) return undefined;
     try {
-      return safeStorage.decryptString(Buffer.from(store[key], "base64"));
+      return safeStorage.decryptString(Buffer.from(sealed, "base64"));
     } catch {
       // Encrypted under another user or machine: as good as absent.
       return undefined;
@@ -75,15 +115,18 @@ const secrets = {
     if (!canKeepSecrets()) {
       throw new Error("This system offers no secure storage for secrets.");
     }
-    const store = await readStore();
-    store[key] = safeStorage.encryptString(value).toString("base64");
-    await writeStore(store);
+    const sealed = safeStorage.encryptString(value).toString("base64");
+    await changeStore((current) => {
+      current[key] = sealed;
+      return true;
+    });
   },
   async delete(key) {
-    const store = await readStore();
-    if (!(key in store)) return;
-    delete store[key];
-    await writeStore(store);
+    await changeStore((current) => {
+      if (!(key in current)) return false;
+      delete current[key];
+      return true;
+    });
   },
 };
 

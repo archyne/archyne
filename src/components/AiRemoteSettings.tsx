@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { hostSynced, useAiEngine } from "../ai/engine";
 import { hostAi, type HostProbe } from "../ai/hostBridge";
 import {
+  credentialTarget,
   formatHeaders,
   PAGE_SETTABLE_SECRETS,
   parseHeaders,
@@ -188,7 +189,9 @@ function ConnectionForm({
   const patch = (p: Partial<Connection>) => update(connection.id, p);
 
   // What the host already holds for this connection, and whether it can hold
-  // anything at all. Asked once per connection shown.
+  // anything at all. Asked again when the connection points somewhere else:
+  // the host forgets its secrets then.
+  const target = credentialTarget(connection);
   useEffect(() => {
     if (!ai) return;
     let live = true;
@@ -202,7 +205,7 @@ function ConnectionForm({
     return () => {
       live = false;
     };
-  }, [ai, connection.id]);
+  }, [ai, connection.id, target]);
 
   if (!ai) return null;
 
@@ -414,6 +417,7 @@ function ConnectionForm({
       {connection.auth.type === "oauth" && (
         <AiOAuthSection
           connectionId={connection.id}
+          target={target}
           config={connection.auth}
           disabled={disabled}
           onChange={(auth: OAuthConfig) => patch({ auth })}

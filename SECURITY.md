@@ -114,10 +114,14 @@ Archyne's. Two boundaries carry the weight:
   `https` only off this machine, redirects refused, a credential attached only
   to requests made for its own connection. A page may set the secrets a person types
   but never a token or a registered client, which only the host's own flows
-  produce.
+  produce. What a connection keeps is bound to where it was kept for — the
+  service's origin and, for OAuth, the authorization server — and the binding
+  is stored with it: a connection the page points elsewhere, even while the
+  host is not running, arrives there with no secrets at all.
 
 Reports are in scope where a secret can be read back by the page or is sent
-with a request that is not its own connection's, where the web build can reach a
+with a request that is not its own connection's or to a host other than the one
+it was saved for, where the web build can reach a
 non-loopback address, or where an OAuth flow can be completed with a forged
 state, a substituted code or another issuer's response.
 

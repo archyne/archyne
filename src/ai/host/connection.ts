@@ -121,6 +121,22 @@ export interface Connection {
 /** The secrets of a client certificate, whatever the auth method. */
 export const TLS_SECRET_FIELDS = ["tlsCert", "tlsKey", "tlsPassphrase", "tlsCa"];
 
+/**
+ * Where a connection's credentials go: the service's origin and, for OAuth,
+ * the authorization server. The host binds what it keeps to this (see
+ * `AiHost.setConnections`), so a connection moved elsewhere — by a person, or
+ * by a page that should not have — arrives there without its secrets.
+ */
+export function credentialTarget(c: Connection): string {
+  let origin = "";
+  try {
+    origin = new URL(c.baseUrl).origin;
+  } catch {
+    // Not an address yet: nothing can be sent anywhere.
+  }
+  return JSON.stringify([origin, c.auth.type === "oauth" ? (c.auth.issuer ?? "") : ""]);
+}
+
 /** Every secret a connection may have filed, for listing and for deleting. */
 export function secretFieldsOf(c: Connection): string[] {
   return [...SECRET_FIELDS[c.auth.type], ...TLS_SECRET_FIELDS];
@@ -138,6 +154,11 @@ export const SECRET_FIELDS: Record<AuthType, string[]> = {
   oauth: ["clientSecret", "privateKey", "tokens", "client", "dpopKey"],
   sigv4: ["accessKeyId", "secretAccessKey", "sessionToken"],
 };
+
+/** Every field any auth method files a secret under, whatever the connection uses now. */
+export const ALL_SECRET_FIELDS = [
+  ...new Set([...Object.values(SECRET_FIELDS).flat(), ...TLS_SECRET_FIELDS]),
+];
 
 /**
  * The secrets a page may set. Only what a person types: a page can never

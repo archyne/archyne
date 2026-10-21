@@ -133,10 +133,12 @@ diagrams and model output is the last place a credential should be readable.
 - **VS Code**: in VS Code's own secret storage (`SecretStorage`), never in
   `settings.json`.
 
-Removing a service deletes its secrets. The network rules are the same in
-both: a remote address must be `https` (plain `http` only to this computer),
-and a redirect is never followed, so a credential cannot be bounced to a host
-it was not meant for.
+Removing a service deletes its secrets, and so does pointing it at another
+host or another sign-in server: a key saved for one service is never sent to
+the next, so after changing the address, type the key again. The network
+rules are the same in both: a remote address must be `https` (plain `http`
+only to this computer), and a redirect is never followed, so a credential
+cannot be bounced to a host it was not meant for.
 
 **What a service receives** is the diagram's Mermaid text and your request.
 Choose a service whose terms you are content to send your diagrams under.

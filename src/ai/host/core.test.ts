@@ -174,6 +174,75 @@ describe("AiHost", () => {
     expect(secrets.data.size).toBe(0);
   });
 
+  it("forgets a connection's secrets when it is pointed at another host", async () => {
+    const secrets = memorySecrets();
+    const net = service();
+    const host = new AiHost({ fetch: net.fetch, secrets });
+    await host.setConnections([GATEWAY]);
+    await host.setSecret("gw", "key", "gw-key");
+
+    // Another path on the same host is the same service.
+    const moved = { ...GATEWAY, baseUrl: `${new URL(GATEWAY.baseUrl).origin}/v2` };
+    await host.setConnections([moved]);
+    expect(await host.secretFields("gw")).toEqual(["key"]);
+
+    // Another host is not: what goes there must be given to it anew.
+    const elsewhere = { ...GATEWAY, baseUrl: "https://collector.example/v1" };
+    await host.setConnections([elsewhere]);
+    expect(await host.secretFields("gw")).toEqual([]);
+    await host.probe("gw");
+    expect(JSON.stringify(net.seen)).not.toContain("gw-key");
+
+    // Moving back does not bring the key back either.
+    await host.setConnections([GATEWAY]);
+    expect(await host.secretFields("gw")).toEqual([]);
+  });
+
+  it("keeps that binding across a restart, so a page cannot move a connection while the host is down", async () => {
+    const secrets = memorySecrets();
+    const before = new AiHost({ fetch: service().fetch, secrets });
+    await before.setConnections([GATEWAY]);
+    await before.setSecret("gw", "key", "gw-key");
+
+    const after = new AiHost({ fetch: service().fetch, secrets });
+    await after.setConnections([{ ...GATEWAY, baseUrl: "https://collector.example/v1" }]);
+    expect(await after.secretFields("gw")).toEqual([]);
+    expect([...secrets.data.values()]).not.toContain("gw-key");
+  });
+
+  it("still takes connections where nothing can be kept, as on Linux with no keyring", async () => {
+    const refusing: SecretStore = {
+      get: async () => undefined,
+      set: async () => {
+        throw new Error("This system offers no secure storage for secrets.");
+      },
+      delete: async () => {},
+    };
+    const host = new AiHost({ fetch: service().fetch, secrets: refusing });
+    await expect(host.setConnections([GATEWAY])).resolves.toBeUndefined();
+    expect(await host.probe("gw")).toMatchObject({ state: "ok" });
+  });
+
+  it("signs a person out when the authorization server changes", async () => {
+    const secrets = memorySecrets();
+    const host = new AiHost({ fetch: service().fetch, secrets });
+    const sso: Connection = {
+      ...GATEWAY,
+      auth: { type: "oauth", flow: "authorization_code", issuer: "https://login.acme.example" },
+    };
+    await host.setConnections([sso]);
+    await secrets.set(secretKey("gw", "tokens"), JSON.stringify({ access_token: "at" }));
+    await host.setSecret("gw", "clientSecret", "cs");
+    await host.setConnections([
+      {
+        ...sso,
+        auth: { ...sso.auth, issuer: "https://login.collector.example" } as Connection["auth"],
+      },
+    ]);
+    expect(secrets.data.has(secretKey("gw", "tokens"))).toBe(false);
+    expect(secrets.data.has(secretKey("gw", "clientSecret"))).toBe(false);
+  });
+
   it("ignores a malformed connection sent by the page", async () => {
     const host = new AiHost({ fetch: service().fetch, secrets: memorySecrets() });
     await host.setConnections([{ id: "x" } as unknown as Connection, GATEWAY]);
