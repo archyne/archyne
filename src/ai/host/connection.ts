@@ -7,11 +7,16 @@
  * never sent back to the page — see AUTH.local.md, "The one rule".
  */
 
+import type { SecretRef, VaultConfig } from "./vault";
+
 /**
  * The dialect a service speaks (see `dialects.ts`). The first five were
  * decided together (AUTH.local.md, 2026-10-18); Alibaba Cloud followed.
+ * `vault` is not a model service but a place secrets are read from
+ * (`vault.ts`): it speaks no dialect, and a turn is never sent to it.
  */
-export type Protocol = "openai" | "anthropic" | "bedrock" | "vertex" | "azure" | "alibaba";
+export type Protocol =
+  "openai" | "anthropic" | "bedrock" | "vertex" | "azure" | "alibaba" | "vault";
 
 export const IMPLEMENTED_PROTOCOLS: readonly Protocol[] = [
   "openai",
@@ -116,6 +121,13 @@ export interface Connection {
    * certificate and its key are secrets (`TLS_SECRET_FIELDS`).
    */
   clientCertificate?: boolean;
+  /** For a vault (`protocol: "vault"`): which one, and how it is reached. */
+  vault?: VaultConfig;
+  /**
+   * Typed secrets read from a vault instead of kept here, by field name
+   * (`key`, `password`, `clientSecret`, …). The value is never stored.
+   */
+  fromVault?: Record<string, SecretRef>;
 }
 
 /** The secrets of a client certificate, whatever the auth method. */

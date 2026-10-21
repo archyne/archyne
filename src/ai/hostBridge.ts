@@ -12,10 +12,12 @@ import type { AiProvider, ChatMessage, GenerateOptions } from "./types";
  * describes connections and receives text (AUTH.local.md, "The one rule").
  */
 
-export type HostProbe = Reachability | { state: "invalid"; problem: string };
+export type HostProbe =
+  Reachability | { state: "invalid"; problem: string } | { state: "vault"; detail: string };
 
 export interface HostAi {
-  setConnections(list: Connection[]): Promise<void>;
+  /** The connections, vaults among them, and the page's language for the host's own questions. */
+  setConnections(list: Connection[], locale: string): Promise<void>;
   setSecret(id: string, field: string, value: string | null): Promise<void>;
   secretFields(id: string): Promise<string[]>;
   canKeepSecrets(): Promise<boolean>;
@@ -86,7 +88,7 @@ function overWebview(vscode: { postMessage(message: unknown): void }): HostAi {
     });
 
   return {
-    setConnections: (list) => call("setConnections", [list]),
+    setConnections: (list, locale) => call("setConnections", [list, locale]),
     setSecret: (id, field, value) => call("setSecret", [id, field, value]),
     secretFields: (id) => call("secretFields", [id]),
     canKeepSecrets: () => call("canKeepSecrets", []),

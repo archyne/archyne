@@ -340,6 +340,10 @@ jobs:
       # stand-ins that answer only in their own dialect and credentials.
       - name: Desktop shell, hosted dialects
         run: npm run test:e2e:desktop-protocols
+      # A key read from a vault: a fake az first on the PATH, the shell's
+      # question answered from the test, the key never kept.
+      - name: Desktop e2e (secrets from a vault)
+        run: npm run test:e2e:desktop-vault
       # The remote-service settings exist only where a host keeps secrets, so
       # the web build's axe audit never sees them; this audits every variant.
       - name: Desktop shell, accessibility of the remote settings

@@ -526,6 +526,35 @@ export const messages: Messages = {
     "アドレス: PROJECT_ID を Google Cloud のプロジェクトに置き換えます。global ではなくリージョンを使う場合は https://<リージョン>-aiplatform.googleapis.com/v1/projects/<プロジェクト>/locations/<リージョン>/endpoints/openapi です。モデル名は google/gemini-… のような形式です。サービスアカウントの鍵でサインインするか、Google の OAuth クライアントを使ってブラウザでサインインします。",
   "ai.remoteAlibabaHint":
     "アドレス: 既定はシンガポールです。北京は https://dashscope.aliyuncs.com/compatible-mode/v1、香港は https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1。その他のリージョン（バージニア、フランクフルト、東京など）はワークスペース固有のアドレス https://<workspace-id>.<region>.maas.aliyuncs.com/compatible-mode/v1 で利用できます。API キーは同じリージョンで作成したものが必要で、異なると 401 が返ります。モデル名は qwen-plus のような形式です。",
+  "ai.vaults": "保管庫 ({count})",
+  "ai.vaultsHint":
+    "サービスのキーを、このコンピューターではなくクラウドの保管庫に置けます。Archyne はサインイン済みの保管庫のコマンドライン ツールでキーを読み取り、メモリ上にだけ保持し、初めてどこかへ送信する前に確認します。",
+  "ai.vaultPick": "保管庫",
+  "ai.vaultAdd": "保管庫を追加",
+  "ai.vaultRemove": "保管庫を削除",
+  "ai.vaultNewName": "新しい保管庫",
+  "ai.vaultKind": "保管庫の種類",
+  "ai.vaultProject": "プロジェクト",
+  "ai.vaultProfile": "プロファイル (任意)",
+  "ai.vaultMount": "マウント",
+  "ai.vaultNamespace": "名前空間 (任意)",
+  "ai.vaultCliHint":
+    "{command} コマンドで、あなたのサインインのまま読み取ります。サインインしていないと表示されたら、{login} を実行してください。",
+  "ai.vaultProblemAddress":
+    "アドレスが正しくありません。Key Vault は https://name.vault.azure.net の形式、HashiCorp は https である必要があります。",
+  "ai.vaultProblemProject":
+    "プロジェクトが正しくありません。acme-ai-123456 のような ID か、プロジェクト番号を使ってください。",
+  "ai.vaultProblemField": "この欄に使えない文字が含まれています。",
+  "ai.secretSource": "取得元",
+  "ai.secretKeptHere": "このコンピューター",
+  "ai.secretVaultOption": "保管庫「{vault}」から",
+  "ai.vaultSecretName": "シークレット名",
+  "ai.vaultSecretPath": "シークレットのパス",
+  "ai.vaultSecretKey": "中のキー (任意)",
+  "ai.vaultSecretField": "フィールド",
+  "ai.vaultSecretHint":
+    "必要なときに保管庫から読み取り、メモリ上にだけ保持します。初回は、送信する前に Archyne が確認します。",
+  "ai.remoteVaultFailed": "保管庫からシークレットを読み取れませんでした: {detail}",
   "ai.oauthFlowAssertion": "署名付きアサーション（サービスアカウント）",
   "ai.oauthAssertionHint":
     "下に秘密鍵を貼り付けるか、Google サービスアカウントの JSON 鍵ファイルをそのまま貼り付けます。発行者と鍵 ID はファイルに含まれています。",

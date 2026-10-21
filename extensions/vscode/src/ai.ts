@@ -43,6 +43,14 @@ function aiHost(): AiHostLike {
       if (protocol !== "https:" && protocol !== "http:") throw new Error("Not a web address.");
       await vscode.env.openExternal(vscode.Uri.parse(url));
     },
+    // Before a secret from a vault first goes somewhere: a modal of VS Code's
+    // own, which the webview can neither draw nor answer. Dismissing it is no.
+    confirm: async (text: { message: string; detail: string; allow: string }) =>
+      (await vscode.window.showWarningMessage(
+        text.message,
+        { modal: true, detail: text.detail },
+        text.allow,
+      )) === text.allow,
     secrets: {
       get: (key: string) => Promise.resolve(ctx.secrets.get(key)),
       set: (key: string, value: string) => Promise.resolve(ctx.secrets.store(key, value)),

@@ -535,6 +535,35 @@ export const messages: Messages = {
     "Indirizzo: sostituisci PROJECT_ID con il tuo progetto Google Cloud; per una regione invece di global usa https://<regione>-aiplatform.googleapis.com/v1/projects/<progetto>/locations/<regione>/endpoints/openapi. I modelli si chiamano come google/gemini-…. Accedi con la chiave di un account di servizio, oppure dal browser con un client OAuth di Google.",
   "ai.remoteAlibabaHint":
     "Indirizzo: Singapore come indicato; Pechino è https://dashscope.aliyuncs.com/compatible-mode/v1, Hong Kong https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1, e ogni regione (Virginia, Francoforte, Tokyo…) si raggiunge all'indirizzo del tuo workspace, https://<workspace-id>.<region>.maas.aliyuncs.com/compatible-mode/v1. La chiave API deve essere della stessa regione, altrimenti il servizio risponde 401. I modelli si chiamano come qwen-plus.",
+  "ai.vaults": "Casseforti ({count})",
+  "ai.vaultsHint":
+    "Tieni le chiavi di un servizio nella cassaforte del tuo cloud invece che su questo computer. Archyne le legge con lo strumento da riga di comando della cassaforte, con l'accesso che hai già fatto, le tiene solo in memoria e ti chiede conferma prima di inviarne una per la prima volta.",
+  "ai.vaultPick": "Cassaforte",
+  "ai.vaultAdd": "Aggiungi cassaforte",
+  "ai.vaultRemove": "Rimuovi cassaforte",
+  "ai.vaultNewName": "Nuova cassaforte",
+  "ai.vaultKind": "Tipo di cassaforte",
+  "ai.vaultProject": "Progetto",
+  "ai.vaultProfile": "Profilo (facoltativo)",
+  "ai.vaultMount": "Mount",
+  "ai.vaultNamespace": "Namespace (facoltativo)",
+  "ai.vaultCliHint":
+    "Letta con il comando {command}, con il tuo accesso. Se dice che non hai effettuato l'accesso, esegui {login}.",
+  "ai.vaultProblemAddress":
+    "L'indirizzo non è valido: quello di un Key Vault è come https://nome.vault.azure.net, e quello di HashiCorp deve essere https.",
+  "ai.vaultProblemProject":
+    "Il progetto non è valido: usa il suo ID, come acme-ai-123456, o il suo numero.",
+  "ai.vaultProblemField": "Questo campo contiene un carattere non ammesso.",
+  "ai.secretSource": "Provenienza",
+  "ai.secretKeptHere": "Su questo computer",
+  "ai.secretVaultOption": "Dalla cassaforte {vault}",
+  "ai.vaultSecretName": "Nome del segreto",
+  "ai.vaultSecretPath": "Percorso del segreto",
+  "ai.vaultSecretKey": "Chiave al suo interno (facoltativa)",
+  "ai.vaultSecretField": "Campo",
+  "ai.vaultSecretHint":
+    "Letto dalla cassaforte quando serve e tenuto solo in memoria. La prima volta, Archyne ti chiede conferma prima di inviarlo.",
+  "ai.remoteVaultFailed": "Impossibile leggere un segreto dalla cassaforte: {detail}",
   "ai.oauthFlowAssertion": "Asserzione firmata (account di servizio)",
   "ai.oauthAssertionHint":
     "Incolla qui sotto la chiave privata, oppure il file di chiave JSON di un account di servizio Google così com'è: contiene l'emittente e l'ID della chiave.",

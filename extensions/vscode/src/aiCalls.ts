@@ -12,7 +12,7 @@
 
 /** The slice of the shared host this file calls; see src/ai/host/core.ts. */
 export interface AiHostLike {
-  setConnections(list: unknown[]): Promise<void>;
+  setConnections(list: unknown[], locale?: unknown): Promise<void>;
   setSecret(id: string, field: string, value: string | null): Promise<void>;
   secretFields(id: string): Promise<string[]>;
   probe(id: string): Promise<unknown>;
@@ -51,7 +51,7 @@ export async function answerCall(
     let value: unknown;
     switch (msg.method) {
       case "setConnections":
-        value = await h.setConnections(Array.isArray(args[0]) ? args[0] : []);
+        value = await h.setConnections(Array.isArray(args[0]) ? args[0] : [], args[1]);
         break;
       case "setSecret":
         value = await h.setSecret(

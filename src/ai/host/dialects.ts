@@ -261,5 +261,7 @@ export function dialectFor(protocol: Protocol): Dialect | null {
       return VERTEX_DIALECT;
     case "alibaba":
       return ALIBABA_DIALECT;
+    case "vault":
+      return null;
   }
 }

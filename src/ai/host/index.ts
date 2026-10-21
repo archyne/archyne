@@ -6,4 +6,5 @@
  */
 export { AiHost, secretKey } from "./core";
 export type { HostEnv, HostEvent, SecretStore } from "./core";
+export type { AskText } from "./vaultAsk";
 export type { Connection } from "./connection";

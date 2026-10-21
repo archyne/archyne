@@ -263,7 +263,9 @@ async function probeLocal(server: ServerSettings): Promise<Reachability> {
   if (!ai || !isLocalUrl(server.baseUrl)) return probeServer(server);
   await hostSynced();
   const result = await ai.probe(LOCAL_CONNECTION_ID);
-  return result.state === "invalid" ? { state: "not-local" } : result;
+  return result.state === "invalid" || result.state === "vault"
+    ? { state: "not-local" }
+    : result;
 }
 
 function ServerSettingsBlock({ disabled }: { disabled: boolean }) {

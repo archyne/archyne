@@ -532,6 +532,35 @@ export const messages: Messages = {
     "Dirección: sustituye PROJECT_ID por tu proyecto de Google Cloud; para una región en lugar de global, usa https://<región>-aiplatform.googleapis.com/v1/projects/<proyecto>/locations/<región>/endpoints/openapi. Los modelos se llaman como google/gemini-…. Inicia sesión con la clave de una cuenta de servicio, o en el navegador con un cliente OAuth de Google.",
   "ai.remoteAlibabaHint":
     "Dirección: Singapur tal como aparece; Pekín es https://dashscope.aliyuncs.com/compatible-mode/v1, Hong Kong https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1, y cualquier región (Virginia, Fráncfort, Tokio…) se alcanza en la dirección de tu espacio de trabajo, https://<workspace-id>.<region>.maas.aliyuncs.com/compatible-mode/v1. La clave de API debe ser de la misma región; si no, el servicio responde 401. Los modelos se llaman como qwen-plus.",
+  "ai.vaults": "Almacenes ({count})",
+  "ai.vaultsHint":
+    "Guarda las claves de un servicio en el almacén de tu nube en lugar de en este equipo. Archyne las lee con la herramienta de línea de comandos del almacén, con la sesión que ya tienes iniciada, las mantiene solo en memoria y te pregunta antes de enviar una a algún sitio por primera vez.",
+  "ai.vaultPick": "Almacén",
+  "ai.vaultAdd": "Añadir almacén",
+  "ai.vaultRemove": "Quitar almacén",
+  "ai.vaultNewName": "Nuevo almacén",
+  "ai.vaultKind": "Tipo de almacén",
+  "ai.vaultProject": "Proyecto",
+  "ai.vaultProfile": "Perfil (opcional)",
+  "ai.vaultMount": "Punto de montaje",
+  "ai.vaultNamespace": "Espacio de nombres (opcional)",
+  "ai.vaultCliHint":
+    "Se lee con el comando {command}, con tu sesión. Si dice que no has iniciado sesión, ejecuta {login}.",
+  "ai.vaultProblemAddress":
+    "La dirección no es válida: la de un Key Vault es como https://nombre.vault.azure.net, y la de HashiCorp debe ser https.",
+  "ai.vaultProblemProject":
+    "El proyecto no es válido: usa su ID, como acme-ai-123456, o su número.",
+  "ai.vaultProblemField": "Este campo contiene un carácter no permitido.",
+  "ai.secretSource": "Origen",
+  "ai.secretKeptHere": "En este equipo",
+  "ai.secretVaultOption": "Del almacén {vault}",
+  "ai.vaultSecretName": "Nombre del secreto",
+  "ai.vaultSecretPath": "Ruta del secreto",
+  "ai.vaultSecretKey": "Clave dentro (opcional)",
+  "ai.vaultSecretField": "Campo",
+  "ai.vaultSecretHint":
+    "Se lee del almacén cuando hace falta y solo se guarda en memoria. La primera vez, Archyne te pregunta antes de enviarlo.",
+  "ai.remoteVaultFailed": "No se pudo leer un secreto del almacén: {detail}",
   "ai.oauthFlowAssertion": "Aserción firmada (cuenta de servicio)",
   "ai.oauthAssertionHint":
     "Pega abajo la clave privada, o el archivo de clave JSON de una cuenta de servicio de Google tal cual: incluye el emisor y el ID de la clave.",

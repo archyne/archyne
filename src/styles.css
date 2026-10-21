@@ -1516,8 +1516,10 @@ body.resizing-side {
   color: var(--danger, #d13438);
 }
 
-/* The local-server settings: folded to one line once a model is chosen. */
-.ai-server {
+/* The local-server settings: folded to one line once a model is chosen.
+   The vaults are set out the same way. */
+.ai-server,
+.ai-vaults {
   margin: 6px 2px 0;
   padding: 6px 10px;
   border-radius: 6px;
@@ -1527,7 +1529,8 @@ body.resizing-side {
   background: var(--panel-bg);
 }
 
-.ai-server summary {
+.ai-server summary,
+.ai-vaults summary {
   cursor: pointer;
   color: var(--text);
   overflow-wrap: anywhere;
@@ -1547,7 +1550,8 @@ body.resizing-side {
 }
 
 /* Outlined, as tall as the fields, so a button's edge lines up with theirs. */
-.ai-server .editor-action {
+.ai-server .editor-action,
+.ai-vaults .editor-action {
   border: 1px solid var(--border);
   font-size: 12px;
   padding: 4px 8px;

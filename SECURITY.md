@@ -118,10 +118,20 @@ Archyne's. Two boundaries carry the weight:
   service's origin and, for OAuth, the authorization server — and the binding
   is stored with it: a connection the page points elsewhere, even while the
   host is not running, arrives there with no secrets at all.
+- **A secret from a vault goes nowhere unasked.** A service's key may be read
+  from a cloud vault (Azure Key Vault, AWS Secrets Manager, Google Secret
+  Manager, Alibaba KMS, HashiCorp Vault) through the vendor's CLI. Which secret
+  and which address are chosen in the page, so before a given secret first
+  goes to a given address the host asks the person in a native dialog the
+  page can neither draw nor answer; the answer is bound like a saved secret.
+  The value is held in the host's memory only. Every identifier that reaches a
+  command line is held to a pattern with no character a shell would read.
 
 Reports are in scope where a secret can be read back by the page or is sent
 with a request that is not its own connection's or to a host other than the one
-it was saved for, where the web build can reach a
+it was saved for, where a vault's secret is sent without the host having asked,
+where a vault reference runs anything but the vendor's read command, where the
+web build can reach a
 non-loopback address, or where an OAuth flow can be completed with a forged
 state, a substituted code or another issuer's response.
 

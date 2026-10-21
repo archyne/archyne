@@ -171,6 +171,31 @@ const VARIANTS: Array<{ label: string; go: () => Promise<void> }> = [
         .selectOption("alibaba")
         .then(() => {}),
   },
+  {
+    label: "a vault, and the key read from it",
+    go: async () => {
+      if ((await page.locator(".ai-vaults[open]").count()) === 0) {
+        await page.locator(".ai-vaults summary").click();
+      }
+      await page.getByRole("button", { name: "Add vault" }).click();
+      await page
+        .locator(".ai-vaults .ai-server-field", { hasText: "Address" })
+        .locator("input")
+        .fill("https://kv-a11y.vault.azure.net");
+      // Whichever secret the service now asks for: by here it signs in with OAuth.
+      await page
+        .getByRole("combobox", { name: /· Source$/ })
+        .first()
+        .selectOption({ index: 1 });
+    },
+  },
+  {
+    label: "a vault with a problem",
+    go: () =>
+      select("Kind of vault")
+        .selectOption("aws-sm")
+        .then(() => {}),
+  },
 ];
 
 for (const theme of ["dark", "light"] as const) {

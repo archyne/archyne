@@ -538,6 +538,35 @@ export const messages: Messages = {
     "Adresse: PROJECT_ID durch Ihr Google-Cloud-Projekt ersetzen; für eine Region statt global https://<Region>-aiplatform.googleapis.com/v1/projects/<Projekt>/locations/<Region>/endpoints/openapi verwenden. Modelle heißen etwa google/gemini-…. Mit dem Schlüssel eines Dienstkontos anmelden oder im Browser mit einem Google-OAuth-Client.",
   "ai.remoteAlibabaHint":
     "Adresse: Singapur wie vorgegeben; Peking ist https://dashscope.aliyuncs.com/compatible-mode/v1, Hongkong https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1, und jede Region (Virginia, Frankfurt, Tokio …) erreichen Sie unter der Adresse Ihres Workspaces, https://<workspace-id>.<region>.maas.aliyuncs.com/compatible-mode/v1. Der API-Schlüssel muss aus derselben Region stammen, sonst antwortet der Dienst mit 401. Modelle heißen etwa qwen-plus.",
+  "ai.vaults": "Tresore ({count})",
+  "ai.vaultsHint":
+    "Bewahren Sie die Schlüssel eines Dienstes im Tresor Ihrer Cloud statt auf diesem Computer auf. Archyne liest sie mit dem Befehlszeilenwerkzeug des Tresors, so wie Sie dort angemeldet sind, hält sie nur im Speicher und fragt Sie, bevor es einen zum ersten Mal irgendwohin sendet.",
+  "ai.vaultPick": "Tresor",
+  "ai.vaultAdd": "Tresor hinzufügen",
+  "ai.vaultRemove": "Tresor entfernen",
+  "ai.vaultNewName": "Neuer Tresor",
+  "ai.vaultKind": "Art des Tresors",
+  "ai.vaultProject": "Projekt",
+  "ai.vaultProfile": "Profil (optional)",
+  "ai.vaultMount": "Mount",
+  "ai.vaultNamespace": "Namespace (optional)",
+  "ai.vaultCliHint":
+    "Gelesen mit dem Befehl {command}, so wie Sie angemeldet sind. Meldet er, dass Sie nicht angemeldet sind, führen Sie {login} aus.",
+  "ai.vaultProblemAddress":
+    "Die Adresse ist ungültig: Die eines Key Vault sieht aus wie https://name.vault.azure.net, die von HashiCorp muss https sein.",
+  "ai.vaultProblemProject":
+    "Das Projekt ist ungültig: Verwenden Sie seine ID, etwa acme-ai-123456, oder seine Nummer.",
+  "ai.vaultProblemField": "Dieses Feld enthält ein nicht erlaubtes Zeichen.",
+  "ai.secretSource": "Quelle",
+  "ai.secretKeptHere": "Auf diesem Computer",
+  "ai.secretVaultOption": "Aus dem Tresor {vault}",
+  "ai.vaultSecretName": "Name des Geheimnisses",
+  "ai.vaultSecretPath": "Pfad des Geheimnisses",
+  "ai.vaultSecretKey": "Schlüssel darin (optional)",
+  "ai.vaultSecretField": "Feld",
+  "ai.vaultSecretHint":
+    "Wird bei Bedarf aus dem Tresor gelesen und nur im Speicher gehalten. Beim ersten Mal fragt Archyne Sie, bevor es gesendet wird.",
+  "ai.remoteVaultFailed": "Ein Geheimnis konnte nicht aus dem Tresor gelesen werden: {detail}",
   "ai.oauthFlowAssertion": "Signierte Assertion (Dienstkonto)",
   "ai.oauthAssertionHint":
     "Unten den privaten Schlüssel einfügen oder die JSON-Schlüsseldatei eines Google-Dienstkontos unverändert: Sie enthält den Aussteller und die Schlüssel-ID.",

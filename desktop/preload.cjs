@@ -85,8 +85,9 @@ contextBridge.exposeInMainWorld("archyne", {
    * which are set.
    */
   ai: {
-    /** @param {unknown[]} list */
-    setConnections: (list) => ipcRenderer.invoke("archyne:ai-connections", list),
+    /** @param {unknown[]} list @param {string} locale */
+    setConnections: (list, locale) =>
+      ipcRenderer.invoke("archyne:ai-connections", list, locale),
     /** @param {string} id @param {string} field @param {string | null} value */
     setSecret: (id, field, value) =>
       ipcRenderer.invoke("archyne:ai-secret", { id, field, value }),

@@ -1,9 +1,11 @@
 import { create } from "zustand";
+import { useI18n } from "../i18n";
 import { hostAi } from "./hostBridge";
 import type { Connection } from "./host/connection";
 import { newConnectionId } from "./host/connection";
 import { aiMode } from "./mode";
 import { SERVER_PRESETS, type ServerSettings } from "./server";
+import type { VaultKind } from "./host/vault";
 
 /**
  * Which engine answers a Generate request, and how to reach the services that
@@ -22,6 +24,10 @@ import { SERVER_PRESETS, type ServerSettings } from "./server";
  *     the host like a remote service, which spares it the page's CORS.
  *   - `remote`: a service anywhere, with credentials — desktop and VS Code
  *     only, because only a host can keep a secret (AUTH.local.md).
+ *
+ * Vaults are listed beside the services: places a service's secrets can be
+ * read from instead of being kept on this computer (AUTH.local.md, phase 5).
+ * To the host they are connections too, with protocol `vault`.
  */
 export type AiEngine = "browser" | "server" | "remote";
 
@@ -35,6 +41,7 @@ interface Stored {
   server?: Partial<ServerSettings>;
   connections?: Connection[];
   connectionId?: string | null;
+  vaults?: Connection[];
 }
 
 interface EngineState {
@@ -49,6 +56,12 @@ interface EngineState {
   updateConnection: (id: string, patch: Partial<Connection>) => void;
   removeConnection: (id: string) => void;
   selectConnection: (id: string) => void;
+  vaults: Connection[];
+  /** Adds a vault read through its CLI, and returns its id. */
+  addVault: (label: string, kind: VaultKind) => string;
+  updateVault: (id: string, patch: Partial<Connection>) => void;
+  /** Removes a vault, and every reference a service had to it. */
+  removeVault: (id: string) => void;
 }
 
 /** Whether this build carries an engine of its own for the `browser` choice. */
@@ -106,11 +119,13 @@ let lastSync: Promise<void> = Promise.resolve();
  * of these first (`hostSynced`), so a probe right after an edit never asks
  * about the connection as it was a moment ago.
  */
-function syncHost(state: Pick<EngineState, "server" | "connections">): void {
+function syncHost(state: Pick<EngineState, "server" | "connections" | "vaults">): void {
   const ai = hostAi();
   if (!ai) return;
-  const list = [localConnection(state.server), ...state.connections];
-  lastSync = lastSync.then(() => ai.setConnections(list)).catch(() => undefined);
+  const list = [localConnection(state.server), ...state.connections, ...state.vaults];
+  // The language goes along for the questions the host asks in its own window.
+  const locale = useI18n.getState().locale;
+  lastSync = lastSync.then(() => ai.setConnections(list, locale)).catch(() => undefined);
 }
 
 /** Resolves once the host has the connections as they stand now. */
@@ -122,11 +137,11 @@ const stored = load();
 
 export const useAiEngine = create<EngineState>((set, get) => {
   const persist = () => {
-    const { engine, server, connections, connectionId } = get();
+    const { engine, server, connections, connectionId, vaults } = get();
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ engine, server, connections, connectionId }),
+        JSON.stringify({ engine, server, connections, connectionId, vaults }),
       );
     } catch {
       // Storage unavailable; the choice still holds for this session.
@@ -137,7 +152,11 @@ export const useAiEngine = create<EngineState>((set, get) => {
     syncHost(get());
   };
   const connections = Array.isArray(stored.connections) ? stored.connections : [];
+  const vaults = Array.isArray(stored.vaults)
+    ? stored.vaults.filter((v) => v.protocol === "vault")
+    : [];
   const initial = {
+    vaults,
     engine: initialEngine(stored, browserEngineAvailable(), remoteEngineAvailable()),
     server: { ...DEFAULT_SERVER, ...stored.server },
     connections,
@@ -190,5 +209,45 @@ export const useAiEngine = create<EngineState>((set, get) => {
       set({ connectionId: id });
       persist();
     },
+    addVault: (label, kind) => {
+      const id = newConnectionId();
+      const fresh: Connection = {
+        id,
+        label,
+        baseUrl: "https://",
+        protocol: "vault",
+        auth: { type: "none" },
+        vault: { kind, via: "cli" },
+      };
+      set({ vaults: [...get().vaults, fresh] });
+      changed();
+      return id;
+    },
+    updateVault: (id, patch) => {
+      set({
+        vaults: get().vaults.map((v) =>
+          v.id === id ? { ...v, ...patch, id, protocol: "vault" as const } : v,
+        ),
+      });
+      changed();
+    },
+    removeVault: (id) => {
+      set({
+        vaults: get().vaults.filter((v) => v.id !== id),
+        connections: get().connections.map((c) => {
+          if (!c.fromVault) return c;
+          const kept = Object.fromEntries(
+            Object.entries(c.fromVault).filter(([, ref]) => ref.vault !== id),
+          );
+          return { ...c, fromVault: Object.keys(kept).length ? kept : undefined };
+        }),
+      });
+      changed();
+    },
   };
+});
+
+// A change of language reaches the host too, for the next question it asks.
+useI18n.subscribe((now, before) => {
+  if (now.locale !== before.locale) syncHost(useAiEngine.getState());
 });

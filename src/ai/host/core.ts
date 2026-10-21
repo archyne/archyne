@@ -18,10 +18,20 @@ import {
   type Connection,
   type OAuthConfig,
 } from "./connection";
+import { nodeRunCli, type RunCli } from "./cli";
 import { dialectFor } from "./dialects";
 import { nodeLoopback } from "./loopback";
 import { mtlsFetch } from "./mtls";
 import { signRequest } from "./sigv4";
+import {
+  cliCall,
+  pick,
+  refProblem,
+  vaultIdentity,
+  vaultProblem,
+  type SecretRef,
+} from "./vault";
+import { askText, type AskText, type VaultAsk } from "./vaultAsk";
 import {
   accessToken,
   dpopRequest,
@@ -63,6 +73,21 @@ export interface HostEnv {
   loopback?: () => Promise<Loopback>;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+  /** Runs a vendor's CLI, to read a secret from a vault; the real one by default. */
+  runCli?: RunCli;
+  /**
+   * Asks the person, in the host's own window, whether a secret from a vault
+   * may go where a connection would send it. Without it, none is sent.
+   */
+  confirm?: (text: AskText, ask: VaultAsk) => Promise<boolean>;
+}
+
+/** A vault could not give a secret: not signed in, no such secret, refused. */
+export class VaultError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "VaultError";
+  }
 }
 
 /** What the host sends back to the page: a request's text, or a sign-in's progress. */
@@ -89,6 +114,12 @@ export type HostEvent =
 /** Where a connection's secrets were kept for: its `credentialTarget` when they were. */
 const BOUND_TO = "boundTo";
 
+/** The vault secrets a person has let a connection send, and where. */
+const APPROVALS = "approvals";
+
+/** How long a secret read from a vault is kept in memory before it is read again. */
+const VAULT_TTL_MS = 30 * 60_000;
+
 /** The key a secret is filed under; one namespace per connection. */
 export function secretKey(connectionId: string, field: string): string {
   return `archyne.ai.${connectionId}.${field}`;
@@ -104,6 +135,13 @@ export class AiHost {
    * check right after a key is typed sees the key.
    */
   private changes: Promise<unknown> = Promise.resolve();
+  /** Secrets read from vaults, in memory only, by connection and field. */
+  private vaultCache = new Map<string, { value: string; at: number; identity: string }>();
+  private vaultReads = new Map<string, Promise<string>>();
+  /** One question to the person at a time. */
+  private asking: Promise<unknown> = Promise.resolve();
+  /** The page's language, for the questions the host asks in its own window. */
+  private locale = "en";
 
   constructor(private readonly env: HostEnv) {}
 
@@ -128,7 +166,10 @@ export class AiHost {
    * moved address to keep its secrets, a page could send a saved key or token
    * to any host it chose. Moved, then, the connection starts again with none.
    */
-  setConnections(list: Connection[]): Promise<void> {
+  setConnections(list: Connection[], locale?: unknown): Promise<void> {
+    if (typeof locale === "string" && /^[a-z]{2,3}([-_][A-Za-z0-9]{2,8})*$/.test(locale)) {
+      this.locale = locale;
+    }
     return this.change(async () => {
       const next = new Map(list.filter(isConnection).map((c) => [c.id, c]));
       for (const id of this.connections.keys()) {
@@ -156,9 +197,150 @@ export class AiHost {
 
   /** Delete everything filed for a connection, whatever its auth method was. */
   private async forget(connectionId: string): Promise<void> {
-    for (const field of [...ALL_SECRET_FIELDS, BOUND_TO]) {
+    this.evict(connectionId);
+    for (const field of [...ALL_SECRET_FIELDS, APPROVALS, BOUND_TO]) {
       await this.env.secrets.delete(secretKey(connectionId, field));
     }
+  }
+
+  /**
+   * One of a connection's typed secrets: kept here, or read from a vault.
+   * A vault's is read when first needed, after the person has allowed it to
+   * go where this connection sends it, and is then kept in memory for a
+   * while — never in the store.
+   */
+  private async secret(c: Connection, field: string): Promise<string | undefined> {
+    const ref = c.fromVault?.[field];
+    if (!ref) return this.env.secrets.get(secretKey(c.id, field));
+    const v = this.connections.get(ref.vault);
+    if (!v || v.protocol !== "vault") {
+      throw new VaultError("The vault this secret is read from is not set up.");
+    }
+    const problem = vaultProblem(v) ?? refProblem(v, ref);
+    if (problem)
+      throw new VaultError(`The vault or the secret's name is not valid (${problem}).`);
+    const identity = JSON.stringify([
+      credentialTarget(c),
+      vaultIdentity(v),
+      ref.name,
+      ref.key ?? "",
+    ]);
+    const slot = `${c.id}\u0000${field}`;
+    const now = (this.env.now ?? Date.now)();
+    const cached = this.vaultCache.get(slot);
+    if (cached && cached.identity === identity && now - cached.at < VAULT_TTL_MS) {
+      return cached.value;
+    }
+    const pending = `${slot}\u0000${identity}`;
+    let reading = this.vaultReads.get(pending);
+    if (!reading) {
+      reading = this.readVault(c, field, v, ref, identity).finally(() =>
+        this.vaultReads.delete(pending),
+      );
+      this.vaultReads.set(pending, reading);
+    }
+    const value = await reading;
+    this.vaultCache.set(slot, { value, at: now, identity });
+    return value;
+  }
+
+  private async readVault(
+    c: Connection,
+    field: string,
+    v: Connection,
+    ref: SecretRef,
+    identity: string,
+  ): Promise<string> {
+    await this.approve(c, field, v, ref, identity);
+    let raw: string;
+    try {
+      if (v.vault!.via === "cli") {
+        const call = cliCall(v, ref);
+        raw = call.read(await (this.env.runCli ?? nodeRunCli)(call));
+      } else {
+        throw new Error("Reading this vault through a sign-in is not available yet.");
+      }
+      return pick(v, ref, raw);
+    } catch (err) {
+      throw new VaultError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  /**
+   * Ask once — in the host's window — before a vault's secret first goes to
+   * this connection's address as this field. The answer is filed with the
+   * connection's secrets, so it is bound like them and lapses when the
+   * connection is pointed elsewhere.
+   */
+  private approve(
+    c: Connection,
+    field: string,
+    v: Connection,
+    ref: SecretRef,
+    identity: string,
+  ): Promise<void> {
+    const run = async () => {
+      const key = secretKey(c.id, APPROVALS);
+      let approved: string[] = [];
+      try {
+        const stored: unknown = JSON.parse((await this.env.secrets.get(key)) ?? "[]");
+        if (Array.isArray(stored)) approved = stored.filter((x) => typeof x === "string");
+      } catch {
+        // Unreadable: as if nothing had been allowed.
+      }
+      const entry = JSON.stringify([identity, field]);
+      if (approved.includes(entry)) return;
+      if (!this.env.confirm) {
+        throw new VaultError("This host cannot ask before sending a secret from a vault.");
+      }
+      let destination = c.baseUrl;
+      try {
+        destination = new URL(c.baseUrl).origin;
+      } catch {
+        // Shown as typed.
+      }
+      const ask: VaultAsk = {
+        secret: ref.key ? `${ref.name} › ${ref.key}` : ref.name,
+        vault: v.label || v.baseUrl,
+        destination,
+        field,
+      };
+      const allowed = await this.env.confirm(askText(this.locale, ask), ask);
+      if (!allowed) throw new VaultError("Sending that secret from the vault was not allowed.");
+      try {
+        await this.bind(c.id);
+        await this.env.secrets.set(key, JSON.stringify([...approved, entry]));
+      } catch {
+        // A store that keeps nothing: allowed this time, asked again next.
+      }
+    };
+    const next = this.asking.then(run);
+    this.asking = next.catch(() => undefined);
+    return next;
+  }
+
+  /**
+   * Read, ahead of a request, every secret this connection takes from a
+   * vault — so that a vault that cannot give one is reported as that, in the
+   * CLI's or the vault's own words, and not as a service that did not answer.
+   */
+  private async vaultSecrets(c: Connection): Promise<void> {
+    const used = new Set(secretFieldsOf(c));
+    for (const field of Object.keys(c.fromVault ?? {})) {
+      if (used.has(field) && PAGE_SETTABLE_SECRETS.has(field)) await this.secret(c, field);
+    }
+  }
+
+  /** Forget what was read from vaults for a connection; true if there was anything. */
+  private evict(connectionId: string): boolean {
+    let any = false;
+    for (const slot of this.vaultCache.keys()) {
+      if (slot.startsWith(`${connectionId}\u0000`)) {
+        this.vaultCache.delete(slot);
+        any = true;
+      }
+    }
+    return any;
   }
 
   /**
@@ -193,12 +375,19 @@ export class AiHost {
   /** Reachability and the model list, as the local engine reports them. */
   async probe(
     connectionId: string,
-  ): Promise<Reachability | { state: "invalid"; problem: string }> {
+  ): Promise<
+    Reachability | { state: "invalid"; problem: string } | { state: "vault"; detail: string }
+  > {
     await this.settled();
     const c = this.connections.get(connectionId);
     if (!c) return { state: "invalid", problem: "unknown" };
     const problem = connectionProblem(c);
     if (problem) return { state: "invalid", problem };
+    try {
+      await this.vaultSecrets(c);
+    } catch (err) {
+      return { state: "vault", detail: err instanceof Error ? err.message : String(err) };
+    }
     return probeServer(
       { baseUrl: c.baseUrl, model: "" },
       this.fetchFor(c),
@@ -228,6 +417,7 @@ export class AiHost {
     }
     try {
       if (ctrl.signal.aborted) throw new DOMException("Generation cancelled", "AbortError");
+      await this.vaultSecrets(c);
       const provider = serverProvider(
         { baseUrl: c.baseUrl, model },
         this.fetchFor(c),
@@ -246,7 +436,12 @@ export class AiHost {
         emit({
           type: "ai:error",
           requestId,
-          reason: err instanceof ServerError ? err.reason : "network",
+          reason:
+            err instanceof ServerError
+              ? err.reason
+              : err instanceof VaultError
+                ? "vault"
+                : "network",
           detail: err instanceof Error ? err.message : String(err),
         });
       }
@@ -326,7 +521,9 @@ export class AiHost {
     const headersFor = async (force: boolean) => {
       const secrets: Record<string, string | undefined> = {};
       for (const field of SECRET_FIELDS[c.auth.type]) {
-        secrets[field] = await this.env.secrets.get(secretKey(c.id, field));
+        secrets[field] = PAGE_SETTABLE_SECRETS.has(field)
+          ? await this.secret(c, field)
+          : await this.env.secrets.get(secretKey(c.id, field));
       }
       if (c.auth.type === "oauth") {
         const token = await accessToken(
@@ -371,7 +568,7 @@ export class AiHost {
       if (c.auth.type === "sigv4") {
         return (await this.transportFor(c))(input, {
           ...init,
-          headers: await this.signed(c.id, c.auth, String(input), init, headers),
+          headers: await this.signed(c, c.auth, String(input), init, headers),
           redirect: "error",
         });
       }
@@ -379,7 +576,10 @@ export class AiHost {
     };
     return (async (input: RequestInfo | URL, init?: RequestInit) => {
       const response = await send(input, init, false);
-      if (response.status !== 401 || c.auth.type !== "oauth") return response;
+      if (response.status !== 401) return response;
+      // A key rotated in its vault: read it again, and try once more.
+      const reread = this.evict(c.id);
+      if (c.auth.type !== "oauth" && !reread) return response;
       return send(input, init, true);
     }) as typeof fetch;
   }
@@ -389,13 +589,13 @@ export class AiHost {
    * method, address, headers and body that are sent.
    */
   private async signed(
-    connectionId: string,
+    c: Connection,
     auth: { region: string; service?: string },
     url: string,
     init: RequestInit | undefined,
     headers: Record<string, string>,
   ): Promise<Record<string, string>> {
-    const get = (field: string) => this.env.secrets.get(secretKey(connectionId, field));
+    const get = (field: string) => this.secret(c, field);
     const [accessKeyId, secretAccessKey, sessionToken] = await Promise.all(
       SECRET_FIELDS.sigv4.map(get),
     );
@@ -417,7 +617,13 @@ export class AiHost {
   private oauthSecrets(connectionId: string): OAuthSecrets {
     const s = this.env.secrets;
     return {
-      get: (field) => s.get(secretKey(connectionId, field)),
+      // A client secret or a signing key may come from a vault; tokens never do.
+      get: (field) => {
+        const c = this.connections.get(connectionId);
+        return c && PAGE_SETTABLE_SECRETS.has(field)
+          ? this.secret(c, field)
+          : s.get(secretKey(connectionId, field));
+      },
       // Tokens and registered clients are bound like a typed secret.
       set: async (field, value) => {
         await this.bind(connectionId);
@@ -434,7 +640,7 @@ export class AiHost {
    */
   private async transportFor(c: Connection): Promise<typeof fetch> {
     if (!c.clientCertificate) return this.env.fetch;
-    const get = (field: string) => this.env.secrets.get(secretKey(c.id, field));
+    const get = (field: string) => this.secret(c, field);
     const [cert, key, passphrase, ca] = await Promise.all(
       ["tlsCert", "tlsKey", "tlsPassphrase", "tlsCa"].map(get),
     );

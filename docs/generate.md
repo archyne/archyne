@@ -140,5 +140,31 @@ rules are the same in both: a remote address must be `https` (plain `http`
 only to this computer), and a redirect is never followed, so a credential
 cannot be bounced to a host it was not meant for.
 
+### Keys kept in a vault
+
+A key does not have to be on this computer at all. Under **Vaults**, add the
+vault your organisation keeps it in; then, on the service, set the key's
+**Source** to that vault and give the secret's name. Archyne reads it when a
+request needs it, keeps it in memory only — never in the keychain, never on
+disk — and reads it again when the service refuses it, so a key rotated in
+the vault simply takes effect.
+
+| Vault                     | Where                                   | Read with, signed in first with        |
+| ------------------------- | --------------------------------------- | -------------------------------------- |
+| Azure Key Vault           | `https://<name>.vault.azure.net`        | `az` — `az login`                      |
+| AWS Secrets Manager       | a region; the secret's name or ARN      | `aws` — `aws sso login` (or a profile) |
+| Google Secret Manager     | a project; the secret's latest version  | `gcloud` — `gcloud auth login`         |
+| Alibaba Cloud KMS         | a region                                | `aliyun` — `aliyun configure`          |
+| HashiCorp Vault / OpenBao | its address, a KV v2 mount, a namespace | `vault` — `vault login`                |
+
+The vault is read through its own command-line tool, as you are signed in to
+it: Archyne keeps no credential for the vault. A secret that holds JSON — as
+AWS secrets often do — can be read by one of its keys.
+
+The first time a secret from a vault would go to a service, the app asks you
+in a window of its own — not in the page — naming the secret, the vault, the
+address and what it stands for there. It asks again if the service is
+pointed somewhere else or the vault changes.
+
 **What a service receives** is the diagram's Mermaid text and your request.
 Choose a service whose terms you are content to send your diagrams under.

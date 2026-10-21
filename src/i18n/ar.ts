@@ -529,6 +529,34 @@ export const messages: Messages = {
     "العنوان: استبدل PROJECT_ID بمشروعك على Google Cloud؛ ولاستخدام منطقة بدل global استخدم https://<المنطقة>-aiplatform.googleapis.com/v1/projects/<المشروع>/locations/<المنطقة>/endpoints/openapi. تُسمّى النماذج مثل google/gemini-…. سجّل الدخول بمفتاح حساب خدمة، أو عبر المتصفح بعميل OAuth من Google.",
   "ai.remoteAlibabaHint":
     "العنوان: سنغافورة كما هو مُعطى؛ بكين هي https://dashscope.aliyuncs.com/compatible-mode/v1، وهونغ كونغ https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1، ويمكن الوصول إلى أي منطقة (فرجينيا، فرانكفورت، طوكيو…) عبر عنوان مساحة العمل الخاصة بك، https://<workspace-id>.<region>.maas.aliyuncs.com/compatible-mode/v1. يجب أن يكون مفتاح API من المنطقة نفسها، وإلا تردّ الخدمة بالرمز 401. أسماء النماذج مثل qwen-plus.",
+  "ai.vaults": "الخزائن ({count})",
+  "ai.vaultsHint":
+    "احتفظ بمفاتيح الخدمة في خزنة السحابة بدلًا من هذا الحاسوب. يقرأها Archyne بأداة سطر الأوامر الخاصة بالخزنة بالحساب الذي سجّلت الدخول به، ويُبقيها في الذاكرة فقط، ويسألك قبل إرسال أيٍّ منها إلى أي مكان لأول مرة.",
+  "ai.vaultPick": "الخزنة",
+  "ai.vaultAdd": "إضافة خزنة",
+  "ai.vaultRemove": "إزالة الخزنة",
+  "ai.vaultNewName": "خزنة جديدة",
+  "ai.vaultKind": "نوع الخزنة",
+  "ai.vaultProject": "المشروع",
+  "ai.vaultProfile": "الملف الشخصي (اختياري)",
+  "ai.vaultMount": "نقطة التحميل",
+  "ai.vaultNamespace": "مساحة الاسم (اختيارية)",
+  "ai.vaultCliHint":
+    "تُقرأ بالأمر {command} بحسابك الحالي. إذا ظهر أنك لم تسجّل الدخول، فشغّل {login}.",
+  "ai.vaultProblemAddress":
+    "العنوان غير صالح: عنوان Key Vault يشبه https://name.vault.azure.net، وعنوان HashiCorp يجب أن يكون https.",
+  "ai.vaultProblemProject": "المشروع غير صالح: استخدم مُعرّفه مثل acme-ai-123456 أو رقمه.",
+  "ai.vaultProblemField": "يحتوي هذا الحقل على حرف غير مسموح به.",
+  "ai.secretSource": "المصدر",
+  "ai.secretKeptHere": "على هذا الحاسوب",
+  "ai.secretVaultOption": "من الخزنة «{vault}»",
+  "ai.vaultSecretName": "اسم السرّ",
+  "ai.vaultSecretPath": "مسار السرّ",
+  "ai.vaultSecretKey": "المفتاح داخله (اختياري)",
+  "ai.vaultSecretField": "الحقل",
+  "ai.vaultSecretHint":
+    "يُقرأ من الخزنة عند الحاجة ويُحفظ في الذاكرة فقط. في المرة الأولى يسألك Archyne قبل إرساله.",
+  "ai.remoteVaultFailed": "تعذّرت قراءة سرّ من الخزنة: {detail}",
   "ai.oauthFlowAssertion": "تأكيد موقَّع (حساب خدمة)",
   "ai.oauthAssertionHint":
     "الصق المفتاح الخاص أدناه، أو ملف مفتاح JSON لحساب خدمة Google كما هو: فهو يتضمن المُصدِر ومعرّف المفتاح.",

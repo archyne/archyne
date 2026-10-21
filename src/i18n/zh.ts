@@ -517,6 +517,34 @@ export const messages: Messages = {
     "地址：将 PROJECT_ID 替换为你的 Google Cloud 项目；若使用区域而非 global，请用 https://<区域>-aiplatform.googleapis.com/v1/projects/<项目>/locations/<区域>/endpoints/openapi。模型名称形如 google/gemini-…。可用服务账号密钥登录，或通过浏览器使用 Google OAuth 客户端登录。",
   "ai.remoteAlibabaHint":
     "地址：默认为新加坡；北京为 https://dashscope.aliyuncs.com/compatible-mode/v1，香港为 https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1，其他地域（弗吉尼亚、法兰克福、东京等）可使用你的业务空间专属地址 https://<workspace-id>.<region>.maas.aliyuncs.com/compatible-mode/v1。API Key 必须来自同一地域，否则服务返回 401。模型名称形如 qwen-plus。",
+  "ai.vaults": "保管库（{count}）",
+  "ai.vaultsHint":
+    "可将服务的密钥存放在云保管库中，而不是这台电脑上。Archyne 使用你已登录的保管库命令行工具读取密钥，只保存在内存中，并在首次发送到任何地方之前征求你的同意。",
+  "ai.vaultPick": "保管库",
+  "ai.vaultAdd": "添加保管库",
+  "ai.vaultRemove": "移除保管库",
+  "ai.vaultNewName": "新保管库",
+  "ai.vaultKind": "保管库类型",
+  "ai.vaultProject": "项目",
+  "ai.vaultProfile": "配置文件（可选）",
+  "ai.vaultMount": "挂载点",
+  "ai.vaultNamespace": "命名空间（可选）",
+  "ai.vaultCliHint":
+    "使用 {command} 命令按你当前的登录身份读取。如果提示未登录，请运行 {login}。",
+  "ai.vaultProblemAddress":
+    "地址无效：Key Vault 的地址形如 https://name.vault.azure.net，HashiCorp 的地址必须是 https。",
+  "ai.vaultProblemProject": "项目无效：请使用项目 ID（如 acme-ai-123456）或项目编号。",
+  "ai.vaultProblemField": "此字段包含不允许的字符。",
+  "ai.secretSource": "来源",
+  "ai.secretKeptHere": "这台电脑",
+  "ai.secretVaultOption": "来自保管库“{vault}”",
+  "ai.vaultSecretName": "机密名称",
+  "ai.vaultSecretPath": "机密路径",
+  "ai.vaultSecretKey": "其中的键（可选）",
+  "ai.vaultSecretField": "字段",
+  "ai.vaultSecretHint":
+    "需要时从保管库读取，只保存在内存中。首次发送前，Archyne 会征求你的同意。",
+  "ai.remoteVaultFailed": "无法从保管库读取机密：{detail}",
   "ai.oauthFlowAssertion": "签名断言（服务账号）",
   "ai.oauthAssertionHint":
     "在下方粘贴私钥，或原样粘贴 Google 服务账号的 JSON 密钥文件：其中已包含签发者和密钥 ID。",

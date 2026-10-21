@@ -59,6 +59,9 @@ export function remoteAdvice(
       return t("ai.remoteDown", { url: baseUrl });
     case "no-model":
       return t("ai.remoteNeedsModel");
+    case "vault":
+      // The vault's or its CLI's own words: "Please run 'az login'".
+      return t("ai.remoteVaultFailed", { detail: extra?.problem ?? "" });
     case "invalid":
       switch (extra?.problem) {
         case "protocol":

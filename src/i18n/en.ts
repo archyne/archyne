@@ -537,6 +537,35 @@ export const en = {
     "Address: replace PROJECT_ID with your Google Cloud project; for a region instead of global, use https://<region>-aiplatform.googleapis.com/v1/projects/<project>/locations/<region>/endpoints/openapi. Models are named like google/gemini-…. Sign in with a service account key, or through the browser with a Google OAuth client.",
   "ai.remoteAlibabaHint":
     "Address: Singapore as given; Beijing is https://dashscope.aliyuncs.com/compatible-mode/v1, Hong Kong https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1, and any region (Virginia, Frankfurt, Tokyo…) can be reached at your workspace's own address, https://<workspace-id>.<region>.maas.aliyuncs.com/compatible-mode/v1. The API key must come from the same region, or the service answers 401. Models are named like qwen-plus.",
+  "ai.vaults": "Vaults ({count})",
+  "ai.vaultsHint":
+    "Keep a service's keys in your cloud's vault instead of on this computer. Archyne reads them with the vault's command-line tool, as you are signed in to it, keeps them in memory only, and asks you before it first sends one anywhere.",
+  "ai.vaultPick": "Vault",
+  "ai.vaultAdd": "Add vault",
+  "ai.vaultRemove": "Remove vault",
+  "ai.vaultNewName": "New vault",
+  "ai.vaultKind": "Kind of vault",
+  "ai.vaultProject": "Project",
+  "ai.vaultProfile": "Profile (optional)",
+  "ai.vaultMount": "Mount",
+  "ai.vaultNamespace": "Namespace (optional)",
+  "ai.vaultCliHint":
+    "Read with the {command} command, signed in as you are. If it says you are not signed in, run {login}.",
+  "ai.vaultProblemAddress":
+    "The address is not valid: a Key Vault's looks like https://name.vault.azure.net, and HashiCorp's must be https.",
+  "ai.vaultProblemProject":
+    "The project is not valid: use its ID, like acme-ai-123456, or its number.",
+  "ai.vaultProblemField": "This field contains a character that is not allowed.",
+  "ai.secretSource": "Source",
+  "ai.secretKeptHere": "On this computer",
+  "ai.secretVaultOption": "From the vault {vault}",
+  "ai.vaultSecretName": "Secret name",
+  "ai.vaultSecretPath": "Secret path",
+  "ai.vaultSecretKey": "Key inside it (optional)",
+  "ai.vaultSecretField": "Field",
+  "ai.vaultSecretHint":
+    "Read from the vault when needed and kept in memory only. The first time, Archyne asks you before sending it.",
+  "ai.remoteVaultFailed": "Could not read a secret from the vault: {detail}",
   "ai.oauthFlowAssertion": "Signed assertion (service account)",
   "ai.oauthAssertionHint":
     "Paste the private key below, or a Google service account's JSON key file as it is: it carries the issuer and the key ID.",

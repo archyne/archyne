@@ -17,7 +17,7 @@
  *     proxy and the OS certificate store — what makes a company gateway behind
  *     a TLS-inspecting proxy reachable at all. Node's fetch does neither.
  */
-const { app, ipcMain, net, safeStorage, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, net, safeStorage, shell } = require("electron");
 const path = require("node:path");
 const fsp = require("node:fs/promises");
 
@@ -154,6 +154,26 @@ function aiHost() {
       if (protocol !== "https:" && protocol !== "http:") throw new Error("Not a web address.");
       await shell.openExternal(url);
     },
+    // Before a secret from a vault first goes somewhere: asked here, in a
+    // window of the shell's own, which the page can neither draw nor answer.
+    // "Don't allow" is what Enter and Escape choose.
+    confirm: async (/** @type {import("../src/ai/host/index").AskText} */ text) => {
+      const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+      const options = {
+        type: /** @type {const} */ ("question"),
+        title: text.title,
+        message: text.message,
+        detail: text.detail,
+        buttons: [text.deny, text.allow],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      };
+      const { response } = parent
+        ? await dialog.showMessageBox(parent, options)
+        : await dialog.showMessageBox(options);
+      return response === 1;
+    },
   });
   host = created;
   return created;
@@ -171,9 +191,9 @@ function fromApp(event) {
 }
 
 function registerAiIpc() {
-  ipcMain.handle("archyne:ai-connections", async (event, list) => {
+  ipcMain.handle("archyne:ai-connections", async (event, list, locale) => {
     if (!fromApp(event)) return;
-    await aiHost().setConnections(Array.isArray(list) ? list : []);
+    await aiHost().setConnections(Array.isArray(list) ? list : [], locale);
   });
   ipcMain.handle("archyne:ai-secret", async (event, { id, field, value }) => {
     if (!fromApp(event)) return;

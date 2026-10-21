@@ -12,6 +12,8 @@ import {
   type OAuthConfig,
 } from "../ai/host/connection";
 import { AiOAuthSection } from "./AiOAuthSection";
+import { AiVaults } from "./AiVaults";
+import type { SecretRef } from "../ai/host/vault";
 import { remoteAdvice } from "../ai/serverAdvice";
 import { useT, type MessageKey } from "../i18n";
 
@@ -42,69 +44,72 @@ export function AiRemoteSettings({ disabled }: { disabled: boolean }) {
   const open = shown.id === connectionId ? shown.open : !current?.model;
 
   return (
-    <details
-      className="ai-server"
-      open={open}
-      onToggle={(e) => {
-        const now = e.currentTarget.open;
-        if (now !== open) setShown({ id: connectionId, open: now });
-      }}
-    >
-      <summary>
-        {t("ai.remoteSummary", {
-          model: current
-            ? `${current.label} · ${current.model || t("ai.serverNoModel")}`
-            : t("ai.serverNoModel"),
-        })}
-      </summary>
-      <div className="ai-server-presets">
-        {connections.length > 0 && (
-          <label className="ai-server-field ai-remote-pick">
-            {t("ai.remoteService")}
-            <select
-              value={connectionId ?? ""}
-              aria-label={t("ai.remoteService")}
-              disabled={disabled}
-              onChange={(e) => selectConnection(e.target.value)}
-            >
-              {connections.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label || c.baseUrl}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <button
-          type="button"
-          className="editor-action"
-          disabled={disabled}
-          onClick={() => addConnection(t("ai.remoteNewName"))}
-        >
-          {t("ai.remoteAdd")}
-        </button>
-        {current && (
+    <>
+      <details
+        className="ai-server"
+        open={open}
+        onToggle={(e) => {
+          const now = e.currentTarget.open;
+          if (now !== open) setShown({ id: connectionId, open: now });
+        }}
+      >
+        <summary>
+          {t("ai.remoteSummary", {
+            model: current
+              ? `${current.label} · ${current.model || t("ai.serverNoModel")}`
+              : t("ai.serverNoModel"),
+          })}
+        </summary>
+        <div className="ai-server-presets">
+          {connections.length > 0 && (
+            <label className="ai-server-field ai-remote-pick">
+              {t("ai.remoteService")}
+              <select
+                value={connectionId ?? ""}
+                aria-label={t("ai.remoteService")}
+                disabled={disabled}
+                onChange={(e) => selectConnection(e.target.value)}
+              >
+                {connections.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label || c.baseUrl}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <button
             type="button"
             className="editor-action"
             disabled={disabled}
-            onClick={() => removeConnection(current.id)}
+            onClick={() => addConnection(t("ai.remoteNewName"))}
           >
-            {t("ai.remoteRemove")}
+            {t("ai.remoteAdd")}
           </button>
+          {current && (
+            <button
+              type="button"
+              className="editor-action"
+              disabled={disabled}
+              onClick={() => removeConnection(current.id)}
+            >
+              {t("ai.remoteRemove")}
+            </button>
+          )}
+        </div>
+        {current ? (
+          <ConnectionForm
+            key={current.id}
+            connection={current}
+            disabled={disabled}
+            onPicked={() => setShown({ id: current.id, open: false })}
+          />
+        ) : (
+          <p className="ai-server-hint">{t("ai.remoteNone")}</p>
         )}
-      </div>
-      {current ? (
-        <ConnectionForm
-          key={current.id}
-          connection={current}
-          disabled={disabled}
-          onPicked={() => setShown({ id: current.id, open: false })}
-        />
-      ) : (
-        <p className="ai-server-hint">{t("ai.remoteNone")}</p>
-      )}
-    </details>
+      </details>
+      <AiVaults disabled={disabled} />
+    </>
   );
 }
 
@@ -181,6 +186,7 @@ function ConnectionForm({
 }) {
   const t = useT();
   const update = useAiEngine((s) => s.updateConnection);
+  const vaults = useAiEngine((s) => s.vaults);
   const ai = hostAi();
   const [secretsSet, setSecretsSet] = useState<string[]>([]);
   const [canKeep, setCanKeep] = useState(true);
@@ -213,6 +219,14 @@ function ConnectionForm({
     setResult("checking");
     await hostSynced();
     setResult(await ai.probe(connection.id));
+  };
+
+  const setFromVault = (field: string, ref: SecretRef | undefined) => {
+    const rest = Object.fromEntries(
+      Object.entries(connection.fromVault ?? {}).filter(([f]) => f !== field),
+    );
+    const next = ref ? { ...rest, [field]: ref } : rest;
+    patch({ fromVault: Object.keys(next).length ? next : undefined });
   };
 
   const saveSecret = async (field: string, value: string | null) => {
@@ -450,6 +464,13 @@ function ConnectionForm({
             disabled={disabled || !canKeep}
             onSave={(value) => void saveSecret(field, value)}
             onForget={() => void saveSecret(field, null)}
+            vaults={vaults}
+            fromVault={connection.fromVault?.[field]}
+            onFromVault={(ref) => {
+              // Read from a vault, a copy kept here would only be stale.
+              if (ref && secretsSet.includes(field)) void saveSecret(field, null);
+              setFromVault(field, ref);
+            }}
           />
         ))}
       {!canKeep && <p className="ai-server-status">{t("ai.remoteNoSecureStorage")}</p>}
@@ -536,7 +557,12 @@ function ConnectionForm({
                 : t("ai.serverOkEmpty")
               : remoteAdvice(t, result.state, connection.baseUrl, {
                   status: result.state === "http" ? result.status : undefined,
-                  problem: result.state === "invalid" ? result.problem : undefined,
+                  problem:
+                    result.state === "invalid"
+                      ? result.problem
+                      : result.state === "vault"
+                        ? result.detail
+                        : undefined,
                 })}
           </p>
         )}
@@ -557,6 +583,9 @@ function SecretField({
   multiline = false,
   onSave,
   onForget,
+  vaults,
+  fromVault,
+  onFromVault,
 }: {
   label: string;
   saved: boolean;
@@ -565,6 +594,10 @@ function SecretField({
   multiline?: boolean;
   onSave: (value: string) => void;
   onForget: () => void;
+  /** The vaults the value may be read from instead; none, and the choice is not offered. */
+  vaults: Connection[];
+  fromVault?: SecretRef;
+  onFromVault: (ref: SecretRef | undefined) => void;
 }) {
   const t = useT();
   const [value, setValue] = useState("");
@@ -573,39 +606,91 @@ function SecretField({
     onSave(value);
     setValue("");
   };
+  const vault = fromVault && vaults.find((v) => v.id === fromVault.vault);
+  const hashicorp = vault?.vault?.kind === "hashicorp";
   return (
     <div className="ai-server-field">
-      <label className="ai-server-field">
-        {label}
-        {multiline ? (
-          <textarea
-            rows={3}
-            value={value}
-            autoComplete="off"
-            spellCheck={false}
-            placeholder={saved ? t("ai.remoteSecretSaved") : "-----BEGIN PRIVATE KEY-----"}
+      {vaults.length > 0 && (
+        <label className="ai-server-field">
+          {`${label} · ${t("ai.secretSource")}`}
+          <select
+            value={vault ? vault.id : ""}
             disabled={disabled}
-            data-saved={saved || undefined}
-            onChange={(e) => setValue(e.target.value)}
-            onBlur={commit}
-          />
-        ) : (
-          <input
-            type="password"
-            value={value}
-            autoComplete="off"
-            placeholder={saved ? t("ai.remoteSecretSaved") : ""}
-            disabled={disabled}
-            data-saved={saved || undefined}
-            onChange={(e) => setValue(e.target.value)}
-            onBlur={commit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") commit();
-            }}
-          />
-        )}
-      </label>
-      {saved && (
+            onChange={(e) =>
+              onFromVault(e.target.value ? { vault: e.target.value, name: "" } : undefined)
+            }
+          >
+            <option value="">{t("ai.secretKeptHere")}</option>
+            {vaults.map((v) => (
+              <option key={v.id} value={v.id}>
+                {t("ai.secretVaultOption", { vault: v.label || v.baseUrl })}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {vault && fromVault ? (
+        <>
+          <div className="ai-remote-row">
+            <label className="ai-server-field">
+              {t(hashicorp ? "ai.vaultSecretPath" : "ai.vaultSecretName")}
+              <input
+                type="text"
+                value={fromVault.name}
+                spellCheck={false}
+                disabled={disabled}
+                onChange={(e) => onFromVault({ ...fromVault, name: e.target.value.trim() })}
+              />
+            </label>
+            <label className="ai-server-field">
+              {t(hashicorp ? "ai.vaultSecretField" : "ai.vaultSecretKey")}
+              <input
+                type="text"
+                value={fromVault.key ?? ""}
+                spellCheck={false}
+                placeholder={hashicorp ? "value" : ""}
+                disabled={disabled}
+                onChange={(e) =>
+                  onFromVault({ ...fromVault, key: e.target.value.trim() || undefined })
+                }
+              />
+            </label>
+          </div>
+          <p className="ai-server-hint">{t("ai.vaultSecretHint")}</p>
+        </>
+      ) : (
+        <label className="ai-server-field">
+          {label}
+          {multiline ? (
+            <textarea
+              rows={3}
+              value={value}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={saved ? t("ai.remoteSecretSaved") : "-----BEGIN PRIVATE KEY-----"}
+              disabled={disabled}
+              data-saved={saved || undefined}
+              onChange={(e) => setValue(e.target.value)}
+              onBlur={commit}
+            />
+          ) : (
+            <input
+              type="password"
+              value={value}
+              autoComplete="off"
+              placeholder={saved ? t("ai.remoteSecretSaved") : ""}
+              disabled={disabled}
+              data-saved={saved || undefined}
+              onChange={(e) => setValue(e.target.value)}
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commit();
+              }}
+            />
+          )}
+        </label>
+      )}
+      {saved && !vault && (
         <button type="button" className="editor-action" disabled={disabled} onClick={onForget}>
           {t("ai.remoteSecretForget")}
         </button>
