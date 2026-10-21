@@ -16,7 +16,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _electron as electron } from "playwright";
@@ -240,6 +240,13 @@ const userData = mkdtempSync(join(tmpdir(), "archyne-protocols-"));
 const app = await electron.launch({
   args: ["desktop/main.cjs", `--user-data-dir=${userData}`],
 });
+// The shell's file dialog, answered with whatever file is set next.
+await app.evaluate(({ dialog }) => {
+  dialog.showOpenDialog = (async () => ({
+    canceled: false,
+    filePaths: [(globalThis as unknown as { next: string }).next],
+  })) as typeof dialog.showOpenDialog;
+});
 const page = await app.firstWindow();
 await page.waitForSelector(".app", { timeout: 60_000 });
 await page.getByRole("button", { name: "More" }).click();
@@ -409,13 +416,16 @@ await field("Address").fill(
   `${base}/vertex/v1/projects/acme-ai/locations/global/endpoints/openapi`,
 );
 await field("Authorization server").fill(google.base);
-const keyField = page
-  .locator(".ai-server-field", { hasText: "Private key (PEM, or a JSON key file)" })
-  .locator("textarea")
-  .first();
-await keyField.fill(KEY_FILE);
-await keyField.blur();
-await page.waitForTimeout(500);
+// The service account's key file, as Google hands it out, chosen in the dialog.
+const keyFile = join(userData, "acme-ai-key.json");
+writeFileSync(keyFile, KEY_FILE);
+await app.evaluate((_electron, path) => {
+  (globalThis as unknown as { next: string }).next = path;
+}, keyFile);
+await page
+  .getByRole("button", { name: "Choose file… Private key (or a JSON key file)" })
+  .click();
+await page.locator('.ai-secret-file[data-saved="true"]').first().waitFor({ timeout: 15_000 });
 await page.getByRole("button", { name: "Sign in" }).click();
 await page.waitForSelector('[data-auth="signed-in"], [data-auth="signed-out"]', {
   timeout: 30_000,

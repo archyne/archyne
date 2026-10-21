@@ -1562,6 +1562,20 @@ body.resizing-side {
   align-self: flex-start;
 }
 
+/* Whether a certificate or key file is loaded: said, never shown. */
+.ai-secret-file {
+  margin: 0;
+  padding: 4px 6px;
+  border: 1px dashed var(--border);
+  border-radius: var(--r);
+  font-size: 12px;
+}
+
+.ai-secret-file[data-saved] {
+  border-style: solid;
+  color: var(--text);
+}
+
 /* Choose a file, Forget: side by side under the field. */
 .ai-secret-actions {
   display: flex;

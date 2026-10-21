@@ -563,11 +563,13 @@ export const messages: Messages = {
     "このファイルには証明書 (PEM、DER、または .pfx / .p12) が含まれていません。",
   "ai.fileNotKey": "このファイルには秘密鍵 (PEM または PKCS#8 DER) が含まれていません。",
   "ai.fileUnreadable": "このファイルはここでは読み込めませんでした。",
+  "ai.secretFileSaved": "読み込み済み — 置き換えるには別のファイルを選択",
+  "ai.secretNoFile": "まだファイルが読み込まれていません",
   "ai.oauthFlowAssertion": "署名付きアサーション（サービスアカウント）",
   "ai.oauthAssertionHint":
     "下に秘密鍵を貼り付けるか、Google サービスアカウントの JSON 鍵ファイルをそのまま貼り付けます。発行者と鍵 ID はファイルに含まれています。",
   "ai.oauthAssertionIssuer": "発行者（サービスアカウントの場合はそのメールアドレス）",
-  "ai.oauthAssertionKey": "秘密鍵（PEM または JSON 鍵ファイル）",
+  "ai.oauthAssertionKey": "秘密鍵（または JSON 鍵ファイル）",
   "ai.oauthSubject": "代理で操作するユーザー（任意）",
   "ai.remoteBedrockModel": "モデル ID または推論プロファイル",
   "ai.remoteProblemRegion": "リージョンが正しくありません。eu-west-1 のような形式です。",
@@ -633,14 +635,14 @@ export const messages: Messages = {
   "ai.oauthKeyId": "キー ID",
   "ai.oauthDpop":
     "サーバーが対応していれば、トークンをこのコンピューターに保管された鍵に結び付ける（DPoP）",
-  "ai.oauthPrivateKey": "秘密鍵（PEM）",
+  "ai.oauthPrivateKey": "秘密鍵",
   "ai.tlsClientCertificate": "クライアント証明書を提示する（相互 TLS）",
   "ai.tlsHint":
     "サービスとそのサインインサーバーに、https のみで使用します。これらのリクエストはシステムの証明書を使用しません。サーバーの証明書が会社の CA によるものなら、下に追加してください。",
-  "ai.tlsCert": "クライアント証明書（PEM）",
-  "ai.tlsKey": "証明書の鍵（PEM）",
+  "ai.tlsCert": "クライアント証明書",
+  "ai.tlsKey": "証明書の鍵",
   "ai.tlsPassphrase": "鍵のパスフレーズ（ある場合）",
-  "ai.tlsCa": "追加の信頼する CA（PEM、任意）",
+  "ai.tlsCa": "追加の信頼する CA（任意）",
   "ai.remoteProblemTlsHttps": "クライアント証明書には https アドレスが必要です。",
   "ai.remoteProblemTlsClientAuth":
     "クライアント証明書による認証にはクライアント証明書が必要です。下でオンにしてください。",

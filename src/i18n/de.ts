@@ -575,11 +575,13 @@ export const messages: Messages = {
     "Die Datei enthält kein Zertifikat (PEM, DER oder ein .pfx-/.p12-Paket).",
   "ai.fileNotKey": "Die Datei enthält keinen privaten Schlüssel (PEM oder PKCS#8-DER).",
   "ai.fileUnreadable": "Die Datei konnte hier nicht geladen werden.",
+  "ai.secretFileSaved": "Geladen — wählen Sie eine andere Datei, um es zu ersetzen",
+  "ai.secretNoFile": "Noch keine Datei geladen",
   "ai.oauthFlowAssertion": "Signierte Assertion (Dienstkonto)",
   "ai.oauthAssertionHint":
     "Unten den privaten Schlüssel einfügen oder die JSON-Schlüsseldatei eines Google-Dienstkontos unverändert: Sie enthält den Aussteller und die Schlüssel-ID.",
   "ai.oauthAssertionIssuer": "Aussteller (bei einem Dienstkonto dessen E-Mail-Adresse)",
-  "ai.oauthAssertionKey": "Privater Schlüssel (PEM oder eine JSON-Schlüsseldatei)",
+  "ai.oauthAssertionKey": "Privater Schlüssel (oder eine JSON-Schlüsseldatei)",
   "ai.oauthSubject": "Im Namen von (optional)",
   "ai.remoteBedrockModel": "Modell-ID oder Inferenzprofil",
   "ai.remoteProblemRegion": "Die Region ist ungültig; sie sieht aus wie eu-west-1.",
@@ -648,14 +650,14 @@ export const messages: Messages = {
   "ai.oauthKeyId": "Schlüssel-ID",
   "ai.oauthDpop":
     "Tokens an einen auf diesem Computer gespeicherten Schlüssel binden (DPoP), falls der Server es unterstützt",
-  "ai.oauthPrivateKey": "Privater Schlüssel (PEM)",
+  "ai.oauthPrivateKey": "Privater Schlüssel",
   "ai.tlsClientCertificate": "Client-Zertifikat vorlegen (gegenseitiges TLS)",
   "ai.tlsHint":
     "Wird für den Dienst und seinen Anmeldeserver verwendet, nur über https. Diese Anfragen nutzen nicht die Zertifikate des Systems: Stammt das Zertifikat eines Servers von der CA deines Unternehmens, füge sie unten hinzu.",
-  "ai.tlsCert": "Client-Zertifikat (PEM)",
-  "ai.tlsKey": "Zertifikatsschlüssel (PEM)",
+  "ai.tlsCert": "Client-Zertifikat",
+  "ai.tlsKey": "Zertifikatsschlüssel",
   "ai.tlsPassphrase": "Passphrase des Schlüssels (falls vorhanden)",
-  "ai.tlsCa": "Zusätzliche vertrauenswürdige CA (PEM, optional)",
+  "ai.tlsCa": "Zusätzliche vertrauenswürdige CA (optional)",
   "ai.remoteProblemTlsHttps": "Ein Client-Zertifikat erfordert eine https-Adresse.",
   "ai.remoteProblemTlsClientAuth":
     "Die Authentifizierung per Client-Zertifikat erfordert ein Client-Zertifikat: Aktiviere es unten.",

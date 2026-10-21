@@ -569,11 +569,13 @@ export const messages: Messages = {
     "El archivo no contiene ningún certificado (PEM, DER o un paquete .pfx / .p12).",
   "ai.fileNotKey": "El archivo no contiene ninguna clave privada (PEM o DER PKCS#8).",
   "ai.fileUnreadable": "No se pudo cargar el archivo aquí.",
+  "ai.secretFileSaved": "Cargado — elige otro archivo para reemplazarlo",
+  "ai.secretNoFile": "Todavía no se ha cargado ningún archivo",
   "ai.oauthFlowAssertion": "Aserción firmada (cuenta de servicio)",
   "ai.oauthAssertionHint":
     "Pega abajo la clave privada, o el archivo de clave JSON de una cuenta de servicio de Google tal cual: incluye el emisor y el ID de la clave.",
   "ai.oauthAssertionIssuer": "Emisor (para una cuenta de servicio, su correo)",
-  "ai.oauthAssertionKey": "Clave privada (PEM, o un archivo de clave JSON)",
+  "ai.oauthAssertionKey": "Clave privada (o un archivo de clave JSON)",
   "ai.oauthSubject": "Actuar en nombre de (opcional)",
   "ai.remoteBedrockModel": "ID del modelo o perfil de inferencia",
   "ai.remoteProblemRegion": "La región no es válida; tiene la forma eu-west-1.",
@@ -640,14 +642,14 @@ export const messages: Messages = {
   "ai.oauthKeyId": "ID de la clave",
   "ai.oauthDpop":
     "Vincular los tokens a una clave guardada en este ordenador (DPoP), si el servidor lo admite",
-  "ai.oauthPrivateKey": "Clave privada (PEM)",
+  "ai.oauthPrivateKey": "Clave privada",
   "ai.tlsClientCertificate": "Presentar un certificado de cliente (TLS mutuo)",
   "ai.tlsHint":
     "Se usa para el servicio y su servidor de inicio de sesión, solo por https. Estas solicitudes no usan los certificados del sistema: si el certificado de un servidor lo firma la CA de tu empresa, añádela abajo.",
-  "ai.tlsCert": "Certificado de cliente (PEM)",
-  "ai.tlsKey": "Clave del certificado (PEM)",
+  "ai.tlsCert": "Certificado de cliente",
+  "ai.tlsKey": "Clave del certificado",
   "ai.tlsPassphrase": "Frase de contraseña de la clave (si la hay)",
-  "ai.tlsCa": "CA de confianza adicional (PEM, opcional)",
+  "ai.tlsCa": "CA de confianza adicional (opcional)",
   "ai.remoteProblemTlsHttps": "Un certificado de cliente necesita una dirección https.",
   "ai.remoteProblemTlsClientAuth":
     "La autenticación con certificado de cliente necesita un certificado de cliente: actívalo abajo.",

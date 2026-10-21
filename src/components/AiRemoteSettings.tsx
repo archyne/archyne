@@ -467,8 +467,8 @@ function ConnectionForm({
       {connection.clientCertificate && bundled && (
         <div className="ai-server-field">
           <span>{t("ai.tlsPfx")}</span>
-          <p className="ai-server-hint" data-saved="true">
-            {t("ai.remoteSecretSaved")}
+          <p className="ai-secret-file" data-saved="true">
+            {t("ai.secretFileSaved")}
           </p>
           <button
             type="button"
@@ -493,8 +493,6 @@ function ConnectionForm({
                 ? "ai.oauthAssertionKey"
                 : (SECRET_LABELS[field] ?? "ai.remotePassword"),
             )}
-            multiline={MULTILINE_SECRETS.has(field)}
-            pemLabel={field === "tlsCert" || field === "tlsCa" ? "CERTIFICATE" : "PRIVATE KEY"}
             saved={secretsSet.includes(field)}
             disabled={disabled || !canKeep}
             onSave={(value) => void saveSecret(field, value)}
@@ -617,8 +615,6 @@ function SecretField({
   label,
   saved,
   disabled,
-  multiline = false,
-  pemLabel = "PRIVATE KEY",
   onSave,
   onForget,
   vaults,
@@ -630,17 +626,16 @@ function SecretField({
   label: string;
   saved: boolean;
   disabled: boolean;
-  /** A PEM key spans lines; it is pasted, saved on leaving the field, and emptied. */
-  multiline?: boolean;
-  /** What the pasted PEM begins with, shown as the empty field's hint. */
-  pemLabel?: string;
   onSave: (value: string) => void;
   onForget: () => void;
   /** The vaults the value may be read from instead; none, and the choice is not offered. */
   vaults: Connection[];
   fromVault?: SecretRef;
   onFromVault: (ref: SecretRef | undefined) => void;
-  /** Offers to load the value from a file, in the host's own dialog. */
+  /**
+   * A certificate or a key: loaded from a file in the host's own dialog,
+   * never typed or pasted — so there is no text field for it at all.
+   */
   onFile?: () => void;
   /** Why the last file chosen for this field would not do. */
   problem?: string;
@@ -704,36 +699,29 @@ function SecretField({
           </div>
           <p className="ai-server-hint">{t("ai.vaultSecretHint")}</p>
         </>
+      ) : onFile ? (
+        <>
+          <span>{label}</span>
+          <p className="ai-secret-file" data-saved={saved || undefined}>
+            {saved ? t("ai.secretFileSaved") : t("ai.secretNoFile")}
+          </p>
+        </>
       ) : (
         <label className="ai-server-field">
           {label}
-          {multiline ? (
-            <textarea
-              rows={3}
-              value={value}
-              autoComplete="off"
-              spellCheck={false}
-              placeholder={saved ? t("ai.remoteSecretSaved") : `-----BEGIN ${pemLabel}-----`}
-              disabled={disabled}
-              data-saved={saved || undefined}
-              onChange={(e) => setValue(e.target.value)}
-              onBlur={commit}
-            />
-          ) : (
-            <input
-              type="password"
-              value={value}
-              autoComplete="off"
-              placeholder={saved ? t("ai.remoteSecretSaved") : ""}
-              disabled={disabled}
-              data-saved={saved || undefined}
-              onChange={(e) => setValue(e.target.value)}
-              onBlur={commit}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commit();
-              }}
-            />
-          )}
+          <input
+            type="password"
+            value={value}
+            autoComplete="off"
+            placeholder={saved ? t("ai.remoteSecretSaved") : ""}
+            disabled={disabled}
+            data-saved={saved || undefined}
+            onChange={(e) => setValue(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+            }}
+          />
         </label>
       )}
       {!vault && (onFile || saved) && (
@@ -743,6 +731,8 @@ function SecretField({
               type="button"
               className="editor-action"
               disabled={disabled}
+              // Four of these can stand in a row: each names its field.
+              aria-label={`${t("ai.secretFromFile")} ${label}`}
               onClick={onFile}
             >
               {t("ai.secretFromFile")}
@@ -794,6 +784,3 @@ const FILE_PROBLEMS: Partial<Record<string, MessageKey>> = {
 
 /** The fields a file can be loaded into (src/ai/host/secretFile.ts). */
 const FILE_FIELDS = new Set(["tlsCert", "tlsKey", "tlsCa", "privateKey"]);
-
-/** PEM blocks span lines; everything else is one. */
-const MULTILINE_SECRETS = new Set(["privateKey", "tlsCert", "tlsKey", "tlsCa"]);

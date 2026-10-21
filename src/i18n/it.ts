@@ -572,11 +572,13 @@ export const messages: Messages = {
     "Il file non contiene un certificato (PEM, DER o un pacchetto .pfx / .p12).",
   "ai.fileNotKey": "Il file non contiene una chiave privata (PEM o DER PKCS#8).",
   "ai.fileUnreadable": "Non è stato possibile caricare il file qui.",
+  "ai.secretFileSaved": "Caricato — scegli un altro file per sostituirlo",
+  "ai.secretNoFile": "Nessun file caricato",
   "ai.oauthFlowAssertion": "Asserzione firmata (account di servizio)",
   "ai.oauthAssertionHint":
     "Incolla qui sotto la chiave privata, oppure il file di chiave JSON di un account di servizio Google così com'è: contiene l'emittente e l'ID della chiave.",
   "ai.oauthAssertionIssuer": "Emittente (per un account di servizio, la sua email)",
-  "ai.oauthAssertionKey": "Chiave privata (PEM, o un file di chiave JSON)",
+  "ai.oauthAssertionKey": "Chiave privata (o un file di chiave JSON)",
   "ai.oauthSubject": "Agisci per conto di (facoltativo)",
   "ai.remoteBedrockModel": "ID modello o profilo di inferenza",
   "ai.remoteProblemRegion": "La regione non è valida; ha la forma eu-west-1.",
@@ -643,14 +645,14 @@ export const messages: Messages = {
   "ai.oauthKeyId": "ID della chiave",
   "ai.oauthDpop":
     "Lega i token a una chiave conservata su questo computer (DPoP), se il server lo supporta",
-  "ai.oauthPrivateKey": "Chiave privata (PEM)",
+  "ai.oauthPrivateKey": "Chiave privata",
   "ai.tlsClientCertificate": "Presenta un certificato client (TLS reciproco)",
   "ai.tlsHint":
     "Usato per il servizio e per il suo server di accesso, solo via https. Queste richieste non usano i certificati di sistema: se il certificato di un server è firmato dalla CA della tua azienda, aggiungila qui sotto.",
-  "ai.tlsCert": "Certificato client (PEM)",
-  "ai.tlsKey": "Chiave del certificato (PEM)",
+  "ai.tlsCert": "Certificato client",
+  "ai.tlsKey": "Chiave del certificato",
   "ai.tlsPassphrase": "Passphrase della chiave (se presente)",
-  "ai.tlsCa": "CA aggiuntiva attendibile (PEM, facoltativa)",
+  "ai.tlsCa": "CA aggiuntiva attendibile (facoltativa)",
   "ai.remoteProblemTlsHttps": "Un certificato client richiede un indirizzo https.",
   "ai.remoteProblemTlsClientAuth":
     "L'autenticazione con certificato client richiede un certificato client: attivalo qui sotto.",

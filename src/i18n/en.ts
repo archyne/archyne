@@ -574,11 +574,13 @@ export const en = {
     "That file holds no certificate (PEM, DER, or a .pfx / .p12 bundle).",
   "ai.fileNotKey": "That file holds no private key (PEM, or PKCS#8 DER).",
   "ai.fileUnreadable": "That file could not be loaded here.",
+  "ai.secretFileSaved": "Loaded — choose another file to replace it",
+  "ai.secretNoFile": "No file loaded yet",
   "ai.oauthFlowAssertion": "Signed assertion (service account)",
   "ai.oauthAssertionHint":
     "Paste the private key below, or a Google service account's JSON key file as it is: it carries the issuer and the key ID.",
   "ai.oauthAssertionIssuer": "Issuer (for a service account, its email)",
-  "ai.oauthAssertionKey": "Private key (PEM, or a JSON key file)",
+  "ai.oauthAssertionKey": "Private key (or a JSON key file)",
   "ai.oauthSubject": "Act on behalf of (optional)",
   "ai.remoteBedrockModel": "Model ID or inference profile",
   "ai.remoteProblemRegion": "The region is not valid; it looks like eu-west-1.",
@@ -645,14 +647,14 @@ export const en = {
   "ai.oauthKeyId": "Key ID",
   "ai.oauthDpop":
     "Bind tokens to a key kept on this computer (DPoP), if the server supports it",
-  "ai.oauthPrivateKey": "Private key (PEM)",
+  "ai.oauthPrivateKey": "Private key",
   "ai.tlsClientCertificate": "Present a client certificate (mutual TLS)",
   "ai.tlsHint":
     "Used for the service and its sign-in server, over https only. These requests do not use the system's certificates: if a server's certificate comes from your company's CA, add it below.",
-  "ai.tlsCert": "Client certificate (PEM)",
-  "ai.tlsKey": "Certificate key (PEM)",
+  "ai.tlsCert": "Client certificate",
+  "ai.tlsKey": "Certificate key",
   "ai.tlsPassphrase": "Key passphrase (if any)",
-  "ai.tlsCa": "Extra trusted CA (PEM, optional)",
+  "ai.tlsCa": "Extra trusted CA (optional)",
   "ai.remoteProblemTlsHttps": "A client certificate needs an https address.",
   "ai.remoteProblemTlsClientAuth":
     "Client certificate authentication needs a client certificate: turn it on below.",
