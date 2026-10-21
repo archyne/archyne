@@ -535,6 +535,8 @@ export const en = {
     "Address: https://bedrock-runtime.<region>.amazonaws.com. Sign with an AWS access key (SigV4), or put a Bedrock API key in the Authorization header as a Bearer token. Listing the models needs the bedrock:ListInferenceProfiles and bedrock:ListFoundationModels permissions; without them, type the model ID.",
   "ai.remoteVertexHint":
     "Address: replace PROJECT_ID with your Google Cloud project; for a region instead of global, use https://<region>-aiplatform.googleapis.com/v1/projects/<project>/locations/<region>/endpoints/openapi. Models are named like google/gemini-…. Sign in with a service account key, or through the browser with a Google OAuth client.",
+  "ai.remoteAlibabaHint":
+    "Address: Singapore as given; Beijing is https://dashscope.aliyuncs.com/compatible-mode/v1, Hong Kong https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1, and any region (Virginia, Frankfurt, Tokyo…) can be reached at your workspace's own address, https://<workspace-id>.<region>.maas.aliyuncs.com/compatible-mode/v1. The API key must come from the same region, or the service answers 401. Models are named like qwen-plus.",
   "ai.oauthFlowAssertion": "Signed assertion (service account)",
   "ai.oauthAssertionHint":
     "Paste the private key below, or a Google service account's JSON key file as it is: it carries the issuer and the key ID.",

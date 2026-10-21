@@ -530,6 +530,8 @@ export const messages: Messages = {
     "Dirección: https://bedrock-runtime.<región>.amazonaws.com. Firma con una clave de acceso de AWS (SigV4) o pon una clave de API de Bedrock en la cabecera Authorization como token Bearer. Para listar los modelos hacen falta los permisos bedrock:ListInferenceProfiles y bedrock:ListFoundationModels; sin ellos, escribe el ID del modelo.",
   "ai.remoteVertexHint":
     "Dirección: sustituye PROJECT_ID por tu proyecto de Google Cloud; para una región en lugar de global, usa https://<región>-aiplatform.googleapis.com/v1/projects/<proyecto>/locations/<región>/endpoints/openapi. Los modelos se llaman como google/gemini-…. Inicia sesión con la clave de una cuenta de servicio, o en el navegador con un cliente OAuth de Google.",
+  "ai.remoteAlibabaHint":
+    "Dirección: Singapur tal como aparece; Pekín es https://dashscope.aliyuncs.com/compatible-mode/v1, Hong Kong https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1, y cualquier región (Virginia, Fráncfort, Tokio…) se alcanza en la dirección de tu espacio de trabajo, https://<workspace-id>.<region>.maas.aliyuncs.com/compatible-mode/v1. La clave de API debe ser de la misma región; si no, el servicio responde 401. Los modelos se llaman como qwen-plus.",
   "ai.oauthFlowAssertion": "Aserción firmada (cuenta de servicio)",
   "ai.oauthAssertionHint":
     "Pega abajo la clave privada, o el archivo de clave JSON de una cuenta de servicio de Google tal cual: incluye el emisor y el ID de la clave.",

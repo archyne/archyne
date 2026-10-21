@@ -527,6 +527,8 @@ export const messages: Messages = {
     "العنوان: https://bedrock-runtime.<المنطقة>.amazonaws.com. وقّع بمفتاح وصول AWS ‏(SigV4)، أو ضع مفتاح API لـ Bedrock في الترويسة Authorization كرمز Bearer. يتطلب سرد النماذج الصلاحيتين bedrock:ListInferenceProfiles وbedrock:ListFoundationModels؛ وبدونهما اكتب معرّف النموذج.",
   "ai.remoteVertexHint":
     "العنوان: استبدل PROJECT_ID بمشروعك على Google Cloud؛ ولاستخدام منطقة بدل global استخدم https://<المنطقة>-aiplatform.googleapis.com/v1/projects/<المشروع>/locations/<المنطقة>/endpoints/openapi. تُسمّى النماذج مثل google/gemini-…. سجّل الدخول بمفتاح حساب خدمة، أو عبر المتصفح بعميل OAuth من Google.",
+  "ai.remoteAlibabaHint":
+    "العنوان: سنغافورة كما هو مُعطى؛ بكين هي https://dashscope.aliyuncs.com/compatible-mode/v1، وهونغ كونغ https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1، ويمكن الوصول إلى أي منطقة (فرجينيا، فرانكفورت، طوكيو…) عبر عنوان مساحة العمل الخاصة بك، https://<workspace-id>.<region>.maas.aliyuncs.com/compatible-mode/v1. يجب أن يكون مفتاح API من المنطقة نفسها، وإلا تردّ الخدمة بالرمز 401. أسماء النماذج مثل qwen-plus.",
   "ai.oauthFlowAssertion": "تأكيد موقَّع (حساب خدمة)",
   "ai.oauthAssertionHint":
     "الصق المفتاح الخاص أدناه، أو ملف مفتاح JSON لحساب خدمة Google كما هو: فهو يتضمن المُصدِر ومعرّف المفتاح.",

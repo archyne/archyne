@@ -164,6 +164,13 @@ const VARIANTS: Array<{ label: string; go: () => Promise<void> }> = [
         .selectOption("vertex")
         .then(() => {}),
   },
+  {
+    label: "Alibaba Cloud Model Studio",
+    go: () =>
+      select("Kind of service")
+        .selectOption("alibaba")
+        .then(() => {}),
+  },
 ];
 
 for (const theme of ["dark", "light"] as const) {

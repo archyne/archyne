@@ -216,6 +216,30 @@ export const VERTEX_DIALECT: Dialect = {
 };
 
 /**
+ * Alibaba Cloud Model Studio (DashScope) speaks the OpenAI dialect at
+ * `…/compatible-mode/v1`, with an API key as a bearer token. Its model list
+ * is not documented for that mode, so a 404 there is a service that answers
+ * but does not list: the model is typed, and the key is proven by the first
+ * turn instead. Any other refusal — a key from another region is a 401 — is
+ * reported as it is.
+ */
+export const ALIBABA_DIALECT: Dialect = {
+  ...OPENAI_DIALECT,
+  relays: false,
+  listModels: async (baseUrl, fetchImpl) => {
+    const response = await fetchImpl(`${baseUrl.replace(/\/+$/, "")}/models`);
+    if (response.status === 404) return [];
+    if (!response.ok) return { status: response.status };
+    const body = (await response.json().catch(() => null)) as {
+      data?: Array<{ id?: unknown }>;
+    } | null;
+    return (body?.data ?? [])
+      .map((m) => (typeof m.id === "string" ? m.id : ""))
+      .filter((id) => id && !/embed|rerank|tts|asr|image|wanx/i.test(id));
+  },
+};
+
+/**
  * The dialect for each protocol a connection can name.
  *
  * Azure OpenAI and AI Foundry are the OpenAI dialect: their v1 API
@@ -235,5 +259,7 @@ export function dialectFor(protocol: Protocol): Dialect | null {
       return BEDROCK_DIALECT;
     case "vertex":
       return VERTEX_DIALECT;
+    case "alibaba":
+      return ALIBABA_DIALECT;
   }
 }

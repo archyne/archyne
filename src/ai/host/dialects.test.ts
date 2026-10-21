@@ -204,3 +204,65 @@ describe("Azure OpenAI and AI Foundry", () => {
     expect(events.at(-1)).toMatchObject({ type: "ai:done", text: "graph TD" });
   });
 });
+
+describe("Alibaba Cloud Model Studio", () => {
+  const qwen: Connection = {
+    id: "ali",
+    label: "Model Studio",
+    baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    protocol: "alibaba",
+    auth: { type: "header", name: "Authorization", prefix: "Bearer " },
+  };
+
+  it("speaks the OpenAI dialect at compatible-mode, with the key as a bearer token", async () => {
+    const svc = service({ data: [] }, [
+      `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: "hmm" } }] })}\n\n`,
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "graph TD" } }] })}\n\n`,
+      "data: [DONE]\n\n",
+    ]);
+    const host = new AiHost({ fetch: svc.fetch, secrets: memorySecrets() });
+    await host.setConnections([qwen]);
+    await host.setSecret("ali", "key", "sk-dashscope");
+    const events = await run(host, qwen, "qwen-plus");
+
+    const call = svc.seen.at(-1);
+    expect(call?.url).toBe(
+      "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+    );
+    expect(call?.headers.Authorization).toBe("Bearer sk-dashscope");
+    expect(call?.body).toMatchObject({ model: "qwen-plus", stream: true });
+    // Qwen's thinking arrives apart from the answer, and stays out of it.
+    expect(events.at(-1)).toMatchObject({ type: "ai:done", text: "graph TD" });
+  });
+
+  it("lists the chat models when it can, and is reachable when it cannot", async () => {
+    const listing = (answer: Response) => {
+      const fake = (async (input: RequestInfo | URL) => {
+        expect(String(input)).toBe(
+          "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models",
+        );
+        return answer.clone();
+      }) as typeof fetch;
+      return new AiHost({ fetch: fake, secrets: memorySecrets() });
+    };
+    const listed = listing(
+      Response.json({
+        data: [{ id: "qwen-plus" }, { id: "text-embedding-v4" }, { id: "qwen3.8-max" }],
+      }),
+    );
+    await listed.setConnections([qwen]);
+    expect(await listed.probe("ali")).toMatchObject({
+      state: "ok",
+      models: ["qwen-plus", "qwen3.8-max"],
+    });
+
+    const unlisted = listing(new Response("Not Found", { status: 404 }));
+    await unlisted.setConnections([qwen]);
+    expect(await unlisted.probe("ali")).toMatchObject({ state: "ok", models: [] });
+
+    // A key made in another region.
+    const refused = listing(new Response('{"code":"InvalidApiKey"}', { status: 401 }));
+    await refused.setConnections([qwen]);
+    expect(await refused.probe("ali")).toMatchObject({ state: "http", status: 401 });
+  });
+});

@@ -1,7 +1,7 @@
 /**
  * The hosted dialects through the desktop shell, set up in the panel: an
- * Anthropic Messages service, an Azure OpenAI deployment, Amazon Bedrock and
- * Google Vertex AI, each a stand-in on a loopback port that answers only in
+ * Anthropic Messages service, an Azure OpenAI deployment, Amazon Bedrock,
+ * Google Vertex AI and Alibaba Cloud Model Studio, each a stand-in on a loopback port that answers only in
  * its own dialect and only with its own credentials — for Bedrock, a SigV4
  * signature checked the way AWS checks it, over the request as it arrived;
  * for Vertex, a token issued for a service account's signed assertion.
@@ -34,6 +34,7 @@ function check(label: string, ok: boolean, detail: string): void {
 
 const ANTHROPIC_KEY = "sk-ant-e2e-51c9";
 const AZURE_KEY = "azure-e2e-0d77";
+const DASHSCOPE_KEY = "sk-dashscope-e2e-7a1f";
 const AWS_KEYS = { accessKeyId: "AKIDE2EBEDROCK", secretAccessKey: "e2e/bedrock+secret" };
 const AWS_SCOPE = { region: "eu-central-1", service: "bedrock" };
 const seen: Array<{
@@ -142,6 +143,31 @@ const service = createServer(async (req, res) => {
       const messages = body.messages as Array<{ content: string }>;
       const answer = `${documentOf(messages.at(-1)!.content)}\n  azure["Via a deployment"]`;
       res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: answer } }] })}\n\n`);
+      res.end("data: [DONE]\n\n");
+      return;
+    }
+  }
+  if (url.startsWith("/alibaba/")) {
+    if (req.headers.authorization !== `Bearer ${DASHSCOPE_KEY}`) {
+      seen.push({ url });
+      res.writeHead(401).end('{"code":"InvalidApiKey"}');
+      return;
+    }
+    // compatible-mode documents no model list: a 404, as Model Studio may answer.
+    if (req.method === "GET" && url === "/alibaba/compatible-mode/v1/models") {
+      seen.push({ url });
+      res.writeHead(404).end();
+      return;
+    }
+    if (req.method === "POST" && url === "/alibaba/compatible-mode/v1/chat/completions") {
+      const body = await readBody(req);
+      seen.push({ url, body });
+      const messages = body.messages as Array<{ content: string }>;
+      const answer = `${documentOf(messages.at(-1)!.content)}\n  qwen["Via Model Studio"]`;
+      const thinking = { choices: [{ delta: { reasoning_content: "THINKING-NOT-ANSWER" } }] };
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.write(`data: ${JSON.stringify(thinking)}\n\n`);
       res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: answer } }] })}\n\n`);
       res.end("data: [DONE]\n\n");
       return;
@@ -431,6 +457,37 @@ check(
   "found in the page",
 );
 
+/* ---------- Alibaba Cloud Model Studio ---------- */
+
+await openSettings();
+await page.getByRole("button", { name: "Add service" }).click();
+await kind.selectOption("alibaba");
+check(
+  "choosing Alibaba fills in Singapore's compatible-mode address and a bearer key",
+  (await field("Address").inputValue()) ===
+    "https://dashscope-intl.aliyuncs.com/compatible-mode/v1" &&
+    (await field("Header").inputValue()) === "Authorization" &&
+    (await field("Prefix").inputValue()) === "Bearer ",
+  `${await field("Address").inputValue()} / ${await field("Header").inputValue()}`,
+);
+await field("Address").fill(`${base}/alibaba/compatible-mode/v1`);
+await field("API key").fill(DASHSCOPE_KEY);
+await field("API key").press("Enter");
+await field("Model").fill("qwen-plus");
+await page.getByRole("button", { name: "Check connection" }).click();
+await page.waitForSelector('.ai-server-status[data-state="ok"]', { timeout: 15_000 });
+const qwenTurn = await send("add a step from Qwen");
+const qwenCall = seen
+  .filter((s) => s.url === "/alibaba/compatible-mode/v1/chat/completions")
+  .at(-1);
+check(
+  "a service with no model list still connects, and a turn lands without the thinking",
+  qwenCall?.body?.model === "qwen-plus" &&
+    !qwenTurn.includes("THINKING-NOT-ANSWER") &&
+    (await onCanvas("Via Model Studio")),
+  JSON.stringify(qwenCall?.body?.model ?? null),
+);
+
 await app.close();
 google.close();
 service.close();
@@ -438,5 +495,5 @@ service.closeAllConnections();
 rmSync(userData, { recursive: true, force: true });
 if (failed) process.exit(1);
 console.log(
-  "\nAnthropic, Azure OpenAI, Amazon Bedrock and Google Vertex AI work through the desktop shell",
+  "\nAnthropic, Azure OpenAI, Amazon Bedrock, Google Vertex AI and Alibaba Cloud work through the desktop shell",
 );

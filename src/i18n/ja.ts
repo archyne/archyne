@@ -524,6 +524,8 @@ export const messages: Messages = {
     "アドレス: https://bedrock-runtime.<リージョン>.amazonaws.com。AWS アクセスキーで署名する（SigV4）か、Bedrock の API キーを Bearer トークンとして Authorization ヘッダーに入れます。モデルの一覧には bedrock:ListInferenceProfiles と bedrock:ListFoundationModels の権限が必要です。権限がない場合はモデル ID を入力してください。",
   "ai.remoteVertexHint":
     "アドレス: PROJECT_ID を Google Cloud のプロジェクトに置き換えます。global ではなくリージョンを使う場合は https://<リージョン>-aiplatform.googleapis.com/v1/projects/<プロジェクト>/locations/<リージョン>/endpoints/openapi です。モデル名は google/gemini-… のような形式です。サービスアカウントの鍵でサインインするか、Google の OAuth クライアントを使ってブラウザでサインインします。",
+  "ai.remoteAlibabaHint":
+    "アドレス: 既定はシンガポールです。北京は https://dashscope.aliyuncs.com/compatible-mode/v1、香港は https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1。その他のリージョン（バージニア、フランクフルト、東京など）はワークスペース固有のアドレス https://<workspace-id>.<region>.maas.aliyuncs.com/compatible-mode/v1 で利用できます。API キーは同じリージョンで作成したものが必要で、異なると 401 が返ります。モデル名は qwen-plus のような形式です。",
   "ai.oauthFlowAssertion": "署名付きアサーション（サービスアカウント）",
   "ai.oauthAssertionHint":
     "下に秘密鍵を貼り付けるか、Google サービスアカウントの JSON 鍵ファイルをそのまま貼り付けます。発行者と鍵 ID はファイルに含まれています。",

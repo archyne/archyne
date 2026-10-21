@@ -536,6 +536,8 @@ export const messages: Messages = {
     "Adresse: https://bedrock-runtime.<Region>.amazonaws.com. Mit einem AWS-Zugriffsschlüssel signieren (SigV4) oder einen Bedrock-API-Schlüssel als Bearer-Token in den Authorization-Header setzen. Zum Auflisten der Modelle sind die Berechtigungen bedrock:ListInferenceProfiles und bedrock:ListFoundationModels nötig; ohne sie die Modell-ID eingeben.",
   "ai.remoteVertexHint":
     "Adresse: PROJECT_ID durch Ihr Google-Cloud-Projekt ersetzen; für eine Region statt global https://<Region>-aiplatform.googleapis.com/v1/projects/<Projekt>/locations/<Region>/endpoints/openapi verwenden. Modelle heißen etwa google/gemini-…. Mit dem Schlüssel eines Dienstkontos anmelden oder im Browser mit einem Google-OAuth-Client.",
+  "ai.remoteAlibabaHint":
+    "Adresse: Singapur wie vorgegeben; Peking ist https://dashscope.aliyuncs.com/compatible-mode/v1, Hongkong https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1, und jede Region (Virginia, Frankfurt, Tokio …) erreichen Sie unter der Adresse Ihres Workspaces, https://<workspace-id>.<region>.maas.aliyuncs.com/compatible-mode/v1. Der API-Schlüssel muss aus derselben Region stammen, sonst antwortet der Dienst mit 401. Modelle heißen etwa qwen-plus.",
   "ai.oauthFlowAssertion": "Signierte Assertion (Dienstkonto)",
   "ai.oauthAssertionHint":
     "Unten den privaten Schlüssel einfügen oder die JSON-Schlüsseldatei eines Google-Dienstkontos unverändert: Sie enthält den Aussteller und die Schlüssel-ID.",

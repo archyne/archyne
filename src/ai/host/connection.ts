@@ -8,11 +8,10 @@
  */
 
 /**
- * The dialect a service speaks (see `dialects.ts`). All five are decided
- * (AUTH.local.md, 2026-10-18) and named now, so stored connections never have
- * to be migrated as the rest arrive.
+ * The dialect a service speaks (see `dialects.ts`). The first five were
+ * decided together (AUTH.local.md, 2026-10-18); Alibaba Cloud followed.
  */
-export type Protocol = "openai" | "anthropic" | "bedrock" | "vertex" | "azure";
+export type Protocol = "openai" | "anthropic" | "bedrock" | "vertex" | "azure" | "alibaba";
 
 export const IMPLEMENTED_PROTOCOLS: readonly Protocol[] = [
   "openai",
@@ -20,6 +19,7 @@ export const IMPLEMENTED_PROTOCOLS: readonly Protocol[] = [
   "anthropic",
   "bedrock",
   "vertex",
+  "alibaba",
 ];
 
 export type AuthConfig =

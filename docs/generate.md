@@ -58,20 +58,21 @@ In the desktop app and in VS Code, **Remote service** connects to a model API
 over the network. Choose what kind of service it is, and the panel fills in
 the address and the way it signs in:
 
-| Kind                      | Address                                                                                      | Usually signs in with                                  |
-| ------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| OpenAI-compatible         | the service's base URL, ending in `/v1`                                                      | a key in `Authorization: Bearer`                       |
-| Anthropic                 | `https://api.anthropic.com/v1`                                                               | a key in `x-api-key`                                   |
-| Azure OpenAI / AI Foundry | `https://<resource>.openai.azure.com/openai/v1` (or `.services.ai.azure.com`)                | a key in `api-key`, or Microsoft Entra through OAuth   |
-| Amazon Bedrock            | `https://bedrock-runtime.<region>.amazonaws.com`                                             | an AWS access key (Signature V4), or a Bedrock API key |
-| Google Vertex AI          | `https://aiplatform.googleapis.com/v1/projects/<project>/locations/global/endpoints/openapi` | a service account key, or a Google sign-in             |
+| Kind                       | Address                                                                                                 | Usually signs in with                                     |
+| -------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| OpenAI-compatible          | the service's base URL, ending in `/v1`                                                                 | a key in `Authorization: Bearer`                          |
+| Anthropic                  | `https://api.anthropic.com/v1`                                                                          | a key in `x-api-key`                                      |
+| Azure OpenAI / AI Foundry  | `https://<resource>.openai.azure.com/openai/v1` (or `.services.ai.azure.com`)                           | a key in `api-key`, or Microsoft Entra through OAuth      |
+| Amazon Bedrock             | `https://bedrock-runtime.<region>.amazonaws.com`                                                        | an AWS access key (Signature V4), or a Bedrock API key    |
+| Google Vertex AI           | `https://aiplatform.googleapis.com/v1/projects/<project>/locations/global/endpoints/openapi`            | a service account key, or a Google sign-in                |
+| Alibaba Cloud Model Studio | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` (Singapore; the panel names the other regions) | a key in `Authorization: Bearer`, made in the same region |
 
 "OpenAI-compatible" covers most gateways and providers that are not listed —
 LiteLLM, OpenRouter, vLLM, a company proxy.
 
 For Azure the model field takes your **deployment** name; for Bedrock a model
 ID or an inference profile (the list is offered when your key may read it);
-for Vertex a name like `google/gemini-…`.
+for Vertex a name like `google/gemini-…`; for Alibaba a name like `qwen-plus`.
 
 **Azure with Microsoft Entra** instead of a key takes three things on the
 Azure side:

@@ -515,6 +515,8 @@ export const messages: Messages = {
     "地址：https://bedrock-runtime.<区域>.amazonaws.com。使用 AWS 访问密钥签名（SigV4），或将 Bedrock API 密钥作为 Bearer 令牌放入 Authorization 请求头。列出模型需要 bedrock:ListInferenceProfiles 和 bedrock:ListFoundationModels 权限；没有这些权限时，请直接输入模型 ID。",
   "ai.remoteVertexHint":
     "地址：将 PROJECT_ID 替换为你的 Google Cloud 项目；若使用区域而非 global，请用 https://<区域>-aiplatform.googleapis.com/v1/projects/<项目>/locations/<区域>/endpoints/openapi。模型名称形如 google/gemini-…。可用服务账号密钥登录，或通过浏览器使用 Google OAuth 客户端登录。",
+  "ai.remoteAlibabaHint":
+    "地址：默认为新加坡；北京为 https://dashscope.aliyuncs.com/compatible-mode/v1，香港为 https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1，其他地域（弗吉尼亚、法兰克福、东京等）可使用你的业务空间专属地址 https://<workspace-id>.<region>.maas.aliyuncs.com/compatible-mode/v1。API Key 必须来自同一地域，否则服务返回 401。模型名称形如 qwen-plus。",
   "ai.oauthFlowAssertion": "签名断言（服务账号）",
   "ai.oauthAssertionHint":
     "在下方粘贴私钥，或原样粘贴 Google 服务账号的 JSON 密钥文件：其中已包含签发者和密钥 ID。",

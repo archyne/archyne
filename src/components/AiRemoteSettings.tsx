@@ -113,7 +113,7 @@ export function AiRemoteSettings({ disabled }: { disabled: boolean }) {
  * nothing the person typed is lost by changing their mind.
  */
 const PROTOCOL_DEFAULTS: Record<
-  "openai" | "anthropic" | "azure" | "bedrock" | "vertex",
+  "openai" | "anthropic" | "azure" | "bedrock" | "vertex" | "alibaba",
   { baseUrl: string; auth: AuthConfig; hint?: MessageKey }
 > = {
   openai: {
@@ -145,6 +145,12 @@ const PROTOCOL_DEFAULTS: Record<
       scopes: "https://www.googleapis.com/auth/cloud-platform",
     },
     hint: "ai.remoteVertexHint",
+  },
+  alibaba: {
+    // Singapore, the international region; the hint names the others.
+    baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    auth: { type: "header", name: "Authorization", prefix: "Bearer " },
+    hint: "ai.remoteAlibabaHint",
   },
 };
 
@@ -242,10 +248,10 @@ function ConnectionForm({
   };
   const defaults = PROTOCOL_DEFAULTS[connection.protocol as keyof typeof PROTOCOL_DEFAULTS];
   // A deployment is a name the person gave, not one the service lists; a
-  // Bedrock model may be one only a profile or an ARN names. Typed, then,
-  // with what the service did list offered alongside.
-  const typedModel = ["azure", "bedrock", "vertex"].includes(connection.protocol);
-  const suggest = connection.protocol === "bedrock";
+  // Bedrock model may be one only a profile or an ARN names; Alibaba may not
+  // list at all. Typed, then, with what the service did list offered alongside.
+  const typedModel = ["azure", "bedrock", "vertex", "alibaba"].includes(connection.protocol);
+  const suggest = connection.protocol === "bedrock" || connection.protocol === "alibaba";
   const setRegion = (region: string) => {
     const was = connection.auth.type === "sigv4" ? connection.auth : null;
     const p: Partial<Connection> = {
@@ -292,6 +298,7 @@ function ConnectionForm({
           <option value="azure">Azure OpenAI / AI Foundry</option>
           <option value="bedrock">Amazon Bedrock</option>
           <option value="vertex">Google Vertex AI</option>
+          <option value="alibaba">Alibaba Cloud Model Studio</option>
         </select>
       </label>
       {defaults?.hint && <p className="ai-server-hint">{t(defaults.hint)}</p>}
@@ -459,7 +466,7 @@ function ConnectionForm({
       {typedModel ? (
         <label className="ai-server-field">
           {t(
-            suggest
+            connection.protocol === "bedrock"
               ? "ai.remoteBedrockModel"
               : connection.protocol === "azure"
                 ? "ai.remoteDeployment"
