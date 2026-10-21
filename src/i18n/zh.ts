@@ -554,6 +554,7 @@ export const messages: Messages = {
   "ai.fileUnreadable": "无法在此处加载该文件。",
   "ai.secretFileSaved": "已加载 — 选择其他文件以替换",
   "ai.secretNoFile": "尚未加载文件",
+  "ai.settingsDone": "返回对话",
   "ai.oauthFlowAssertion": "签名断言（服务账号）",
   "ai.oauthAssertionHint":
     "在下方粘贴私钥，或原样粘贴 Google 服务账号的 JSON 密钥文件：其中已包含签发者和密钥 ID。",

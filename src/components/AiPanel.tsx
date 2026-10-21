@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useGraphStore } from "../store";
 import { aiMode } from "../ai/provider";
 import {
@@ -66,6 +66,18 @@ export function AiPanel() {
     ...(remoteEngineAvailable() ? (["remote"] as const) : []),
   ];
 
+  // The settings and the conversation take turns: open, the settings have the
+  // whole panel (styles.css, .ai-chat:has(.ai-server[open])); this closes them.
+  const settings = useRef<HTMLDivElement>(null);
+  const backToConversation = () => {
+    const details = settings.current?.querySelector<HTMLDetailsElement>(
+      ":scope > details.ai-server",
+    );
+    if (!details) return;
+    details.open = false;
+    details.querySelector("summary")?.focus();
+  };
+
   const run = () => {
     if (!request.trim() || !ready) return;
     // The document behind the request never changes hands here: the store
@@ -121,8 +133,19 @@ export function AiPanel() {
         </button>
       </div>
 
-      {onServer && <ServerSettingsBlock disabled={working} />}
-      {onRemote && <AiRemoteSettings disabled={working} />}
+      {(onServer || onRemote) && (
+        <div className="ai-settings" ref={settings}>
+          {onServer && <ServerSettingsBlock disabled={working} />}
+          {onRemote && <AiRemoteSettings disabled={working} />}
+          <button
+            type="button"
+            className="editor-action ai-settings-done"
+            onClick={backToConversation}
+          >
+            {t("ai.settingsDone")}
+          </button>
+        </div>
+      )}
 
       {onBrowser && mode === "local" && modelStatus.state !== "idle" && (
         <div

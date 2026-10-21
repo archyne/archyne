@@ -10,6 +10,8 @@
   --text: #ebebf0;
   --text-dim: #999ba8;
   --accent: #7e8bdd;
+  /* A failure's words: 7:1 on the panel, where the old #d13438 was 3.6:1. */
+  --danger: #ff7b72;
   /* White on --accent is 3.1:1; this is the darkest tint clearing 4.5:1,
      for anywhere the accent is a text background. */
   --accent-strong: #5e6ed4;
@@ -55,6 +57,7 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
+  --danger: #c42b1c;
   --bg: #f6f6f9;
   --panel: #ffffff;
   --panel-2: #eff0f5;
@@ -1493,6 +1496,43 @@ body.resizing-side {
   gap: 8px;
 }
 
+/*
+ * The settings and the conversation take turns rather than squeezing each
+ * other: a long form (OAuth, a certificate, vaults) left the conversation a
+ * sliver in a small window, and nothing scrolled. Folded, the settings are
+ * one line and the conversation has the panel; open, they have it, and
+ * scroll, while the conversation waits.
+ */
+.ai-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: none;
+}
+
+.ai-chat:has(.ai-server[open]) .ai-settings {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+
+.ai-chat:has(.ai-server[open]) .ai-thread,
+.ai-chat:has(.ai-server[open]) .ai-composer,
+.ai-chat:not(:has(.ai-server[open])) .ai-vaults,
+.ai-chat:not(:has(.ai-server[open])) .ai-settings-done {
+  display: none;
+}
+
+.ai-settings-done {
+  align-self: flex-start;
+  /* In line with the forms above: their margin and padding. */
+  margin: 4px 12px 0;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
 .ai-header {
   display: flex;
   align-items: center;
@@ -1509,11 +1549,11 @@ body.resizing-side {
   font-size: 12px;
   line-height: 1.4;
   color: var(--text-dim);
-  background: var(--panel-bg);
+  background: var(--panel);
 }
 
 .ai-model-error {
-  color: var(--danger, #d13438);
+  color: var(--danger);
 }
 
 /* The local-server settings: folded to one line once a model is chosen.
@@ -1526,7 +1566,7 @@ body.resizing-side {
   font-size: 12px;
   line-height: 1.4;
   color: var(--text-dim);
-  background: var(--panel-bg);
+  background: var(--panel);
 }
 
 .ai-server summary,
@@ -1630,13 +1670,15 @@ body.resizing-side {
 }
 
 .ai-server-status:not(.ai-server-status--ok):not(.ai-server-status--note) {
-  color: var(--danger, #d13438);
+  color: var(--danger);
 }
 
 /* Two short fields side by side (header name and prefix; resource and audience). */
 .ai-remote-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, …): an input's natural width must not push the row past a
+     narrow panel. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 6px;
 }
 

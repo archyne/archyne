@@ -574,6 +574,7 @@ export const messages: Messages = {
   "ai.fileUnreadable": "Non è stato possibile caricare il file qui.",
   "ai.secretFileSaved": "Caricato — scegli un altro file per sostituirlo",
   "ai.secretNoFile": "Nessun file caricato",
+  "ai.settingsDone": "Torna alla conversazione",
   "ai.oauthFlowAssertion": "Asserzione firmata (account di servizio)",
   "ai.oauthAssertionHint":
     "Incolla qui sotto la chiave privata, oppure il file di chiave JSON di un account di servizio Google così com'è: contiene l'emittente e l'ID della chiave.",

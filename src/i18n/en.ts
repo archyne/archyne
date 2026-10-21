@@ -576,6 +576,7 @@ export const en = {
   "ai.fileUnreadable": "That file could not be loaded here.",
   "ai.secretFileSaved": "Loaded — choose another file to replace it",
   "ai.secretNoFile": "No file loaded yet",
+  "ai.settingsDone": "Back to the conversation",
   "ai.oauthFlowAssertion": "Signed assertion (service account)",
   "ai.oauthAssertionHint":
     "Paste the private key below, or a Google service account's JSON key file as it is: it carries the issuer and the key ID.",

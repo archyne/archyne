@@ -577,6 +577,7 @@ export const messages: Messages = {
   "ai.fileUnreadable": "Die Datei konnte hier nicht geladen werden.",
   "ai.secretFileSaved": "Geladen — wählen Sie eine andere Datei, um es zu ersetzen",
   "ai.secretNoFile": "Noch keine Datei geladen",
+  "ai.settingsDone": "Zurück zur Unterhaltung",
   "ai.oauthFlowAssertion": "Signierte Assertion (Dienstkonto)",
   "ai.oauthAssertionHint":
     "Unten den privaten Schlüssel einfügen oder die JSON-Schlüsseldatei eines Google-Dienstkontos unverändert: Sie enthält den Aussteller und die Schlüssel-ID.",

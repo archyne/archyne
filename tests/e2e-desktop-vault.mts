@@ -158,6 +158,10 @@ const onCanvas = (label: string) =>
     );
 const send = async (request: string) => {
   const before = await page.locator(".ai-assistant.done, .ai-assistant.error").count();
+  if ((await page.locator(".ai-server[open]").count()) > 0) {
+    // Open, the settings have the panel; the conversation is a click away.
+    await page.getByRole("button", { name: "Back to the conversation" }).click();
+  }
   await page.locator(".ai-composer textarea").fill(request);
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await page.waitForFunction(

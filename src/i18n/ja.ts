@@ -565,6 +565,7 @@ export const messages: Messages = {
   "ai.fileUnreadable": "このファイルはここでは読み込めませんでした。",
   "ai.secretFileSaved": "読み込み済み — 置き換えるには別のファイルを選択",
   "ai.secretNoFile": "まだファイルが読み込まれていません",
+  "ai.settingsDone": "会話に戻る",
   "ai.oauthFlowAssertion": "署名付きアサーション（サービスアカウント）",
   "ai.oauthAssertionHint":
     "下に秘密鍵を貼り付けるか、Google サービスアカウントの JSON 鍵ファイルをそのまま貼り付けます。発行者と鍵 ID はファイルに含まれています。",

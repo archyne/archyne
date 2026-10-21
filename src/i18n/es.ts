@@ -571,6 +571,7 @@ export const messages: Messages = {
   "ai.fileUnreadable": "No se pudo cargar el archivo aquí.",
   "ai.secretFileSaved": "Cargado — elige otro archivo para reemplazarlo",
   "ai.secretNoFile": "Todavía no se ha cargado ningún archivo",
+  "ai.settingsDone": "Volver a la conversación",
   "ai.oauthFlowAssertion": "Aserción firmada (cuenta de servicio)",
   "ai.oauthAssertionHint":
     "Pega abajo la clave privada, o el archivo de clave JSON de una cuenta de servicio de Google tal cual: incluye el emisor y el ID de la clave.",

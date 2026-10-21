@@ -566,6 +566,7 @@ export const messages: Messages = {
   "ai.fileUnreadable": "تعذّر تحميل الملف هنا.",
   "ai.secretFileSaved": "تم التحميل — اختر ملفًا آخر لاستبداله",
   "ai.secretNoFile": "لم يُحمَّل أي ملف بعد",
+  "ai.settingsDone": "العودة إلى المحادثة",
   "ai.oauthFlowAssertion": "تأكيد موقَّع (حساب خدمة)",
   "ai.oauthAssertionHint":
     "الصق المفتاح الخاص أدناه، أو ملف مفتاح JSON لحساب خدمة Google كما هو: فهو يتضمن المُصدِر ومعرّف المفتاح.",

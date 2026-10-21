@@ -170,6 +170,10 @@ check(
 
 /* ---------- a turn through the server ---------- */
 
+if ((await page.locator(".ai-server[open]").count()) > 0) {
+  // Open, the settings have the panel; the conversation is a click away.
+  await page.getByRole("button", { name: "Back to the conversation" }).click();
+}
 await page.locator(".ai-composer textarea").fill("add a step from the server");
 await page.getByRole("button", { name: "Send", exact: true }).click();
 await page.waitForSelector(".ai-assistant.done, .ai-assistant.error", { timeout: 30_000 });
@@ -210,6 +214,10 @@ check(
 // an artefact of this harness, not something a person can do to the app.)
 server.close();
 server.closeAllConnections();
+if ((await page.locator(".ai-server[open]").count()) > 0) {
+  // Open, the settings have the panel; the conversation is a click away.
+  await page.getByRole("button", { name: "Back to the conversation" }).click();
+}
 await page.locator(".ai-composer textarea").fill("one more");
 await page.getByRole("button", { name: "Send", exact: true }).click();
 await page.waitForSelector(".ai-assistant.error", { timeout: 30_000 });
