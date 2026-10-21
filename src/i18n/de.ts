@@ -565,7 +565,7 @@ export const messages: Messages = {
   "ai.vaultSecretKey": "Schlüssel darin (optional)",
   "ai.vaultSecretField": "Feld",
   "ai.vaultSecretHint":
-    "Wird bei Bedarf aus dem Tresor gelesen und nur im Speicher gehalten. Beim ersten Mal fragt Archyne Sie, bevor es gesendet wird.",
+    "Wird bei Bedarf aus dem Tresor gelesen und nur im Speicher gehalten – und erst, nachdem Sie es für diesen Dienst autorisiert haben.",
   "ai.remoteVaultFailed": "Ein Geheimnis konnte nicht aus dem Tresor gelesen werden: {detail}",
   "ai.secretFromFile": "Datei wählen …",
   "ai.tlsPfx": "Zertifikat und Schlüssel (aus einer .pfx-/.p12-Datei)",
@@ -578,6 +578,15 @@ export const messages: Messages = {
   "ai.secretFileSaved": "Geladen — wählen Sie eine andere Datei, um es zu ersetzen",
   "ai.secretNoFile": "Noch keine Datei geladen",
   "ai.settingsDone": "Zurück zur Unterhaltung",
+  "ai.vaultAuthorize": "Autorisieren …",
+  "ai.vaultAuthorizedYes": "Autorisiert: Archyne darf es an diesen Dienst senden.",
+  "ai.vaultAuthorizedNo":
+    "Noch nicht autorisiert: Archyne liest es erst, wenn Sie es autorisieren.",
+  "ai.vaultNotAuthorized":
+    "Ein Geheimnis aus einem Tresor ist noch nicht autorisiert: Autorisieren Sie es in den Einstellungen dieses Dienstes.",
+  "ai.vaultDenied": "Nicht autorisiert: Aus dem Tresor wurde nichts gelesen.",
+  "ai.vaultIncompleteRef":
+    "Wählen Sie zuerst einen Tresor und geben Sie den Namen des Geheimnisses an.",
   "ai.oauthFlowAssertion": "Signierte Assertion (Dienstkonto)",
   "ai.oauthAssertionHint":
     "Unten den privaten Schlüssel einfügen oder die JSON-Schlüsseldatei eines Google-Dienstkontos unverändert: Sie enthält den Aussteller und die Schlüssel-ID.",

@@ -3,14 +3,14 @@
  * phase 5).
  *
  * A fake `az` goes first on the PATH: it writes down how it was called and
- * prints the secret only for the one Key Vault secret it knows. The dialog
- * the shell asks with is replaced by one that writes down what it was asked.
- * What only the real app shows: that a vault and a reference made in the
- * panel reach the shell, that the shell asks in its own window — in the
- * language the app speaks — before the secret first goes anywhere, that it
- * runs the vendor's CLI and sends what it printed, that it reads the secret
- * again when the service refuses it, and that the secret is never in the
- * page nor in the shell's store.
+ * prints the secret only for the one Key Vault secret it knows. What only the
+ * real app shows: that a vault and a reference made in the panel reach the
+ * shell; that nothing is read until the person authorizes it, with the
+ * Authorize button, in the shell's own question window — in the app's
+ * language — which the test reads and answers like a person; that the shell
+ * then runs the vendor's CLI and sends what it printed; that it reads the
+ * secret again when the service refuses it; and that the secret is never in
+ * the page nor in the shell's store.
  *
  * Run:  npm run build, then npx tsx tests/e2e-desktop-vault.mts
  */
@@ -119,19 +119,24 @@ const app = await electron.launch({
   args: ["desktop/main.cjs", `--user-data-dir=${userData}`],
   env: env as Record<string, string>,
 });
-// The shell's own question, answered from here and written down.
-await app.evaluate(({ dialog }) => {
-  const g = globalThis as unknown as { asked: string[]; answer: number };
-  g.asked = [];
-  g.answer = 1;
-  dialog.showMessageBox = (async (...args: unknown[]) => {
-    const options = args.at(-1) as { detail?: string };
-    g.asked.push(options.detail ?? "");
-    return { response: g.answer, checkboxChecked: false };
-  }) as typeof dialog.showMessageBox;
-});
-const asked = () =>
-  app.evaluate(() => (globalThis as unknown as { asked: string[] }).asked.slice());
+/** Every question window the shell opened, and what it said. */
+const asked: string[] = [];
+/**
+ * Authorize a field's vault secret: click the panel's button, then answer the
+ * shell's own window — read like a person reads it — with the button named.
+ */
+async function authorize(field: string, button: string): Promise<string> {
+  const opened = app.waitForEvent("window");
+  await page.getByRole("button", { name: new RegExp(`${field}$`) }).click();
+  const question = await opened;
+  await question.waitForSelector("#rows dd");
+  const text = (await question.locator("main").innerText()).replace(/\s+/g, " ");
+  asked.push(text);
+  const closed = question.waitForEvent("close");
+  await question.getByRole("button", { name: button, exact: true }).click();
+  await closed;
+  return text;
+}
 
 const page = await app.firstWindow();
 await page.waitForSelector(".app", { timeout: 60_000 });
@@ -188,14 +193,32 @@ await page
   .getByRole("combobox", { name: "API key · Source" })
   .selectOption({ label: "From the vault Team vault" });
 await field(services, "Secret name").fill("openai-key");
+
+// Not authorized yet: a check reads nothing and asks nothing.
 await page.getByRole("button", { name: "Check connection" }).click();
-await page.waitForSelector('.ai-server-status[data-state="ok"]', { timeout: 30_000 });
-const first = await asked();
+await page.waitForSelector('.ai-server-status[data-state="vault"]', { timeout: 30_000 });
 check(
-  "the shell asked, in its own window, which secret goes where and as what",
-  first.length === 1 &&
-    ["openai-key", "Team vault", base, "API key"].every((s) => first[0].includes(s)),
-  JSON.stringify(first),
+  "before it is authorized, the secret is neither read nor asked about",
+  calls().length === 0 &&
+    asked.length === 0 &&
+    (
+      (await page.locator('.ai-server-status[data-state="vault"]').textContent()) ?? ""
+    ).includes("not authorized yet"),
+  `${calls().length} calls`,
+);
+
+const first = await authorize("API key", "Allow");
+// Allowed, the shell reads the secret once to prove it, then says so.
+await page
+  .locator('.ai-secret-file[data-saved="true"]', { hasText: "Authorized" })
+  .waitFor({ timeout: 30_000 });
+check(
+  "Authorize opens the shell's own window: which secret, which vault, where, as what",
+  ["openai-key", "Team vault", base, "API key"].every((s) => first.includes(s)) &&
+    (await page
+      .locator('.ai-secret-file[data-saved="true"]', { hasText: "Authorized" })
+      .count()) === 1,
+  first,
 );
 check(
   "it read the secret with the vendor's CLI, by the vault's address and the secret's name",
@@ -203,6 +226,8 @@ check(
   JSON.stringify(calls()),
 );
 
+await page.getByRole("button", { name: "Check connection" }).click();
+await page.waitForSelector('.ai-server-status[data-state="ok"]', { timeout: 30_000 });
 await page.getByRole("combobox", { name: "Model" }).selectOption("vault-model");
 await send("add a step from the vault");
 check(
@@ -227,7 +252,7 @@ check(
   calls().length === 2 &&
     !rotatedTurn.includes("did not draw") &&
     seen.at(-1)?.authorization === `Bearer ${ROTATED}` &&
-    (await asked()).length === 1,
+    asked.length === 1,
   `${calls().length} calls; ${rotatedTurn}`,
 );
 
@@ -247,9 +272,6 @@ check(
 );
 
 // Another service, the app in Italian, and the person says no.
-await app.evaluate(() => {
-  (globalThis as unknown as { answer: number }).answer = 0;
-});
 // Choosing a model folded the settings away.
 if ((await page.locator(".ai-server[open]").count()) === 0) {
   await services.locator("summary").click();
@@ -264,16 +286,14 @@ await page.locator(".overflow-menu > button").click();
 await page.locator(".menu-popover select").nth(1).selectOption("it");
 await page.keyboard.press("Escape");
 await page.waitForFunction(() => document.documentElement.lang === "it");
-await services.locator(".ai-server-check .editor-action").first().click();
-await page.waitForSelector('.ai-server-status[data-state="vault"]', { timeout: 30_000 });
-const italian = (await asked()).at(-1) ?? "";
+const italian = await authorize("API key", "Non consentire");
 const refusal =
-  (await services.locator('.ai-server-status[data-state="vault"]').textContent()) ?? "";
+  (await page.locator(".ai-server-status[role=status]").last().textContent()) ?? "";
 check(
-  "asked in the app's language, a no sends nothing and says so",
-  italian.includes("cassaforte") &&
+  "asked in the app's language, a no reads nothing and says so",
+  italian.includes("Cassaforte") &&
     italian.includes("other-key") &&
-    refusal.startsWith("Impossibile leggere un segreto dalla cassaforte") &&
+    refusal.startsWith("Non autorizzato") &&
     calls().length === 2 &&
     !seen.some((s) => s.url.startsWith("/other/") && s.authorization),
   `${italian} / ${refusal}`,

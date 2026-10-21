@@ -31,6 +31,10 @@ export interface HostAi {
   authStatus(id: string): Promise<AuthStatus>;
   /** A certificate or key from a file the person picks in the host's dialog; never its contents. */
   importSecretFile(id: string, field: string): Promise<ImportResult>;
+  /** Let a vault secret go to its service: the host asks in its own window, then reads it once. */
+  authorizeVaultSecret(id: string, field: string): Promise<{ ok: true } | { problem: string }>;
+  /** Which of a connection's vault secrets are authorized as they stand. */
+  vaultAuthorized(id: string): Promise<string[]>;
   onEvent(callback: (event: HostEvent) => void): () => void;
 }
 
@@ -102,6 +106,8 @@ function overWebview(vscode: { postMessage(message: unknown): void }): HostAi {
     signOut: (id) => call("signOut", [id]),
     authStatus: (id) => call("authStatus", [id]),
     importSecretFile: (id, field) => call("importSecretFile", [id, field]),
+    authorizeVaultSecret: (id, field) => call("authorizeVaultSecret", [id, field]),
+    vaultAuthorized: (id) => call("vaultAuthorized", [id]),
     onEvent: (callback) => {
       listeners.add(callback);
       return () => listeners.delete(callback);

@@ -60,6 +60,8 @@ export function remoteAdvice(
     case "no-model":
       return t("ai.remoteNeedsModel");
     case "vault":
+      if (extra?.problem === "not-authorized") return t("ai.vaultNotAuthorized");
+      if (extra?.problem === "denied") return t("ai.vaultDenied");
       // The vault's or its CLI's own words: "Please run 'az login'".
       return t("ai.remoteVaultFailed", { detail: extra?.problem ?? "" });
     case "invalid":

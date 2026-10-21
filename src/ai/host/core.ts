@@ -107,10 +107,20 @@ export type ImportResult =
 
 /** A vault could not give a secret: not signed in, no such secret, refused. */
 export class VaultError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    /** Set when the reason is the person's, not the vault's: the page says it in its words. */
+    readonly code?: "not-authorized" | "denied",
+  ) {
     super(message);
     this.name = "VaultError";
   }
+}
+
+/** What the page may be told of a vault error: its code when it has one, else the vault's words. */
+function vaultDetail(err: unknown): string {
+  if (err instanceof VaultError && err.code) return err.code;
+  return err instanceof Error ? err.message : String(err);
 }
 
 /** What the host sends back to the page: a request's text, or a sign-in's progress. */
@@ -233,21 +243,8 @@ export class AiHost {
    * while — never in the store.
    */
   private async secret(c: Connection, field: string): Promise<string | undefined> {
-    const ref = c.fromVault?.[field];
-    if (!ref) return this.env.secrets.get(secretKey(c.id, field));
-    const v = this.connections.get(ref.vault);
-    if (!v || v.protocol !== "vault") {
-      throw new VaultError("The vault this secret is read from is not set up.");
-    }
-    const problem = vaultProblem(v) ?? refProblem(v, ref);
-    if (problem)
-      throw new VaultError(`The vault or the secret's name is not valid (${problem}).`);
-    const identity = JSON.stringify([
-      credentialTarget(c),
-      vaultIdentity(v),
-      ref.name,
-      ref.key ?? "",
-    ]);
+    if (!c.fromVault?.[field]) return this.env.secrets.get(secretKey(c.id, field));
+    const { v, ref, identity } = this.vaultRef(c, field);
     const slot = `${c.id}\u0000${field}`;
     const now = (this.env.now ?? Date.now)();
     const cached = this.vaultCache.get(slot);
@@ -267,6 +264,25 @@ export class AiHost {
     return value;
   }
 
+  /** The vault and reference a connection's field names, checked, and what tells them apart. */
+  private vaultRef(c: Connection, field: string) {
+    const ref = c.fromVault![field];
+    const v = this.connections.get(ref.vault);
+    if (!v || v.protocol !== "vault") {
+      throw new VaultError("The vault this secret is read from is not set up.");
+    }
+    const problem = vaultProblem(v) ?? refProblem(v, ref);
+    if (problem)
+      throw new VaultError(`The vault or the secret's name is not valid (${problem}).`);
+    const identity = JSON.stringify([
+      credentialTarget(c),
+      vaultIdentity(v),
+      ref.name,
+      ref.key ?? "",
+    ]);
+    return { v, ref, identity };
+  }
+
   private async readVault(
     c: Connection,
     field: string,
@@ -274,7 +290,12 @@ export class AiHost {
     ref: SecretRef,
     identity: string,
   ): Promise<string> {
-    await this.approve(c, field, v, ref, identity);
+    if (!(await this.approved(c.id)).includes(JSON.stringify([identity, field]))) {
+      throw new VaultError(
+        "This secret from the vault is not authorized yet.",
+        "not-authorized",
+      );
+    }
     let raw: string;
     try {
       if (v.vault!.via === "cli") {
@@ -289,10 +310,23 @@ export class AiHost {
     }
   }
 
+  /** What the person has let this connection send from vaults, and where. */
+  private async approved(connectionId: string): Promise<string[]> {
+    try {
+      const stored: unknown = JSON.parse(
+        (await this.env.secrets.get(secretKey(connectionId, APPROVALS))) ?? "[]",
+      );
+      return Array.isArray(stored) ? stored.filter((x) => typeof x === "string") : [];
+    } catch {
+      return []; // Unreadable: as if nothing had been allowed.
+    }
+  }
+
   /**
-   * Ask once — in the host's window — before a vault's secret first goes to
-   * this connection's address as this field. The answer is filed with the
-   * connection's secrets, so it is bound like them and lapses when the
+   * Ask — in the host's own window — whether a vault's secret may go to this
+   * connection's address as this field. Only ever because the person asked to
+   * authorize it, never in the middle of a request. The answer is filed with
+   * the connection's secrets, so it is bound like them and lapses when the
    * connection is pointed elsewhere.
    */
   private approve(
@@ -304,13 +338,7 @@ export class AiHost {
   ): Promise<void> {
     const run = async () => {
       const key = secretKey(c.id, APPROVALS);
-      let approved: string[] = [];
-      try {
-        const stored: unknown = JSON.parse((await this.env.secrets.get(key)) ?? "[]");
-        if (Array.isArray(stored)) approved = stored.filter((x) => typeof x === "string");
-      } catch {
-        // Unreadable: as if nothing had been allowed.
-      }
+      const approved = await this.approved(c.id);
       const entry = JSON.stringify([identity, field]);
       if (approved.includes(entry)) return;
       if (!this.env.confirm) {
@@ -329,7 +357,9 @@ export class AiHost {
         field,
       };
       const allowed = await this.env.confirm(askText(this.locale, ask), ask);
-      if (!allowed) throw new VaultError("Sending that secret from the vault was not allowed.");
+      if (!allowed) {
+        throw new VaultError("Sending that secret from the vault was not allowed.", "denied");
+      }
       try {
         await this.bind(c.id);
         await this.env.secrets.set(key, JSON.stringify([...approved, entry]));
@@ -340,6 +370,48 @@ export class AiHost {
     const next = this.asking.then(run);
     this.asking = next.catch(() => undefined);
     return next;
+  }
+
+  /**
+   * Authorize one of a connection's vault secrets: the person confirms, in
+   * the host's window, which secret goes where as what; the host then reads
+   * it once, so a wrong name or a CLI not signed in shows up now, while the
+   * settings are open, and not at the next request.
+   */
+  async authorizeVaultSecret(
+    connectionId: string,
+    field: string,
+  ): Promise<{ ok: true } | { problem: string }> {
+    await this.settled();
+    const c = this.connections.get(connectionId);
+    if (!c?.fromVault?.[field] || !PAGE_SETTABLE_SECRETS.has(field)) {
+      return { problem: "invalid" };
+    }
+    try {
+      const { v, ref, identity } = this.vaultRef(c, field);
+      await this.approve(c, field, v, ref, identity);
+      this.evict(c.id);
+      await this.secret(c, field);
+      return { ok: true };
+    } catch (err) {
+      return { problem: vaultDetail(err) };
+    }
+  }
+
+  /** Which of a connection's vault secrets are authorized as they now stand. */
+  async vaultAuthorized(connectionId: string): Promise<string[]> {
+    await this.settled();
+    const c = this.connections.get(connectionId);
+    if (!c?.fromVault) return [];
+    const approved = await this.approved(c.id);
+    return Object.keys(c.fromVault).filter((field) => {
+      try {
+        const { identity } = this.vaultRef(c, field);
+        return approved.includes(JSON.stringify([identity, field]));
+      } catch {
+        return false;
+      }
+    });
   }
 
   /**
@@ -445,7 +517,7 @@ export class AiHost {
     try {
       await this.vaultSecrets(c);
     } catch (err) {
-      return { state: "vault", detail: err instanceof Error ? err.message : String(err) };
+      return { state: "vault", detail: vaultDetail(err) };
     }
     return probeServer(
       { baseUrl: c.baseUrl, model: "" },
@@ -501,7 +573,12 @@ export class AiHost {
               : err instanceof VaultError
                 ? "vault"
                 : "network",
-          detail: err instanceof Error ? err.message : String(err),
+          detail:
+            err instanceof VaultError
+              ? vaultDetail(err)
+              : err instanceof Error
+                ? err.message
+                : String(err),
         });
       }
     } finally {

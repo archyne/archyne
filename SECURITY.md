@@ -123,9 +123,11 @@ Archyne's. Two boundaries carry the weight:
 - **A secret from a vault goes nowhere unasked.** A service's key may be read
   from a cloud vault (Azure Key Vault, AWS Secrets Manager, Google Secret
   Manager, Alibaba KMS, HashiCorp Vault) through the vendor's CLI. Which secret
-  and which address are chosen in the page, so before a given secret first
-  goes to a given address the host asks the person in a native dialog the
-  page can neither draw nor answer; the answer is bound like a saved secret.
+  and which address are chosen in the page, so no secret is read until the
+  person authorizes that secret for that address, in a window of the host's
+  own (on the desktop a separate sandboxed window, in VS Code a modal) that
+  the page can neither draw nor answer; the answer is bound like a saved
+  secret.
   The value is held in the host's memory only. Every identifier that reaches a
   command line is held to a pattern with no character a shell would read.
 

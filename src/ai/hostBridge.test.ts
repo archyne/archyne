@@ -32,6 +32,8 @@ function scriptedHost(script: (requestId: string, emit: (e: HostEvent) => void) 
     signOut: async () => {},
     authStatus: async () => ({ signedIn: false }),
     importSecretFile: async () => ({ cancelled: true }),
+    authorizeVaultSecret: async () => ({ problem: "invalid" }),
+    vaultAuthorized: async () => [],
     cancel: (requestId) => {
       cancelled.push(requestId);
       emit({ type: "ai:error", requestId, reason: "aborted", detail: "" });

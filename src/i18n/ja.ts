@@ -553,7 +553,7 @@ export const messages: Messages = {
   "ai.vaultSecretKey": "中のキー (任意)",
   "ai.vaultSecretField": "フィールド",
   "ai.vaultSecretHint":
-    "必要なときに保管庫から読み取り、メモリ上にだけ保持します。初回は、送信する前に Archyne が確認します。",
+    "必要なときに保管庫から読み取り、メモリ上にだけ保持します。このサービスへの送信を承認した後に限ります。",
   "ai.remoteVaultFailed": "保管庫からシークレットを読み取れませんでした: {detail}",
   "ai.secretFromFile": "ファイルを選択…",
   "ai.tlsPfx": "証明書と鍵 (.pfx / .p12 ファイルから)",
@@ -566,6 +566,13 @@ export const messages: Messages = {
   "ai.secretFileSaved": "読み込み済み — 置き換えるには別のファイルを選択",
   "ai.secretNoFile": "まだファイルが読み込まれていません",
   "ai.settingsDone": "会話に戻る",
+  "ai.vaultAuthorize": "承認…",
+  "ai.vaultAuthorizedYes": "承認済み: Archyne はこのサービスに送信できます。",
+  "ai.vaultAuthorizedNo": "まだ承認されていません。承認するまで Archyne は読み取りません。",
+  "ai.vaultNotAuthorized":
+    "保管庫のシークレットがまだ承認されていません。このサービスの設定で承認してください。",
+  "ai.vaultDenied": "承認されませんでした。保管庫からは何も読み取っていません。",
+  "ai.vaultIncompleteRef": "先に保管庫を選び、シークレットの名前を入力してください。",
   "ai.oauthFlowAssertion": "署名付きアサーション（サービスアカウント）",
   "ai.oauthAssertionHint":
     "下に秘密鍵を貼り付けるか、Google サービスアカウントの JSON 鍵ファイルをそのまま貼り付けます。発行者と鍵 ID はファイルに含まれています。",

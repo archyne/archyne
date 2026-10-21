@@ -542,8 +542,7 @@ export const messages: Messages = {
   "ai.vaultSecretPath": "机密路径",
   "ai.vaultSecretKey": "其中的键（可选）",
   "ai.vaultSecretField": "字段",
-  "ai.vaultSecretHint":
-    "需要时从保管库读取，只保存在内存中。首次发送前，Archyne 会征求你的同意。",
+  "ai.vaultSecretHint": "需要时从保管库读取，只保存在内存中，并且仅在你为此服务授权之后。",
   "ai.remoteVaultFailed": "无法从保管库读取机密：{detail}",
   "ai.secretFromFile": "选择文件…",
   "ai.tlsPfx": "证书和密钥（来自 .pfx / .p12 文件）",
@@ -555,6 +554,12 @@ export const messages: Messages = {
   "ai.secretFileSaved": "已加载 — 选择其他文件以替换",
   "ai.secretNoFile": "尚未加载文件",
   "ai.settingsDone": "返回对话",
+  "ai.vaultAuthorize": "授权…",
+  "ai.vaultAuthorizedYes": "已授权：Archyne 可以将其发送到此服务。",
+  "ai.vaultAuthorizedNo": "尚未授权：在你授权之前，Archyne 不会读取它。",
+  "ai.vaultNotAuthorized": "保管库中的机密尚未授权：请在此服务的设置中授权。",
+  "ai.vaultDenied": "未授权：没有从保管库读取任何内容。",
+  "ai.vaultIncompleteRef": "请先选择保管库并填写机密名称。",
   "ai.oauthFlowAssertion": "签名断言（服务账号）",
   "ai.oauthAssertionHint":
     "在下方粘贴私钥，或原样粘贴 Google 服务账号的 JSON 密钥文件：其中已包含签发者和密钥 ID。",

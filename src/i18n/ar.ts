@@ -555,7 +555,7 @@ export const messages: Messages = {
   "ai.vaultSecretKey": "المفتاح داخله (اختياري)",
   "ai.vaultSecretField": "الحقل",
   "ai.vaultSecretHint":
-    "يُقرأ من الخزنة عند الحاجة ويُحفظ في الذاكرة فقط. في المرة الأولى يسألك Archyne قبل إرساله.",
+    "يُقرأ من الخزنة عند الحاجة ويُحفظ في الذاكرة فقط، وذلك فقط بعد أن تفوّضه لهذه الخدمة.",
   "ai.remoteVaultFailed": "تعذّرت قراءة سرّ من الخزنة: {detail}",
   "ai.secretFromFile": "اختيار ملف…",
   "ai.tlsPfx": "الشهادة والمفتاح (من ملف ‎.pfx / .p12)",
@@ -567,6 +567,12 @@ export const messages: Messages = {
   "ai.secretFileSaved": "تم التحميل — اختر ملفًا آخر لاستبداله",
   "ai.secretNoFile": "لم يُحمَّل أي ملف بعد",
   "ai.settingsDone": "العودة إلى المحادثة",
+  "ai.vaultAuthorize": "تفويض…",
+  "ai.vaultAuthorizedYes": "مفوَّض: يمكن لـ Archyne إرساله إلى هذه الخدمة.",
+  "ai.vaultAuthorizedNo": "لم يُفوَّض بعد: لن يقرأه Archyne حتى تفوّضه.",
+  "ai.vaultNotAuthorized": "لم يُفوَّض سرّ من الخزنة بعد: فوّضه في إعدادات هذه الخدمة.",
+  "ai.vaultDenied": "غير مفوَّض: لم يُقرأ شيء من الخزنة.",
+  "ai.vaultIncompleteRef": "اختر خزنة أولًا وأدخل اسم السرّ.",
   "ai.oauthFlowAssertion": "تأكيد موقَّع (حساب خدمة)",
   "ai.oauthAssertionHint":
     "الصق المفتاح الخاص أدناه، أو ملف مفتاح JSON لحساب خدمة Google كما هو: فهو يتضمن المُصدِر ومعرّف المفتاح.",

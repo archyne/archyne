@@ -195,6 +195,12 @@ function ConnectionForm({
   const [fileProblem, setFileProblem] = useState<{ field: string; key: MessageKey } | null>(
     null,
   );
+  // Vault secrets the person has authorized for this service, as they stand,
+  // and why the last authorization did not go through.
+  const [authorized, setAuthorized] = useState<string[]>([]);
+  const [vaultTrouble, setVaultTrouble] = useState<{ field: string; text: string } | null>(
+    null,
+  );
   const patch = (p: Partial<Connection>) => update(connection.id, p);
 
   // What the host already holds for this connection, and whether it can hold
@@ -216,7 +222,39 @@ function ConnectionForm({
     };
   }, [ai, connection.id, target]);
 
+  // A reference, a vault or an address that changes is another authorization.
+  const vaultState = JSON.stringify([connection.fromVault ?? null, target, vaults]);
+  useEffect(() => {
+    if (!ai) return;
+    let live = true;
+    void hostSynced()
+      .then(() => ai.vaultAuthorized(connection.id))
+      .then((fields) => live && setAuthorized(fields));
+    return () => {
+      live = false;
+    };
+  }, [ai, connection.id, vaultState]);
+
   if (!ai) return null;
+
+  // The host asks in its own window, then reads the secret once to prove it.
+  const authorize = async (field: string) => {
+    setVaultTrouble(null);
+    await hostSynced();
+    const result = await ai.authorizeVaultSecret(connection.id, field);
+    if ("problem" in result) {
+      setVaultTrouble({
+        field,
+        text:
+          result.problem === "denied"
+            ? t("ai.vaultDenied")
+            : result.problem === "invalid"
+              ? t("ai.vaultIncompleteRef")
+              : t("ai.remoteVaultFailed", { detail: result.problem }),
+      });
+    }
+    setAuthorized(await ai.vaultAuthorized(connection.id));
+  };
 
   const check = async () => {
     setResult("checking");
@@ -505,7 +543,15 @@ function ConnectionForm({
               setFromVault(field, ref);
             }}
             onFile={FILE_FIELDS.has(field) ? () => void importFile(field) : undefined}
-            problem={fileProblem?.field === field ? t(fileProblem.key) : undefined}
+            problem={
+              fileProblem?.field === field
+                ? t(fileProblem.key)
+                : vaultTrouble?.field === field
+                  ? vaultTrouble.text
+                  : undefined
+            }
+            authorized={authorized.includes(field)}
+            onAuthorize={() => void authorize(field)}
           />
         ))}
       {!canKeep && <p className="ai-server-status">{t("ai.remoteNoSecureStorage")}</p>}
@@ -622,6 +668,8 @@ function SecretField({
   onFromVault,
   onFile,
   problem,
+  authorized = false,
+  onAuthorize,
 }: {
   label: string;
   saved: boolean;
@@ -639,6 +687,9 @@ function SecretField({
   onFile?: () => void;
   /** Why the last file chosen for this field would not do. */
   problem?: string;
+  /** For a secret from a vault: whether the person has let it go to this service. */
+  authorized?: boolean;
+  onAuthorize?: () => void;
 }) {
   const t = useT();
   const [value, setValue] = useState("");
@@ -698,6 +749,20 @@ function SecretField({
             </label>
           </div>
           <p className="ai-server-hint">{t("ai.vaultSecretHint")}</p>
+          <p className="ai-secret-file" data-saved={authorized || undefined}>
+            {authorized ? t("ai.vaultAuthorizedYes") : t("ai.vaultAuthorizedNo")}
+          </p>
+          <div className="ai-secret-actions">
+            <button
+              type="button"
+              className="editor-action"
+              disabled={disabled || !fromVault.name}
+              aria-label={`${t("ai.vaultAuthorize")} ${label}`}
+              onClick={onAuthorize}
+            >
+              {t("ai.vaultAuthorize")}
+            </button>
+          </div>
         </>
       ) : onFile ? (
         <>

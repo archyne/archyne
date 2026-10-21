@@ -1,0 +1,131 @@
+/* The shell's own question window (confirm.html), in the app's colours. */
+:root {
+  color-scheme: dark;
+  --panel: #16171d;
+  --panel-2: #1f2128;
+  --border: #30313b;
+  --text: #ebebf0;
+  --text-dim: #999ba8;
+  --accent: #7e8bdd;
+  --accent-strong: #5e6ed4;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --panel: #ffffff;
+  --panel-2: #eff0f5;
+  --border: #d6d7e1;
+  --text: #161827;
+  --text-dim: #5e6173;
+  --accent: #384abc;
+  --accent-strong: #384abc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--panel);
+  color: var(--text);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+main {
+  padding: 18px 20px 16px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.mark {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 14px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+
+dt {
+  color: var(--text-dim);
+}
+
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+/* An address and a secret's name are not prose: they read left to right. */
+dd.code {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-family: "Cascadia Mono", Consolas, ui-monospace, monospace;
+  font-weight: 400;
+}
+
+/* Read left to right, but lined up with the other values on the right. */
+[dir="rtl"] dd.code {
+  text-align: right;
+}
+
+p {
+  margin: 0 0 16px;
+  color: var(--text-dim);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+button {
+  min-height: 30px;
+  padding: 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+button.primary {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+  color: #ffffff;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

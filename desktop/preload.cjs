@@ -112,6 +112,11 @@ contextBridge.exposeInMainWorld("archyne", {
     /** @param {string} id @param {string} field */
     importSecretFile: (id, field) =>
       ipcRenderer.invoke("archyne:ai-import-secret", { id, field }),
+    /** @param {string} id @param {string} field */
+    authorizeVaultSecret: (id, field) =>
+      ipcRenderer.invoke("archyne:ai-authorize-vault", { id, field }),
+    /** @param {string} id */
+    vaultAuthorized: (id) => ipcRenderer.invoke("archyne:ai-vault-authorized", { id }),
     /** @param {(event: unknown) => void} callback @returns {() => void} unsubscribe */
     onEvent: (callback) => {
       /** @param {Electron.IpcRendererEvent} _event @param {unknown} payload */

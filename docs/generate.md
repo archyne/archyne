@@ -171,10 +171,14 @@ The vault is read through its own command-line tool, as you are signed in to
 it: Archyne keeps no credential for the vault. A secret that holds JSON — as
 AWS secrets often do — can be read by one of its keys.
 
-The first time a secret from a vault would go to a service, the app asks you
-in a window of its own — not in the page — naming the secret, the vault, the
-address and what it stands for there. It asks again if the service is
-pointed somewhere else or the vault changes.
+Nothing is read from a vault until you **Authorize** it, with the button
+under the secret's name. The app then asks you in a window of its own — not
+in the page, which cannot draw or answer it — naming the secret, the vault,
+the address it will go to and what it stands for there, and reads the secret
+once to prove the name and your sign-in. It is asked once, while you set the
+service up, never in the middle of a request; if the service is pointed
+somewhere else, the vault changes or the secret's name does, it has to be
+authorized again.
 
 **What a service receives** is the diagram's Mermaid text and your request.
 Choose a service whose terms you are content to send your diagrams under.

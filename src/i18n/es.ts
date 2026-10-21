@@ -559,7 +559,7 @@ export const messages: Messages = {
   "ai.vaultSecretKey": "Clave dentro (opcional)",
   "ai.vaultSecretField": "Campo",
   "ai.vaultSecretHint":
-    "Se lee del almacén cuando hace falta y solo se guarda en memoria. La primera vez, Archyne te pregunta antes de enviarlo.",
+    "Se lee del almacén cuando hace falta y solo se guarda en memoria, y únicamente después de que lo hayas autorizado para este servicio.",
   "ai.remoteVaultFailed": "No se pudo leer un secreto del almacén: {detail}",
   "ai.secretFromFile": "Elegir archivo…",
   "ai.tlsPfx": "Certificado y clave (de un archivo .pfx / .p12)",
@@ -572,6 +572,13 @@ export const messages: Messages = {
   "ai.secretFileSaved": "Cargado — elige otro archivo para reemplazarlo",
   "ai.secretNoFile": "Todavía no se ha cargado ningún archivo",
   "ai.settingsDone": "Volver a la conversación",
+  "ai.vaultAuthorize": "Autorizar…",
+  "ai.vaultAuthorizedYes": "Autorizado: Archyne puede enviarlo a este servicio.",
+  "ai.vaultAuthorizedNo": "Todavía no autorizado: Archyne no lo leerá hasta que lo autorices.",
+  "ai.vaultNotAuthorized":
+    "Un secreto de un almacén todavía no está autorizado: autorízalo en la configuración de este servicio.",
+  "ai.vaultDenied": "No autorizado: no se ha leído nada del almacén.",
+  "ai.vaultIncompleteRef": "Elige primero un almacén e indica el nombre del secreto.",
   "ai.oauthFlowAssertion": "Aserción firmada (cuenta de servicio)",
   "ai.oauthAssertionHint":
     "Pega abajo la clave privada, o el archivo de clave JSON de una cuenta de servicio de Google tal cual: incluye el emisor y el ID de la clave.",

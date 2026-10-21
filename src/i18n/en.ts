@@ -564,7 +564,7 @@ export const en = {
   "ai.vaultSecretKey": "Key inside it (optional)",
   "ai.vaultSecretField": "Field",
   "ai.vaultSecretHint":
-    "Read from the vault when needed and kept in memory only. The first time, Archyne asks you before sending it.",
+    "Read from the vault when needed and kept in memory only, and only once you have authorized it for this service.",
   "ai.remoteVaultFailed": "Could not read a secret from the vault: {detail}",
   "ai.secretFromFile": "Choose file…",
   "ai.tlsPfx": "Certificate and key (from a .pfx / .p12 file)",
@@ -577,6 +577,13 @@ export const en = {
   "ai.secretFileSaved": "Loaded — choose another file to replace it",
   "ai.secretNoFile": "No file loaded yet",
   "ai.settingsDone": "Back to the conversation",
+  "ai.vaultAuthorize": "Authorize…",
+  "ai.vaultAuthorizedYes": "Authorized: Archyne may send it to this service.",
+  "ai.vaultAuthorizedNo": "Not authorized yet: Archyne will not read it until you do.",
+  "ai.vaultNotAuthorized":
+    "A secret from a vault is not authorized yet: authorize it in this service's settings.",
+  "ai.vaultDenied": "Not authorized: nothing was read from the vault.",
+  "ai.vaultIncompleteRef": "Choose a vault and give the secret's name first.",
   "ai.oauthFlowAssertion": "Signed assertion (service account)",
   "ai.oauthAssertionHint":
     "Paste the private key below, or a Google service account's JSON key file as it is: it carries the issuer and the key ID.",

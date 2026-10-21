@@ -130,6 +130,82 @@ const secrets = {
   },
 };
 
+/** The app's own window: the one whose page is the app, not a question of ours. */
+function appWindow() {
+  return BrowserWindow.getAllWindows().find((w) => !asking.has(w)) ?? null;
+}
+
+/** @type {Set<Electron.BrowserWindow>} */
+const asking = new Set();
+
+/**
+ * Ask whether a secret from a vault may go where the page would send it, in
+ * a small window in the app's style (confirm.html): modal over the app, its
+ * own sandboxed renderer and preload, its own IPC. The page can neither
+ * draw it nor answer it. Closing it, Escape, and "Don't allow" are all a no.
+ * @param {import("../src/ai/host/index").AskText} text
+ * @returns {Promise<boolean>}
+ */
+async function askInWindow(text) {
+  const parent = appWindow();
+  // The page's theme, so the question looks like the app; only colours ride on it.
+  const theme = parent
+    ? await parent.webContents
+        .executeJavaScript("document.documentElement.dataset.theme || ''", true)
+        .catch(() => "")
+    : "";
+  return new Promise((resolve) => {
+    const light = theme === "light";
+    const win = new BrowserWindow({
+      ...(parent ? { parent, modal: true } : {}),
+      width: 460,
+      height: 280,
+      useContentSize: true,
+      show: false,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      autoHideMenuBar: true,
+      title: text.title,
+      backgroundColor: light ? "#ffffff" : "#16171d",
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        preload: path.join(__dirname, "confirm-preload.cjs"),
+      },
+    });
+    asking.add(win);
+    win.setMenu(null);
+    win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    win.webContents.on("will-navigate", (event) => event.preventDefault());
+    let answered = false;
+    /** @param {boolean} allowed */
+    const answer = (allowed) => {
+      if (answered) return;
+      answered = true;
+      resolve(allowed);
+      if (!win.isDestroyed()) win.close();
+    };
+    // This window's own channels: no other renderer can answer for it.
+    win.webContents.ipc.handle("archyne:confirm-text", () => ({ ...text, theme }));
+    win.webContents.ipc.on("archyne:confirm-answer", (_event, allowed) =>
+      answer(allowed === true),
+    );
+    win.webContents.ipc.on("archyne:confirm-fit", (_event, height) => {
+      if (win.isDestroyed()) return;
+      win.setContentSize(460, Math.min(Math.max(Math.round(Number(height) || 0), 200), 640));
+      if (!win.isVisible()) win.show();
+    });
+    win.on("closed", () => {
+      asking.delete(win);
+      answer(false);
+    });
+    void win.loadFile(path.join(__dirname, "confirm.html"));
+  });
+}
+
 /**
  * The shared host, loaded on first use so a missing build fails loudly and late.
  * @returns {import("../src/ai/host/index").AiHost}
@@ -154,30 +230,13 @@ function aiHost() {
       if (protocol !== "https:" && protocol !== "http:") throw new Error("Not a web address.");
       await shell.openExternal(url);
     },
-    // Before a secret from a vault first goes somewhere: asked here, in a
-    // window of the shell's own, which the page can neither draw nor answer.
-    // "Don't allow" is what Enter and Escape choose.
-    confirm: async (/** @type {import("../src/ai/host/index").AskText} */ text) => {
-      const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
-      const options = {
-        type: /** @type {const} */ ("question"),
-        title: text.title,
-        message: text.message,
-        detail: text.detail,
-        buttons: [text.deny, text.allow],
-        defaultId: 0,
-        cancelId: 0,
-        noLink: true,
-      };
-      const { response } = parent
-        ? await dialog.showMessageBox(parent, options)
-        : await dialog.showMessageBox(options);
-      return response === 1;
-    },
+    // Before a secret from a vault first goes somewhere: asked in a window of
+    // the shell's own, which the page can neither draw nor answer.
+    confirm: askInWindow,
     // A certificate or key from a file: the shell's own dialog, and the
     // shell reads the file, so the page sees neither the path nor the bytes.
     pickFile: async (/** @type {{ title: string, extensions: string[] }} */ request) => {
-      const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+      const parent = appWindow();
       const options = {
         title: request.title,
         properties: /** @type {Array<"openFile">} */ (["openFile"]),
@@ -266,6 +325,14 @@ function registerAiIpc() {
   ipcMain.handle("archyne:ai-import-secret", async (event, { id, field }) => {
     if (!fromApp(event)) return { problem: "invalid" };
     return aiHost().importSecretFile(String(id), String(field));
+  });
+  ipcMain.handle("archyne:ai-authorize-vault", async (event, { id, field }) => {
+    if (!fromApp(event)) return { problem: "invalid" };
+    return aiHost().authorizeVaultSecret(String(id), String(field));
+  });
+  ipcMain.handle("archyne:ai-vault-authorized", async (event, { id }) => {
+    if (!fromApp(event)) return [];
+    return aiHost().vaultAuthorized(String(id));
   });
 }
 

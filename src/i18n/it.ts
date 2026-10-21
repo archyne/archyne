@@ -562,7 +562,7 @@ export const messages: Messages = {
   "ai.vaultSecretKey": "Chiave al suo interno (facoltativa)",
   "ai.vaultSecretField": "Campo",
   "ai.vaultSecretHint":
-    "Letto dalla cassaforte quando serve e tenuto solo in memoria. La prima volta, Archyne ti chiede conferma prima di inviarlo.",
+    "Letto dalla cassaforte quando serve e tenuto solo in memoria, e solo dopo che l'hai autorizzato per questo servizio.",
   "ai.remoteVaultFailed": "Impossibile leggere un segreto dalla cassaforte: {detail}",
   "ai.secretFromFile": "Scegli file…",
   "ai.tlsPfx": "Certificato e chiave (da un file .pfx / .p12)",
@@ -575,6 +575,14 @@ export const messages: Messages = {
   "ai.secretFileSaved": "Caricato — scegli un altro file per sostituirlo",
   "ai.secretNoFile": "Nessun file caricato",
   "ai.settingsDone": "Torna alla conversazione",
+  "ai.vaultAuthorize": "Autorizza…",
+  "ai.vaultAuthorizedYes": "Autorizzato: Archyne può inviarlo a questo servizio.",
+  "ai.vaultAuthorizedNo":
+    "Non ancora autorizzato: Archyne non lo leggerà finché non lo autorizzi.",
+  "ai.vaultNotAuthorized":
+    "Un segreto della cassaforte non è ancora autorizzato: autorizzalo nelle impostazioni di questo servizio.",
+  "ai.vaultDenied": "Non autorizzato: dalla cassaforte non è stato letto nulla.",
+  "ai.vaultIncompleteRef": "Scegli prima una cassaforte e indica il nome del segreto.",
   "ai.oauthFlowAssertion": "Asserzione firmata (account di servizio)",
   "ai.oauthAssertionHint":
     "Incolla qui sotto la chiave privata, oppure il file di chiave JSON di un account di servizio Google così com'è: contiene l'emittente e l'ID della chiave.",

@@ -219,6 +219,27 @@ describe("the question the host asks", () => {
     }
     expect(askText("pt-BR", ask).allow).toBe("Allow");
   });
+
+  it("lays the same out as a table, for a window of the host's own, which way the language reads", () => {
+    const ask: VaultAsk = {
+      secret: "openai-key",
+      vault: "Team vault",
+      destination: "https://x.example",
+      field: "password",
+    };
+    expect(askText("en", ask)).toMatchObject({
+      rows: [
+        { label: "Secret", value: "openai-key" },
+        { label: "Vault", value: "Team vault" },
+        { label: "Sent to", value: "https://x.example" },
+        { label: "As", value: "Password" },
+      ],
+      lang: "en",
+      dir: "ltr",
+    });
+    expect(askText("ar-EG", ask)).toMatchObject({ lang: "ar", dir: "rtl" });
+    expect(askText("it", ask).rows[3].value).toBe("Password");
+  });
 });
 
 describe("a connection whose key is in a vault", () => {
@@ -276,11 +297,25 @@ describe("a connection whose key is in a vault", () => {
     return events.at(-1)!;
   };
 
-  it("asks once where it goes, reads it with the CLI, and never stores it", async () => {
+  it("is not read, nor asked about, until the person authorizes it", async () => {
+    const { host, asked, ran, sent } = setup();
+    await host.setConnections([SERVICE, KV]);
+    expect(await host.probe("gw")).toEqual({ state: "vault", detail: "not-authorized" });
+    expect(await turn(host)).toMatchObject({
+      type: "ai:error",
+      reason: "vault",
+      detail: "not-authorized",
+    });
+    expect(asked).toEqual([]);
+    expect(ran).toEqual([]);
+    expect(sent).toEqual([]);
+  });
+
+  it("asks once, when authorized, then reads it with the CLI and never stores it", async () => {
     const { host, secrets, asked, ran, sent } = setup();
     await host.setConnections([SERVICE, KV]);
-    expect(await turn(host)).toMatchObject({ type: "ai:done" });
-    expect(await turn(host)).toMatchObject({ type: "ai:done" });
+    expect(await host.vaultAuthorized("gw")).toEqual([]);
+    expect(await host.authorizeVaultSecret("gw", "key")).toEqual({ ok: true });
     expect(asked).toEqual([
       {
         secret: "openai-key",
@@ -289,6 +324,12 @@ describe("a connection whose key is in a vault", () => {
         field: "key",
       },
     ]);
+    // Read once on authorizing, to prove the name; the turns use that read.
+    expect(ran).toHaveLength(1);
+    expect(await host.vaultAuthorized("gw")).toEqual(["key"]);
+    expect(await turn(host)).toMatchObject({ type: "ai:done" });
+    expect(await turn(host)).toMatchObject({ type: "ai:done" });
+    expect(asked).toHaveLength(1);
     expect(ran).toHaveLength(1);
     expect(sent.every((k) => k === "sk-from-vault")).toBe(true);
     expect([...secrets.data.values()].join()).not.toContain("sk-from-vault");
@@ -297,6 +338,7 @@ describe("a connection whose key is in a vault", () => {
   it("reads it again when the service refuses it — a key rotated in the vault", async () => {
     const { host, ran, sent, rotate } = setup({ keys: ["sk-old", "sk-new"] });
     await host.setConnections([SERVICE, KV]);
+    await host.authorizeVaultSecret("gw", "key");
     expect(await turn(host)).toMatchObject({ type: "ai:done" });
     rotate();
     expect(await turn(host)).toMatchObject({ type: "ai:done" });
@@ -304,59 +346,60 @@ describe("a connection whose key is in a vault", () => {
     expect(sent.slice(-2)).toEqual(["sk-old", "sk-new"]);
   });
 
-  it("sends nothing when the person does not allow it, and says why", async () => {
-    const { host, sent } = setup({ allow: false });
+  it("reads nothing when the person does not allow it, and says so", async () => {
+    const { host, ran } = setup({ allow: false });
     await host.setConnections([SERVICE, KV]);
-    expect(await turn(host)).toMatchObject({
-      type: "ai:error",
-      reason: "vault",
-      detail: "Sending that secret from the vault was not allowed.",
-    });
-    expect(sent).toEqual([]);
+    expect(await host.authorizeVaultSecret("gw", "key")).toEqual({ problem: "denied" });
+    expect(ran).toEqual([]);
+    expect(await host.vaultAuthorized("gw")).toEqual([]);
   });
 
-  it("asks again when the connection points elsewhere, or the vault is another", async () => {
-    const { host, asked } = setup();
+  it("needs authorizing again for another address, another vault, another secret", async () => {
+    const { host } = setup();
     await host.setConnections([SERVICE, KV]);
-    await turn(host);
-    await host.setConnections([{ ...SERVICE, baseUrl: "https://collector.example/v1" }, KV]);
-    await turn(host);
+    await host.authorizeVaultSecret("gw", "key");
+    const moved = { ...SERVICE, baseUrl: "https://collector.example/v1" };
+    await host.setConnections([moved, KV]);
+    expect(await host.vaultAuthorized("gw")).toEqual([]);
+    await host.authorizeVaultSecret("gw", "key");
+    await host.setConnections([moved, { ...KV, baseUrl: "https://kv-other.vault.azure.net" }]);
+    expect(await host.vaultAuthorized("gw")).toEqual([]);
     await host.setConnections([
-      { ...SERVICE, baseUrl: "https://collector.example/v1" },
-      { ...KV, baseUrl: "https://kv-other.vault.azure.net" },
+      { ...moved, fromVault: { key: { vault: "kv", name: "another-key" } } },
+      KV,
     ]);
-    await turn(host);
-    expect(asked.map((a) => a.destination)).toEqual([
-      "https://gateway.example.com",
-      "https://collector.example",
-      "https://collector.example",
-    ]);
+    expect(await host.vaultAuthorized("gw")).toEqual([]);
   });
 
   it("reports what the CLI said when it cannot read the secret", async () => {
     const { host } = setup({ cliError: "Please run 'az login' to setup account." });
     await host.setConnections([SERVICE, KV]);
+    expect(await host.authorizeVaultSecret("gw", "key")).toEqual({
+      problem: "Please run 'az login' to setup account.",
+    });
     expect(await host.probe("gw")).toEqual({
       state: "vault",
       detail: "Please run 'az login' to setup account.",
     });
-    expect(await turn(host)).toMatchObject({ reason: "vault" });
   });
 
-  it("will not send one without a way to ask", async () => {
+  it("will not authorize one without a way to ask", async () => {
     const host = new AiHost({
       secrets: memorySecrets(),
       fetch: (async () => new Response("")) as unknown as typeof fetch,
       runCli: async () => "sk",
     });
     await host.setConnections([SERVICE, KV]);
-    expect(await host.probe("gw")).toMatchObject({ state: "vault" });
+    expect(await host.authorizeVaultSecret("gw", "key")).toMatchObject({
+      problem: expect.any(String),
+    });
+    expect(await host.vaultAuthorized("gw")).toEqual([]);
   });
 
   it("forgets what it allowed when the connection is removed", async () => {
     const { host, secrets } = setup();
     await host.setConnections([SERVICE, KV]);
-    await turn(host);
+    await host.authorizeVaultSecret("gw", "key");
     expect(secrets.data.has(secretKey("gw", "approvals"))).toBe(true);
     await host.setConnections([KV]);
     expect(secrets.data.size).toBe(0);
