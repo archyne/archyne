@@ -26,6 +26,7 @@ import {
   authStatus,
   signIn,
   signOut,
+  whyFailed,
   type Loopback,
   type OAuthEnv,
   type OAuthSecrets,
@@ -228,7 +229,7 @@ export class AiHost {
         type: "ai:auth",
         connectionId,
         state: "error",
-        detail: redact(err instanceof Error ? err.message : String(err)),
+        detail: redact(whyFailed(err)),
       });
     } finally {
       if (this.signingIn.get(connectionId) === ctrl) this.signingIn.delete(connectionId);

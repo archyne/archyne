@@ -73,6 +73,25 @@ For Azure the model field takes your **deployment** name; for Bedrock a model
 ID or an inference profile (the list is offered when your key may read it);
 for Vertex a name like `google/gemini-…`.
 
+**Azure with Microsoft Entra** instead of a key takes three things on the
+Azure side:
+
+1. An app registration that is a public client (no secret), with the
+   redirect URI `http://127.0.0.1/callback` under _Mobile and desktop
+   applications_ — Entra accepts any port on it, which is what Archyne uses —
+   and _Allow public client flows_ on, for the device code.
+2. In that registration's **API permissions**, the delegated permission
+   `user_impersonation` of **Azure Machine Learning Services**. Without it
+   Entra refuses the sign-in with `AADSTS650057: Invalid resource`.
+3. The **Cognitive Services OpenAI User** role, for whoever signs in, on the
+   Azure OpenAI or AI Foundry resource. _Owner_ is not enough: it manages the
+   resource but may not call its models.
+
+Then choose OAuth, set the authorization server to
+`https://login.microsoftonline.com/<tenant-id>/v2.0`, the client ID to the
+registration's, and the scopes to `https://ai.azure.com/.default
+offline_access` (the second keeps you signed in past the hour).
+
 ### Ways to sign in
 
 - **A key in a header** — any header name, with or without a prefix.

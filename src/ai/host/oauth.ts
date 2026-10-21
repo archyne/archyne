@@ -573,6 +573,23 @@ export async function signIn(
 }
 
 /**
+ * Why a sign-in failed, in the server's words when it gave any: its error
+ * code and the first line of its description (Entra's runs on to trace IDs
+ * and timestamps). Otherwise the library's message, which only says that the
+ * server answered with an error.
+ */
+export function whyFailed(err: unknown): string {
+  if (
+    err instanceof oauth.AuthorizationResponseError ||
+    err instanceof oauth.ResponseBodyError
+  ) {
+    const description = err.error_description?.split(/\r?\n/)[0].trim();
+    return description ? `${err.error}: ${description}` : err.error;
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
+/**
  * A token good for the next request: the stored one, or a refreshed one when
  * it is about to lapse (or `force`, after a 401). Null when nobody is signed
  * in, or the refresh was refused — the panel then says "signed out".

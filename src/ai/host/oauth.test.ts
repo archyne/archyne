@@ -95,6 +95,23 @@ describe("OAuth sign-in", () => {
     expect(await host.authStatus("sso")).toEqual({ signedIn: false });
   });
 
+  it("says why the server refused, in its own words, without its trace lines", async () => {
+    // What Entra sent back for an app registration missing the API permission.
+    const { events, signIn } = await setup({
+      refuse: {
+        error: "invalid_client",
+        description:
+          "AADSTS650057: Invalid resource. The client has requested access to a resource which is not listed in the requested permissions.\r\nTrace ID: 30094f0b\r\nTimestamp: 2026-10-21 17:44:55Z",
+      },
+    });
+    await signIn();
+    expect(events.at(-1)).toMatchObject({
+      state: "error",
+      detail:
+        "invalid_client: AADSTS650057: Invalid resource. The client has requested access to a resource which is not listed in the requested permissions.",
+    });
+  });
+
   it("asked for OpenID Connect, refuses a sign-in that brings no ID token", async () => {
     const { host, events, signIn } = await setup({}, { scopes: "openid models.read" });
     await signIn();

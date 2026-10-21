@@ -249,7 +249,14 @@ export function AiOAuthSection({
           </button>
         )}
         <p
-          className={`ai-server-status${status.signedIn ? " ai-server-status--ok" : ""}`}
+          // Red only for a failure: waiting, or simply not signed in, is not one.
+          className={`ai-server-status${
+            status.signedIn
+              ? " ai-server-status--ok"
+              : busy || error === null
+                ? " ai-server-status--note"
+                : ""
+          }`}
           role="status"
           data-auth={busy ? "busy" : status.signedIn ? "signed-in" : "signed-out"}
         >

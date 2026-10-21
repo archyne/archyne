@@ -20,6 +20,8 @@ import type { TestPki } from "./tls.testkit";
 
 export interface AsOptions {
   wrongState?: boolean;
+  /** Send the browser back with this error instead of a code. */
+  refuse?: { error: string; description: string };
   pendingPolls?: number;
   expiresIn?: number;
   /**
@@ -142,6 +144,15 @@ export function authorizationServer(options: AsOptions = {}) {
         log[log.length - 1].body = Object.fromEntries(p);
         if (p.get("code_challenge_method") !== "S256")
           return json(res, 400, { error: "invalid_request" });
+        if (options.refuse) {
+          const back = new URL(p.get("redirect_uri") ?? "");
+          back.searchParams.set("error", options.refuse.error);
+          back.searchParams.set("error_description", options.refuse.description);
+          back.searchParams.set("state", p.get("state") ?? "");
+          back.searchParams.set("iss", base);
+          res.writeHead(302, { Location: back.href }).end();
+          return;
+        }
         const code = `code-${codes.size + 1}`;
         codes.set(code, {
           challenge: p.get("code_challenge") ?? "",
