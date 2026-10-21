@@ -135,7 +135,7 @@ export interface Dialect {
   chatPath(model: string): string;
   /** Headers the dialect itself needs, beside the credentials. */
   headers?: Record<string, string>;
-  body(model: string, chat: ChatMessage[]): unknown;
+  body(model: string, chat: ChatMessage[]): Record<string, unknown>;
   /**
    * The answer text one server-sent event carries, if any; throws on an
    * error event. For a dialect whose stream is SSE.
@@ -312,6 +312,33 @@ export async function readStream(
   }
 }
 
+/** Address-and-model pairs that refused a temperature, for this session. */
+const DEFAULT_TEMPERATURE_ONLY = new Set<string>();
+
+/**
+ * What an error body says, without its JSON: OpenAI, Azure and Anthropic
+ * nest it under `error.message`, Bedrock puts `message` at the top, Google
+ * sends either in a one-element array. Anything else is shown as it came.
+ */
+export function errorMessage(body: string): string {
+  let said: unknown;
+  try {
+    const parsed: unknown = JSON.parse(body);
+    const first = (Array.isArray(parsed) ? parsed[0] : parsed) as {
+      error?: { message?: unknown } | string;
+      message?: unknown;
+    } | null;
+    said =
+      typeof first?.error === "string"
+        ? first.error
+        : (first?.error?.message ?? first?.message);
+  } catch {
+    // Not JSON: the text is the message.
+  }
+  const text = typeof said === "string" ? said : body;
+  return text.replace(/\s+/g, " ").trim().slice(0, 300);
+}
+
 /** The answer without a model's inline reasoning, if it wrote any. */
 export function stripThinking(text: string): string {
   return text.replace(/<think>[\s\S]*?(<\/think>|$)/g, "").trim();
@@ -332,17 +359,32 @@ export function serverProvider(
       if (!allowed(settings.baseUrl)) {
         throw new ServerError("The server address is not on this machine.", "not-local");
       }
+      const which = `${settings.baseUrl} ${settings.model}`;
+      const send = (body: Record<string, unknown>) =>
+        fetchImpl(endpoint(settings.baseUrl, dialect.chatPath(settings.model)), {
+          method: "POST",
+          headers: { ...headers(settings), ...dialect.headers },
+          signal: options?.signal,
+          body: JSON.stringify(body),
+        });
       let response: Response;
       try {
-        response = await fetchImpl(
-          endpoint(settings.baseUrl, dialect.chatPath(settings.model)),
-          {
-            method: "POST",
-            headers: { ...headers(settings), ...dialect.headers },
-            signal: options?.signal,
-            body: JSON.stringify(dialect.body(settings.model, chat)),
-          },
-        );
+        const body = dialect.body(settings.model, chat);
+        if (DEFAULT_TEMPERATURE_ONLY.has(which)) delete body.temperature;
+        response = await send(body);
+        // Reasoning models (OpenAI's o-series and GPT-5, wherever they are
+        // served) refuse any temperature but their default. Ask again without
+        // one, and do not offer it to this model again.
+        if (response.status === 400 && "temperature" in body) {
+          const detail = await response.text().catch(() => "");
+          if (/temperature/i.test(detail)) {
+            DEFAULT_TEMPERATURE_ONLY.add(which);
+            delete body.temperature;
+            response = await send(body);
+          } else {
+            response = new Response(detail, { status: 400 });
+          }
+        }
       } catch (err) {
         if (options?.signal?.aborted) throw abortError();
         const why = await probeServer(settings, fetchImpl, allowed, dialect);
@@ -352,9 +394,9 @@ export function serverProvider(
         );
       }
       if (!response.ok || !response.body) {
-        const detail = await response.text().catch(() => "");
+        const detail = errorMessage(await response.text().catch(() => ""));
         throw new ServerError(
-          `The server answered ${response.status}${detail ? `: ${detail.slice(0, 200)}` : ""}`,
+          `The server answered ${response.status}${detail ? `: ${detail}` : ""}`,
           "http",
         );
       }

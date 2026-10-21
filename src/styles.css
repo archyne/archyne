@@ -1553,6 +1553,11 @@ body.resizing-side {
   padding: 4px 8px;
 }
 
+/* A button under a field (Forget) is as wide as its words, not the column. */
+.ai-server-field > .editor-action {
+  align-self: flex-start;
+}
+
 .ai-server-presets [aria-pressed="true"] {
   border-color: var(--accent);
   color: var(--text);

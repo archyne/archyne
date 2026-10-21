@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  errorMessage,
   isLocalUrl,
   presetOf,
   probeServer,
@@ -168,6 +169,56 @@ describe("serverProvider", () => {
     await expect(serverProvider(SETTINGS, fetch).generate(MSG)).rejects.toThrow(
       /404: model not loaded/,
     );
+  });
+
+  it("shows the message out of a JSON error, not the JSON", async () => {
+    const said = {
+      error: { message: "The deployment does not exist.", code: "DeploymentNotFound" },
+    };
+    const { fetch } = scripted(
+      () => new Response(JSON.stringify(said, null, 2), { status: 404 }),
+    );
+    await expect(serverProvider(SETTINGS, fetch).generate(MSG)).rejects.toThrow(
+      "The server answered 404: The deployment does not exist.",
+    );
+    expect(errorMessage('{"message":"Bedrock says no"}')).toBe("Bedrock says no");
+    expect(errorMessage('[{"error":{"message":"Google says no"}}]')).toBe("Google says no");
+    expect(errorMessage('{"error":"Ollama says no"}')).toBe("Ollama says no");
+  });
+
+  it("asks a reasoning model again without a temperature, and only once per model", async () => {
+    // What Azure and OpenAI answer for o-series and GPT-5 deployments.
+    const refusal = {
+      error: {
+        message:
+          "Unsupported value: 'temperature' does not support 0 with this model. Only the default (1) value is supported.",
+        param: "temperature",
+      },
+    };
+    const reasoning = {
+      baseUrl: "https://acme.openai.azure.com/openai/v1",
+      model: "gpt-5-mini",
+    };
+    const { fetch, calls } = scripted((call) =>
+      "temperature" in JSON.parse(String(call.init?.body))
+        ? new Response(JSON.stringify(refusal), { status: 400 })
+        : sse([event({ content: "flowchart TD" }), "data: [DONE]\n\n"]),
+    );
+    const anywhere = () => true;
+    expect(await serverProvider(reasoning, fetch, anywhere).generate(MSG)).toBe("flowchart TD");
+    expect(await serverProvider(reasoning, fetch, anywhere).generate(MSG)).toBe("flowchart TD");
+    const sent = calls.map((c) => "temperature" in JSON.parse(String(c.init?.body)));
+    expect(sent).toEqual([true, false, false]);
+  });
+
+  it("does not drop the temperature for an error about something else", async () => {
+    const { fetch, calls } = scripted(
+      () => new Response('{"error":{"message":"messages: too long"}}', { status: 400 }),
+    );
+    await expect(serverProvider(SETTINGS, fetch).generate(MSG)).rejects.toThrow(
+      "The server answered 400: messages: too long",
+    );
+    expect(calls).toHaveLength(1);
   });
 
   it("comes back as an AbortError when stopped", async () => {
