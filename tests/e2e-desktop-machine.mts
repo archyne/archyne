@@ -102,8 +102,12 @@ await page.getByLabel(/Present a client certificate/).check();
 
 check(
   "certificates and keys are files: there is no field to paste one into",
-  (await page.locator(".ai-server textarea").count()) === 1, // the extra headers
-  String(await page.locator(".ai-server textarea").count()),
+  (await page.locator(".ai-secret textarea").count()) === 0 &&
+    (await page
+      .locator(".ai-secret", { hasText: "Client certificate" })
+      .locator("input")
+      .count()) === 0,
+  String(await page.locator(".ai-secret textarea").count()),
 );
 await choose("Private key", files.signing);
 await choose("Client certificate", files.client);

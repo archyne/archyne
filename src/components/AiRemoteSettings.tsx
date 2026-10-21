@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { hostSynced, useAiEngine } from "../ai/engine";
 import { hostAi, type HostProbe } from "../ai/hostBridge";
 import {
@@ -192,6 +192,9 @@ function ConnectionForm({
   const [canKeep, setCanKeep] = useState(true);
   const [result, setResult] = useState<HostProbe | "checking" | null>(null);
   const [headersText, setHeadersText] = useState(() => formatHeaders(connection.headers));
+  const [advanced, setAdvanced] = useState(
+    () => Object.keys(connection.headers ?? {}).length > 0,
+  );
   const [fileProblem, setFileProblem] = useState<{ field: string; key: MessageKey } | null>(
     null,
   );
@@ -346,308 +349,346 @@ function ConnectionForm({
       ? [connection.model, ...models]
       : models;
 
+  // The form in the order a service is set up: what it is and where, how it
+  // signs in, an optional client certificate, the model — and, folded away,
+  // what few need.
+  const secretFields = (fields: string[]) =>
+    fields
+      .filter((field) => PAGE_SETTABLE_SECRETS.has(field))
+      .filter((field) => !(bundled && (field === "tlsCert" || field === "tlsKey")))
+      .map((field) => (
+        <SecretField
+          key={field}
+          label={t(
+            field === "privateKey" &&
+              connection.auth.type === "oauth" &&
+              connection.auth.flow === "jwt_bearer"
+              ? "ai.oauthAssertionKey"
+              : (SECRET_LABELS[field] ?? "ai.remotePassword"),
+          )}
+          saved={secretsSet.includes(field)}
+          disabled={disabled || !canKeep}
+          onSave={(value) => void saveSecret(field, value)}
+          onForget={() => void saveSecret(field, null)}
+          vaults={vaults}
+          fromVault={connection.fromVault?.[field]}
+          onFromVault={(ref) => {
+            // Read from a vault, a copy kept here would only be stale.
+            if (ref && secretsSet.includes(field)) void saveSecret(field, null);
+            setFromVault(field, ref);
+          }}
+          onFile={FILE_FIELDS.has(field) ? () => void importFile(field) : undefined}
+          problem={
+            fileProblem?.field === field
+              ? t(fileProblem.key)
+              : vaultTrouble?.field === field
+                ? vaultTrouble.text
+                : undefined
+          }
+          authorized={authorized.includes(field)}
+          onAuthorize={() => void authorize(field)}
+        />
+      ));
+
   return (
     <>
-      <label className="ai-server-field">
-        {t("ai.remoteName")}
-        <input
-          type="text"
-          value={connection.label}
-          disabled={disabled}
-          onChange={(e) => patch({ label: e.target.value })}
-        />
-      </label>
-      <label className="ai-server-field">
-        {t("ai.remoteProtocol")}
-        <select
-          value={connection.protocol}
-          aria-label={t("ai.remoteProtocol")}
-          disabled={disabled}
-          onChange={(e) => setProtocol(e.target.value as keyof typeof PROTOCOL_DEFAULTS)}
-        >
-          <option value="openai">{t("ai.remoteProtocolOpenai")}</option>
-          <option value="anthropic">Anthropic</option>
-          <option value="azure">Azure OpenAI / AI Foundry</option>
-          <option value="bedrock">Amazon Bedrock</option>
-          <option value="vertex">Google Vertex AI</option>
-          <option value="alibaba">Alibaba Cloud Model Studio</option>
-        </select>
-      </label>
-      {defaults?.hint && <p className="ai-server-hint">{t(defaults.hint)}</p>}
-      <label className="ai-server-field">
-        {t("ai.serverAddress")}
-        <input
-          type="url"
-          value={connection.baseUrl}
-          spellCheck={false}
-          disabled={disabled}
-          onChange={(e) => patch({ baseUrl: e.target.value.trim() })}
-        />
-      </label>
-      <label className="ai-server-field">
-        {t("ai.remoteAuth")}
-        <select
-          value={connection.auth.type}
-          aria-label={t("ai.remoteAuth")}
-          disabled={disabled}
-          onChange={(e) => setAuth(e.target.value as AuthConfig["type"])}
-        >
-          <option value="none">{t("ai.remoteAuthNone")}</option>
-          <option value="header">{t("ai.remoteAuthHeader")}</option>
-          <option value="basic">{t("ai.remoteAuthBasic")}</option>
-          <option value="oauth">{t("ai.remoteAuthOAuth")}</option>
-          <option value="sigv4">{t("ai.remoteAuthSigv4")}</option>
-        </select>
-      </label>
-
-      {connection.auth.type === "header" && (
-        <div className="ai-remote-row">
-          <label className="ai-server-field">
-            {t("ai.remoteHeaderName")}
-            <input
-              type="text"
-              value={connection.auth.name}
-              spellCheck={false}
-              disabled={disabled}
-              onChange={(e) =>
-                patch({
-                  auth: {
-                    ...(connection.auth as { type: "header"; name: string }),
-                    name: e.target.value.trim(),
-                  },
-                })
-              }
-            />
-          </label>
-          <label className="ai-server-field">
-            {t("ai.remoteHeaderPrefix")}
-            <input
-              type="text"
-              value={connection.auth.prefix ?? ""}
-              spellCheck={false}
-              disabled={disabled}
-              onChange={(e) =>
-                patch({
-                  auth: {
-                    ...(connection.auth as { type: "header"; name: string }),
-                    prefix: e.target.value,
-                  },
-                })
-              }
-            />
-          </label>
-        </div>
-      )}
-      {connection.auth.type === "basic" && (
+      <section className="ai-section" aria-label={t("ai.sectionService")}>
+        <h3 className="ai-section-title">{t("ai.sectionService")}</h3>
         <label className="ai-server-field">
-          {t("ai.remoteUsername")}
+          {t("ai.remoteName")}
           <input
             type="text"
-            value={connection.auth.username}
-            autoComplete="off"
+            value={connection.label}
             disabled={disabled}
-            onChange={(e) => patch({ auth: { type: "basic", username: e.target.value } })}
+            onChange={(e) => patch({ label: e.target.value })}
           />
         </label>
-      )}
-      {connection.auth.type === "sigv4" && (
-        <div className="ai-remote-row">
+        <label className="ai-server-field">
+          {t("ai.remoteProtocol")}
+          <select
+            value={connection.protocol}
+            aria-label={t("ai.remoteProtocol")}
+            disabled={disabled}
+            onChange={(e) => setProtocol(e.target.value as keyof typeof PROTOCOL_DEFAULTS)}
+          >
+            <option value="openai">{t("ai.remoteProtocolOpenai")}</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="azure">Azure OpenAI / AI Foundry</option>
+            <option value="bedrock">Amazon Bedrock</option>
+            <option value="vertex">Google Vertex AI</option>
+            <option value="alibaba">Alibaba Cloud Model Studio</option>
+          </select>
+        </label>
+        {defaults?.hint && <p className="ai-server-hint">{t(defaults.hint)}</p>}
+        <label className="ai-server-field">
+          {t("ai.serverAddress")}
+          <input
+            type="url"
+            value={connection.baseUrl}
+            spellCheck={false}
+            disabled={disabled}
+            onChange={(e) => patch({ baseUrl: e.target.value.trim() })}
+          />
+        </label>
+      </section>
+
+      <section className="ai-section" aria-label={t("ai.sectionSignIn")}>
+        <h3 className="ai-section-title">{t("ai.sectionSignIn")}</h3>
+        <label className="ai-server-field">
+          {t("ai.remoteAuth")}
+          <select
+            value={connection.auth.type}
+            aria-label={t("ai.remoteAuth")}
+            disabled={disabled}
+            onChange={(e) => setAuth(e.target.value as AuthConfig["type"])}
+          >
+            <option value="none">{t("ai.remoteAuthNone")}</option>
+            <option value="header">{t("ai.remoteAuthHeader")}</option>
+            <option value="basic">{t("ai.remoteAuthBasic")}</option>
+            <option value="oauth">{t("ai.remoteAuthOAuth")}</option>
+            <option value="sigv4">{t("ai.remoteAuthSigv4")}</option>
+          </select>
+        </label>
+
+        {connection.auth.type === "header" && (
+          <div className="ai-remote-row">
+            <label className="ai-server-field">
+              {t("ai.remoteHeaderName")}
+              <input
+                type="text"
+                value={connection.auth.name}
+                spellCheck={false}
+                disabled={disabled}
+                onChange={(e) =>
+                  patch({
+                    auth: {
+                      ...(connection.auth as { type: "header"; name: string }),
+                      name: e.target.value.trim(),
+                    },
+                  })
+                }
+              />
+            </label>
+            <label className="ai-server-field">
+              {t("ai.remoteHeaderPrefix")}
+              <input
+                type="text"
+                value={connection.auth.prefix ?? ""}
+                spellCheck={false}
+                disabled={disabled}
+                onChange={(e) =>
+                  patch({
+                    auth: {
+                      ...(connection.auth as { type: "header"; name: string }),
+                      prefix: e.target.value,
+                    },
+                  })
+                }
+              />
+            </label>
+          </div>
+        )}
+        {connection.auth.type === "basic" && (
           <label className="ai-server-field">
-            {t("ai.awsRegion")}
+            {t("ai.remoteUsername")}
             <input
               type="text"
-              value={connection.auth.region}
-              spellCheck={false}
+              value={connection.auth.username}
+              autoComplete="off"
               disabled={disabled}
-              onChange={(e) => setRegion(e.target.value.trim())}
+              onChange={(e) => patch({ auth: { type: "basic", username: e.target.value } })}
             />
           </label>
+        )}
+        {connection.auth.type === "sigv4" && (
+          <div className="ai-remote-row">
+            <label className="ai-server-field">
+              {t("ai.awsRegion")}
+              <input
+                type="text"
+                value={connection.auth.region}
+                spellCheck={false}
+                disabled={disabled}
+                onChange={(e) => setRegion(e.target.value.trim())}
+              />
+            </label>
+            <label className="ai-server-field">
+              {t("ai.awsService")}
+              <input
+                type="text"
+                value={connection.auth.service ?? ""}
+                placeholder="bedrock"
+                spellCheck={false}
+                disabled={disabled}
+                onChange={(e) =>
+                  patch({
+                    auth: {
+                      type: "sigv4",
+                      region: (connection.auth as { region: string }).region,
+                      ...(e.target.value.trim() ? { service: e.target.value.trim() } : {}),
+                    },
+                  })
+                }
+              />
+            </label>
+          </div>
+        )}
+        {connection.auth.type === "oauth" && (
+          <AiOAuthSection
+            connectionId={connection.id}
+            target={target}
+            config={connection.auth}
+            disabled={disabled}
+            onChange={(auth: OAuthConfig) => patch({ auth })}
+          />
+        )}
+        {secretFields(wantedSecrets(connection.auth))}
+        {!canKeep && <p className="ai-server-status">{t("ai.remoteNoSecureStorage")}</p>}
+        <p className="ai-server-hint">{t("ai.remoteHint")}</p>
+      </section>
+
+      <section className="ai-section" aria-label={t("ai.sectionCertificate")}>
+        <h3 className="ai-section-title">{t("ai.sectionCertificate")}</h3>
+        <label className="ai-oauth-check">
+          <input
+            type="checkbox"
+            checked={!!connection.clientCertificate}
+            disabled={disabled}
+            onChange={(e) => patch({ clientCertificate: e.target.checked })}
+          />
+          {t("ai.tlsClientCertificate")}
+        </label>
+        {connection.clientCertificate && <p className="ai-server-hint">{t("ai.tlsHint")}</p>}
+        {connection.clientCertificate && bundled && (
+          <div className="ai-server-field">
+            <span>{t("ai.tlsPfx")}</span>
+            <p className="ai-secret-file" data-saved="true">
+              {t("ai.secretFileSaved")}
+            </p>
+            <button
+              type="button"
+              className="editor-action"
+              disabled={disabled || !canKeep}
+              onClick={() => void saveSecret("tlsPfx", null)}
+            >
+              {t("ai.remoteSecretForget")}
+            </button>
+          </div>
+        )}
+        {connection.clientCertificate &&
+          secretFields(
+            wantedSecrets({ type: "none" }, true).filter((f) => f.startsWith("tls")),
+          )}
+      </section>
+
+      <section className="ai-section" aria-label={t("ai.sectionModel")}>
+        <h3 className="ai-section-title">{t("ai.sectionModel")}</h3>
+        {typedModel ? (
           <label className="ai-server-field">
-            {t("ai.awsService")}
+            {t(
+              connection.protocol === "bedrock"
+                ? "ai.remoteBedrockModel"
+                : connection.protocol === "azure"
+                  ? "ai.remoteDeployment"
+                  : "ai.serverModel",
+            )}
             <input
               type="text"
-              value={connection.auth.service ?? ""}
-              placeholder="bedrock"
+              value={connection.model ?? ""}
+              list={suggest ? `ai-models-${connection.id}` : undefined}
               spellCheck={false}
               disabled={disabled}
-              onChange={(e) =>
-                patch({
-                  auth: {
-                    type: "sigv4",
-                    region: (connection.auth as { region: string }).region,
-                    ...(e.target.value.trim() ? { service: e.target.value.trim() } : {}),
-                  },
-                })
-              }
+              onChange={(e) => patch({ model: e.target.value.trim() })}
             />
+            {suggest && (
+              <datalist id={`ai-models-${connection.id}`}>
+                {models.map((id) => (
+                  <option key={id} value={id} />
+                ))}
+              </datalist>
+            )}
           </label>
-        </div>
-      )}
-      {connection.auth.type === "oauth" && (
-        <AiOAuthSection
-          connectionId={connection.id}
-          target={target}
-          config={connection.auth}
-          disabled={disabled}
-          onChange={(auth: OAuthConfig) => patch({ auth })}
-        />
-      )}
-      <label className="ai-oauth-check">
-        <input
-          type="checkbox"
-          checked={!!connection.clientCertificate}
-          disabled={disabled}
-          onChange={(e) => patch({ clientCertificate: e.target.checked })}
-        />
-        {t("ai.tlsClientCertificate")}
-      </label>
-      {connection.clientCertificate && <p className="ai-server-hint">{t("ai.tlsHint")}</p>}
-      {connection.clientCertificate && bundled && (
-        <div className="ai-server-field">
-          <span>{t("ai.tlsPfx")}</span>
-          <p className="ai-secret-file" data-saved="true">
-            {t("ai.secretFileSaved")}
-          </p>
+        ) : (
+          <label className="ai-server-field">
+            {t("ai.serverModel")}
+            <select
+              value={connection.model ?? ""}
+              aria-label={t("ai.serverModel")}
+              disabled={disabled || options.length === 0}
+              onChange={(e) => {
+                patch({ model: e.target.value });
+                onPicked();
+              }}
+            >
+              <option value="" disabled>
+                {t("ai.serverPickModel")}
+              </option>
+              {options.map((id) => (
+                <option key={id} value={id}>
+                  {id}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <div className="ai-server-check">
           <button
             type="button"
             className="editor-action"
-            disabled={disabled || !canKeep}
-            onClick={() => void saveSecret("tlsPfx", null)}
+            disabled={disabled || result === "checking"}
+            onClick={() => void check()}
           >
-            {t("ai.remoteSecretForget")}
+            {result === "checking" ? t("ai.serverChecking") : t("ai.serverCheck")}
           </button>
+          {result && result !== "checking" && (
+            <p
+              className={`ai-server-status ai-server-status--${result.state}`}
+              role="status"
+              data-state={result.state}
+            >
+              {result.state === "ok"
+                ? result.models.length > 0
+                  ? t("ai.serverOk", { count: result.models.length })
+                  : t("ai.serverOkEmpty")
+                : remoteAdvice(t, result.state, connection.baseUrl, {
+                    status: result.state === "http" ? result.status : undefined,
+                    problem:
+                      result.state === "invalid"
+                        ? result.problem
+                        : result.state === "vault"
+                          ? result.detail
+                          : undefined,
+                  })}
+            </p>
+          )}
         </div>
-      )}
-      {wantedSecrets(connection.auth, connection.clientCertificate)
-        .filter((field) => PAGE_SETTABLE_SECRETS.has(field))
-        .filter((field) => !(bundled && (field === "tlsCert" || field === "tlsKey")))
-        .map((field) => (
-          <SecretField
-            key={field}
-            label={t(
-              field === "privateKey" &&
-                connection.auth.type === "oauth" &&
-                connection.auth.flow === "jwt_bearer"
-                ? "ai.oauthAssertionKey"
-                : (SECRET_LABELS[field] ?? "ai.remotePassword"),
-            )}
-            saved={secretsSet.includes(field)}
-            disabled={disabled || !canKeep}
-            onSave={(value) => void saveSecret(field, value)}
-            onForget={() => void saveSecret(field, null)}
-            vaults={vaults}
-            fromVault={connection.fromVault?.[field]}
-            onFromVault={(ref) => {
-              // Read from a vault, a copy kept here would only be stale.
-              if (ref && secretsSet.includes(field)) void saveSecret(field, null);
-              setFromVault(field, ref);
-            }}
-            onFile={FILE_FIELDS.has(field) ? () => void importFile(field) : undefined}
-            problem={
-              fileProblem?.field === field
-                ? t(fileProblem.key)
-                : vaultTrouble?.field === field
-                  ? vaultTrouble.text
-                  : undefined
-            }
-            authorized={authorized.includes(field)}
-            onAuthorize={() => void authorize(field)}
-          />
-        ))}
-      {!canKeep && <p className="ai-server-status">{t("ai.remoteNoSecureStorage")}</p>}
+      </section>
 
-      <label className="ai-server-field">
-        {t("ai.remoteHeaders")}
-        <textarea
-          rows={2}
-          value={headersText}
-          spellCheck={false}
-          disabled={disabled}
-          onChange={(e) => setHeadersText(e.target.value)}
-          onBlur={() => patch({ headers: parseHeaders(headersText) })}
-        />
-      </label>
-      <p className="ai-server-hint">{t("ai.remoteHint")}</p>
-
-      {typedModel ? (
-        <label className="ai-server-field">
-          {t(
-            connection.protocol === "bedrock"
-              ? "ai.remoteBedrockModel"
-              : connection.protocol === "azure"
-                ? "ai.remoteDeployment"
-                : "ai.serverModel",
-          )}
-          <input
-            type="text"
-            value={connection.model ?? ""}
-            list={suggest ? `ai-models-${connection.id}` : undefined}
-            spellCheck={false}
-            disabled={disabled}
-            onChange={(e) => patch({ model: e.target.value.trim() })}
-          />
-          {suggest && (
-            <datalist id={`ai-models-${connection.id}`}>
-              {models.map((id) => (
-                <option key={id} value={id} />
-              ))}
-            </datalist>
-          )}
-        </label>
-      ) : (
-        <label className="ai-server-field">
-          {t("ai.serverModel")}
-          <select
-            value={connection.model ?? ""}
-            aria-label={t("ai.serverModel")}
-            disabled={disabled || options.length === 0}
-            onChange={(e) => {
-              patch({ model: e.target.value });
-              onPicked();
-            }}
-          >
-            <option value="" disabled>
-              {t("ai.serverPickModel")}
-            </option>
-            {options.map((id) => (
-              <option key={id} value={id}>
-                {id}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      <div className="ai-server-check">
+      <section className="ai-section ai-section--folded">
         <button
           type="button"
-          className="editor-action"
-          disabled={disabled || result === "checking"}
-          onClick={() => void check()}
+          className="ai-section-toggle"
+          aria-expanded={advanced}
+          onClick={() => setAdvanced(!advanced)}
         >
-          {result === "checking" ? t("ai.serverChecking") : t("ai.serverCheck")}
+          {t("ai.sectionAdvanced")}
         </button>
-        {result && result !== "checking" && (
-          <p
-            className={`ai-server-status ai-server-status--${result.state}`}
-            role="status"
-            data-state={result.state}
-          >
-            {result.state === "ok"
-              ? result.models.length > 0
-                ? t("ai.serverOk", { count: result.models.length })
-                : t("ai.serverOkEmpty")
-              : remoteAdvice(t, result.state, connection.baseUrl, {
-                  status: result.state === "http" ? result.status : undefined,
-                  problem:
-                    result.state === "invalid"
-                      ? result.problem
-                      : result.state === "vault"
-                        ? result.detail
-                        : undefined,
-                })}
-          </p>
+        {advanced && (
+          <>
+            <label className="ai-server-field">
+              {t("ai.remoteHeaders")}
+              <textarea
+                rows={2}
+                value={headersText}
+                spellCheck={false}
+                disabled={disabled}
+                onChange={(e) => setHeadersText(e.target.value)}
+                onBlur={() => patch({ headers: parseHeaders(headersText) })}
+              />
+            </label>
+          </>
         )}
-      </div>
+      </section>
     </>
   );
 }
@@ -700,13 +741,19 @@ function SecretField({
   };
   const vault = fromVault && vaults.find((v) => v.id === fromVault.vault);
   const hashicorp = vault?.vault?.kind === "hashicorp";
+  const inputId = useId();
+  const typed = !vault && !onFile;
   return (
-    <div className="ai-server-field">
-      {vaults.length > 0 && (
-        <label className="ai-server-field">
-          {`${label} · ${t("ai.secretSource")}`}
+    <div className="ai-server-field ai-secret">
+      {/* The field's name, and — when there are vaults — where its value comes
+          from, on the same line rather than as a field of its own. */}
+      <div className="ai-secret-head">
+        {typed ? <label htmlFor={inputId}>{label}</label> : <span>{label}</span>}
+        {vaults.length > 0 && (
           <select
+            className="ai-secret-source"
             value={vault ? vault.id : ""}
+            aria-label={`${label} · ${t("ai.secretSource")}`}
             disabled={disabled}
             onChange={(e) =>
               onFromVault(e.target.value ? { vault: e.target.value, name: "" } : undefined)
@@ -719,8 +766,8 @@ function SecretField({
               </option>
             ))}
           </select>
-        </label>
-      )}
+        )}
+      </div>
       {vault && fromVault ? (
         <>
           <div className="ai-remote-row">
@@ -765,29 +812,24 @@ function SecretField({
           </div>
         </>
       ) : onFile ? (
-        <>
-          <span>{label}</span>
-          <p className="ai-secret-file" data-saved={saved || undefined}>
-            {saved ? t("ai.secretFileSaved") : t("ai.secretNoFile")}
-          </p>
-        </>
+        <p className="ai-secret-file" data-saved={saved || undefined}>
+          {saved ? t("ai.secretFileSaved") : t("ai.secretNoFile")}
+        </p>
       ) : (
-        <label className="ai-server-field">
-          {label}
-          <input
-            type="password"
-            value={value}
-            autoComplete="off"
-            placeholder={saved ? t("ai.remoteSecretSaved") : ""}
-            disabled={disabled}
-            data-saved={saved || undefined}
-            onChange={(e) => setValue(e.target.value)}
-            onBlur={commit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") commit();
-            }}
-          />
-        </label>
+        <input
+          id={inputId}
+          type="password"
+          value={value}
+          autoComplete="off"
+          placeholder={saved ? t("ai.remoteSecretSaved") : ""}
+          disabled={disabled}
+          data-saved={saved || undefined}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+          }}
+        />
       )}
       {!vault && (onFile || saved) && (
         <div className="ai-secret-actions">

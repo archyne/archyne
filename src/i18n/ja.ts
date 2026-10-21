@@ -573,6 +573,11 @@ export const messages: Messages = {
     "保管庫のシークレットがまだ承認されていません。このサービスの設定で承認してください。",
   "ai.vaultDenied": "承認されませんでした。保管庫からは何も読み取っていません。",
   "ai.vaultIncompleteRef": "先に保管庫を選び、シークレットの名前を入力してください。",
+  "ai.sectionService": "接続",
+  "ai.sectionSignIn": "サインイン",
+  "ai.sectionCertificate": "クライアント証明書",
+  "ai.sectionModel": "モデル",
+  "ai.sectionAdvanced": "詳細設定",
   "ai.oauthFlowAssertion": "署名付きアサーション（サービスアカウント）",
   "ai.oauthAssertionHint":
     "下に秘密鍵を貼り付けるか、Google サービスアカウントの JSON 鍵ファイルをそのまま貼り付けます。発行者と鍵 ID はファイルに含まれています。",

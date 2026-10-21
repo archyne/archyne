@@ -573,6 +573,11 @@ export const messages: Messages = {
   "ai.vaultNotAuthorized": "لم يُفوَّض سرّ من الخزنة بعد: فوّضه في إعدادات هذه الخدمة.",
   "ai.vaultDenied": "غير مفوَّض: لم يُقرأ شيء من الخزنة.",
   "ai.vaultIncompleteRef": "اختر خزنة أولًا وأدخل اسم السرّ.",
+  "ai.sectionService": "الاتصال",
+  "ai.sectionSignIn": "تسجيل الدخول",
+  "ai.sectionCertificate": "شهادة العميل",
+  "ai.sectionModel": "النموذج",
+  "ai.sectionAdvanced": "خيارات متقدمة",
   "ai.oauthFlowAssertion": "تأكيد موقَّع (حساب خدمة)",
   "ai.oauthAssertionHint":
     "الصق المفتاح الخاص أدناه، أو ملف مفتاح JSON لحساب خدمة Google كما هو: فهو يتضمن المُصدِر ومعرّف المفتاح.",

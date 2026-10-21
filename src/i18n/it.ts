@@ -583,6 +583,11 @@ export const messages: Messages = {
     "Un segreto della cassaforte non è ancora autorizzato: autorizzalo nelle impostazioni di questo servizio.",
   "ai.vaultDenied": "Non autorizzato: dalla cassaforte non è stato letto nulla.",
   "ai.vaultIncompleteRef": "Scegli prima una cassaforte e indica il nome del segreto.",
+  "ai.sectionService": "Connessione",
+  "ai.sectionSignIn": "Accesso",
+  "ai.sectionCertificate": "Certificato client",
+  "ai.sectionModel": "Modello",
+  "ai.sectionAdvanced": "Avanzate",
   "ai.oauthFlowAssertion": "Asserzione firmata (account di servizio)",
   "ai.oauthAssertionHint":
     "Incolla qui sotto la chiave privata, oppure il file di chiave JSON di un account di servizio Google così com'è: contiene l'emittente e l'ID della chiave.",

@@ -579,6 +579,11 @@ export const messages: Messages = {
     "Un secreto de un almacén todavía no está autorizado: autorízalo en la configuración de este servicio.",
   "ai.vaultDenied": "No autorizado: no se ha leído nada del almacén.",
   "ai.vaultIncompleteRef": "Elige primero un almacén e indica el nombre del secreto.",
+  "ai.sectionService": "Conexión",
+  "ai.sectionSignIn": "Inicio de sesión",
+  "ai.sectionCertificate": "Certificado de cliente",
+  "ai.sectionModel": "Modelo",
+  "ai.sectionAdvanced": "Avanzado",
   "ai.oauthFlowAssertion": "Aserción firmada (cuenta de servicio)",
   "ai.oauthAssertionHint":
     "Pega abajo la clave privada, o el archivo de clave JSON de una cuenta de servicio de Google tal cual: incluye el emisor y el ID de la clave.",

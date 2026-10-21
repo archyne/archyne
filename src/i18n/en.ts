@@ -584,6 +584,11 @@ export const en = {
     "A secret from a vault is not authorized yet: authorize it in this service's settings.",
   "ai.vaultDenied": "Not authorized: nothing was read from the vault.",
   "ai.vaultIncompleteRef": "Choose a vault and give the secret's name first.",
+  "ai.sectionService": "Connection",
+  "ai.sectionSignIn": "Sign-in",
+  "ai.sectionCertificate": "Client certificate",
+  "ai.sectionModel": "Model",
+  "ai.sectionAdvanced": "Advanced",
   "ai.oauthFlowAssertion": "Signed assertion (service account)",
   "ai.oauthAssertionHint":
     "Paste the private key below, or a Google service account's JSON key file as it is: it carries the issuer and the key ID.",

@@ -560,6 +560,11 @@ export const messages: Messages = {
   "ai.vaultNotAuthorized": "保管库中的机密尚未授权：请在此服务的设置中授权。",
   "ai.vaultDenied": "未授权：没有从保管库读取任何内容。",
   "ai.vaultIncompleteRef": "请先选择保管库并填写机密名称。",
+  "ai.sectionService": "连接",
+  "ai.sectionSignIn": "登录",
+  "ai.sectionCertificate": "客户端证书",
+  "ai.sectionModel": "模型",
+  "ai.sectionAdvanced": "高级",
   "ai.oauthFlowAssertion": "签名断言（服务账号）",
   "ai.oauthAssertionHint":
     "在下方粘贴私钥，或原样粘贴 Google 服务账号的 JSON 密钥文件：其中已包含签发者和密钥 ID。",

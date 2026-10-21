@@ -113,6 +113,8 @@ await field("Address").fill(`${base}/v1`);
 await page.getByRole("combobox", { name: "Authentication" }).selectOption("header");
 await field("Header").fill("api-key");
 await field("Prefix").fill("");
+// Extra headers are among what few need, folded under Advanced.
+await page.getByRole("button", { name: "Advanced" }).click();
 await page
   .locator(".ai-server-field", { hasText: "Extra headers" })
   .locator("textarea")

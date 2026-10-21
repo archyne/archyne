@@ -587,6 +587,11 @@ export const messages: Messages = {
   "ai.vaultDenied": "Nicht autorisiert: Aus dem Tresor wurde nichts gelesen.",
   "ai.vaultIncompleteRef":
     "Wählen Sie zuerst einen Tresor und geben Sie den Namen des Geheimnisses an.",
+  "ai.sectionService": "Verbindung",
+  "ai.sectionSignIn": "Anmeldung",
+  "ai.sectionCertificate": "Client-Zertifikat",
+  "ai.sectionModel": "Modell",
+  "ai.sectionAdvanced": "Erweitert",
   "ai.oauthFlowAssertion": "Signierte Assertion (Dienstkonto)",
   "ai.oauthAssertionHint":
     "Unten den privaten Schlüssel einfügen oder die JSON-Schlüsseldatei eines Google-Dienstkontos unverändert: Sie enthält den Aussteller und die Schlüssel-ID.",
