@@ -490,7 +490,7 @@ export const messages: Messages = {
   "ai.serverPickModel": "Elige un modelo",
   "ai.serverCheck": "Comprobar conexión",
   "ai.serverChecking": "Comprobando…",
-  "ai.serverOk": "Conectado — {count} modelos disponibles.",
+  "ai.serverOk": "Conectado — modelos disponibles: {count}.",
   "ai.serverOkEmpty":
     "Conectado, pero el servidor no muestra modelos. Carga o descarga uno primero.",
   "ai.serverDown": "Nada responde en {url}. Inicia {server} y vuelve a comprobarlo.",
@@ -505,6 +505,7 @@ export const messages: Messages = {
   "ai.serverHttp": "El servidor respondió con el error {status}.",
   "ai.serverNeedsModel": "Elige primero un modelo en los ajustes del servidor local.",
   "ai.serverGeneric": "el servidor",
+  "ai.remoteSummary": "Servicio remoto: {model}",
   "ai.engineRemote": "Servicio remoto",
   "ai.remoteService": "Servicio",
   "ai.remoteNone": "Aún no hay servicios. Añade uno para empezar.",

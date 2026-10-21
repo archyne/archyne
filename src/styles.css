@@ -1537,16 +1537,30 @@ body.resizing-side {
   margin: 6px 0;
 }
 
+/* Bottom-aligned, so buttons beside a labelled select sit level with it. */
 .ai-server-presets {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-end;
   gap: 6px;
   margin-bottom: 6px;
+}
+
+/* Outlined, as tall as the fields, so a button's edge lines up with theirs. */
+.ai-server .editor-action {
+  border: 1px solid var(--border);
+  font-size: 12px;
+  padding: 4px 8px;
 }
 
 .ai-server-presets [aria-pressed="true"] {
   border-color: var(--accent);
   color: var(--text);
+}
+
+.ai-server-presets .ai-remote-pick {
+  flex: 1;
+  margin-bottom: 0;
 }
 
 .ai-server-field {
@@ -1567,6 +1581,9 @@ body.resizing-side {
   font-size: 12px;
   padding: 4px 6px;
   min-width: 0;
+  /* One height for both, or a select stands 2px taller than the input beside it. */
+  box-sizing: border-box;
+  height: 26px;
 }
 
 .ai-server-check {
@@ -1609,6 +1626,12 @@ body.resizing-side {
   gap: 6px;
   margin-bottom: 6px;
   font-size: 11px;
+}
+
+/* No browser margin: the box lines up with the fields' left edge. */
+.ai-oauth-check input {
+  flex: none;
+  margin: 1px 0 0;
 }
 
 /* The device code a person types elsewhere: large, and easy to copy exactly. */

@@ -502,6 +502,7 @@ export const messages: Messages = {
   "ai.serverHttp": "رد الخادم بالخطأ {status}.",
   "ai.serverNeedsModel": "اختر نموذجاً أولاً في إعدادات الخادم المحلي.",
   "ai.serverGeneric": "الخادم",
+  "ai.remoteSummary": "خدمة بعيدة: {model}",
   "ai.engineRemote": "خدمة بعيدة",
   "ai.remoteService": "الخدمة",
   "ai.remoteNone": "لا توجد خدمة بعد. أضف واحدة للبدء.",

@@ -496,7 +496,7 @@ export const en = {
   "ai.serverPickModel": "Choose a model",
   "ai.serverCheck": "Check connection",
   "ai.serverChecking": "Checking…",
-  "ai.serverOk": "Connected — {count} models available.",
+  "ai.serverOk": "Connected — models available: {count}.",
   "ai.serverOkEmpty": "Connected, but the server lists no models. Load or download one first.",
   "ai.serverDown": "Nothing is answering at {url}. Start {server} and check again.",
   "ai.serverBlockedOllama":
@@ -510,6 +510,7 @@ export const en = {
   "ai.serverHttp": "The server answered with error {status}.",
   "ai.serverNeedsModel": "Choose a model in the local server settings first.",
   "ai.serverGeneric": "the server",
+  "ai.remoteSummary": "Remote service: {model}",
   "ai.engineRemote": "Remote service",
   "ai.remoteService": "Service",
   "ai.remoteNone": "No service yet. Add one to start.",

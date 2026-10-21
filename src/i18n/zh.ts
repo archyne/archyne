@@ -490,6 +490,7 @@ export const messages: Messages = {
   "ai.serverHttp": "服务器返回错误 {status}。",
   "ai.serverNeedsModel": "请先在本地服务器设置中选择一个模型。",
   "ai.serverGeneric": "服务器",
+  "ai.remoteSummary": "远程服务：{model}",
   "ai.engineRemote": "远程服务",
   "ai.remoteService": "服务",
   "ai.remoteNone": "还没有服务。添加一个即可开始。",

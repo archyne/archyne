@@ -495,7 +495,7 @@ export const messages: Messages = {
   "ai.serverPickModel": "Modell wählen",
   "ai.serverCheck": "Verbindung prüfen",
   "ai.serverChecking": "Wird geprüft…",
-  "ai.serverOk": "Verbunden — {count} Modelle verfügbar.",
+  "ai.serverOk": "Verbunden — verfügbare Modelle: {count}.",
   "ai.serverOkEmpty":
     "Verbunden, aber der Server listet keine Modelle. Lade zuerst eines oder lade eines herunter.",
   "ai.serverDown": "Unter {url} antwortet nichts. Starte {server} und prüfe erneut.",
@@ -510,6 +510,7 @@ export const messages: Messages = {
   "ai.serverHttp": "Der Server antwortete mit Fehler {status}.",
   "ai.serverNeedsModel": "Wähle zuerst ein Modell in den Einstellungen des lokalen Servers.",
   "ai.serverGeneric": "den Server",
+  "ai.remoteSummary": "Entfernter Dienst: {model}",
   "ai.engineRemote": "Entfernter Dienst",
   "ai.remoteService": "Dienst",
   "ai.remoteNone": "Noch kein Dienst. Füge einen hinzu, um zu beginnen.",

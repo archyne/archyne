@@ -50,7 +50,7 @@ export function AiRemoteSettings({ disabled }: { disabled: boolean }) {
       }}
     >
       <summary>
-        {t("ai.serverSummary", {
+        {t("ai.remoteSummary", {
           model: current
             ? `${current.label} · ${current.model || t("ai.serverNoModel")}`
             : t("ai.serverNoModel"),

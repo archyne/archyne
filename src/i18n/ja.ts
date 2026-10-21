@@ -499,6 +499,7 @@ export const messages: Messages = {
   "ai.serverHttp": "サーバーがエラー {status} を返しました。",
   "ai.serverNeedsModel": "先にローカルサーバーの設定でモデルを選択してください。",
   "ai.serverGeneric": "サーバー",
+  "ai.remoteSummary": "リモートサービス: {model}",
   "ai.engineRemote": "リモートサービス",
   "ai.remoteService": "サービス",
   "ai.remoteNone": "サービスがまだありません。追加して始めてください。",
