@@ -72,6 +72,8 @@ const openGenerateTab = async () => {
     .getByRole("button", { name: "Generate" })
     .click();
   await page.waitForSelector("#panel-generate");
+  // The panel itself loads when its tab is first opened.
+  await page.waitForSelector("#panel-generate .ai-panel");
 };
 
 const waitForState = (state: string) =>

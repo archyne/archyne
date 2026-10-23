@@ -596,6 +596,7 @@ export const messages: Messages = {
   "ai.suggestStartLogin": "ارسم تسجيل دخول بمصادقة ثنائية",
   "ai.suggestStartShop": "ارسم خدمات متجر إلكتروني وكيف تتواصل فيما بينها",
   "ai.suggestStartOrder": "ارسم حالات طلب، من تقديمه إلى تسليمه",
+  "ai.loading": "جارٍ التحميل…",
   "ai.oauthFlowAssertion": "تأكيد موقَّع (حساب خدمة)",
   "ai.oauthAssertionHint":
     "الصق المفتاح الخاص أدناه، أو ملف مفتاح JSON لحساب خدمة Google كما هو: فهو يتضمن المُصدِر ومعرّف المفتاح.",

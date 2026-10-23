@@ -607,6 +607,7 @@ export const en = {
   "ai.suggestStartLogin": "Draw a login with two-factor authentication",
   "ai.suggestStartShop": "Draw an online shop's services and how they talk to each other",
   "ai.suggestStartOrder": "Draw an order's states, from placed to delivered",
+  "ai.loading": "Loading…",
   "ai.oauthFlowAssertion": "Signed assertion (service account)",
   "ai.oauthAssertionHint":
     "Paste the private key below, or a Google service account's JSON key file as it is: it carries the issuer and the key ID.",

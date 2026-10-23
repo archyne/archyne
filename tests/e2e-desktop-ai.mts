@@ -93,6 +93,8 @@ const openGenerate = async () => {
 };
 await openGenerate();
 
+// The panel loads when its tab is first opened: wait for it, then read.
+await page.getByRole("combobox", { name: "Engine" }).waitFor();
 const engines = await page
   .getByRole("combobox", { name: "Engine" })
   .locator("option")

@@ -173,6 +173,8 @@ await page
   .getByRole("button", { name: "Generate" })
   .click();
 await page.waitForSelector("#panel-generate");
+// The panel itself loads when its tab is first opened.
+await page.getByRole("combobox", { name: "Engine" }).waitFor();
 
 const engines = await page
   .getByRole("combobox", { name: "Engine" })

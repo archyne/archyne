@@ -596,6 +596,7 @@ export const messages: Messages = {
   "ai.suggestStartLogin": "二要素認証付きのログインを描いて",
   "ai.suggestStartShop": "オンラインショップのサービスとその連携を描いて",
   "ai.suggestStartOrder": "注文の状態を、受付から配達完了まで描いて",
+  "ai.loading": "読み込み中…",
   "ai.oauthFlowAssertion": "署名付きアサーション（サービスアカウント）",
   "ai.oauthAssertionHint":
     "下に秘密鍵を貼り付けるか、Google サービスアカウントの JSON 鍵ファイルをそのまま貼り付けます。発行者と鍵 ID はファイルに含まれています。",

@@ -27,13 +27,30 @@ import type {
   ShapeNode,
   StateNode,
 } from "./model/types";
-import { getProvider } from "./ai/provider";
-import { ServerError } from "./ai/server";
 import { DEFAULT_AI_MODEL, type AiModel, type AiTurn } from "./ai/types";
 import type { LocalStatus } from "./ai/transformers";
-import { DiagramGenerationError, generateDiagram } from "./ai/generate";
-import { applyHouseStyle } from "./ai/style";
-import { diagramChanges } from "./ai/changes";
+
+/**
+ * Generate's own code — the engines, the prompt, the house style, the
+ * comparison of drawings — loaded with the first request rather than with
+ * the editor, which most sessions use without ever asking for one.
+ */
+function loadAi() {
+  return Promise.all([
+    import("./ai/provider"),
+    import("./ai/server"),
+    import("./ai/generate"),
+    import("./ai/style"),
+    import("./ai/changes"),
+  ]).then(([provider, server, generate, style, changes]) => ({
+    getProvider: provider.getProvider,
+    ServerError: server.ServerError,
+    DiagramGenerationError: generate.DiagramGenerationError,
+    generateDiagram: generate.generateDiagram,
+    applyHouseStyle: style.applyHouseStyle,
+    diagramChanges: changes.diagramChanges,
+  }));
+}
 import { isGroup } from "./model/types";
 import { measureNode } from "./measureNode";
 import {
@@ -1569,17 +1586,14 @@ export const useGraphStore = create<GraphState>((set, get) => {
     setAiModelStatus: (status) => set({ aiModelStatus: status }),
 
     aiGenerate: async (request) => {
-      // The local engine loads its model on first use, so "available" is not
-      // the gate here: only the mode mattering is "no provider at all".
-      const provider = getProvider((status) => set({ aiModelStatus: status }));
-      if (!provider) return;
       aiRun?.abort();
       const ctrl = new AbortController();
       aiRun = ctrl;
       const id = `ai-${++aiTurnSeq}`;
-      // The request becomes the next pair of bubbles straight away, so the
-      // thread reads like a conversation even while the run is only a minute
-      // in, and the streaming below fills its answer side.
+      // The request becomes the next pair of bubbles straight away — before
+      // even Generate's own code has loaded on a first request — so the
+      // thread reads like a conversation from the moment Send is pressed,
+      // and the streaming below fills its answer side.
       set({
         aiHighlight: null,
         aiTurns: [
@@ -1595,6 +1609,22 @@ export const useGraphStore = create<GraphState>((set, get) => {
           },
         ],
       });
+      const {
+        getProvider,
+        ServerError,
+        DiagramGenerationError,
+        generateDiagram,
+        applyHouseStyle,
+        diagramChanges,
+      } = await loadAi();
+      // The local engine loads its model on first use, so "available" is not
+      // the gate here: only the mode mattering is "no provider at all" —
+      // and then the request was never sent, so its bubble goes again.
+      const provider = getProvider((status) => set({ aiModelStatus: status }));
+      if (!provider || ctrl.signal.aborted) {
+        set({ aiTurns: get().aiTurns.filter((t) => t.id !== id) });
+        return;
+      }
       try {
         const result = await generateDiagram(
           {

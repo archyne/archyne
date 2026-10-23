@@ -611,6 +611,7 @@ export const messages: Messages = {
   "ai.suggestStartShop":
     "Zeichne die Dienste eines Onlineshops und wie sie miteinander sprechen",
   "ai.suggestStartOrder": "Zeichne die Zustände einer Bestellung, von aufgegeben bis geliefert",
+  "ai.loading": "Wird geladen …",
   "ai.oauthFlowAssertion": "Signierte Assertion (Dienstkonto)",
   "ai.oauthAssertionHint":
     "Unten den privaten Schlüssel einfügen oder die JSON-Schlüsseldatei eines Google-Dienstkontos unverändert: Sie enthält den Aussteller und die Schlüssel-ID.",

@@ -583,6 +583,7 @@ export const messages: Messages = {
   "ai.suggestStartLogin": "画一个带双因素认证的登录流程",
   "ai.suggestStartShop": "画出网店的各项服务以及它们之间如何通信",
   "ai.suggestStartOrder": "画出订单从下单到送达的各个状态",
+  "ai.loading": "正在加载…",
   "ai.oauthFlowAssertion": "签名断言（服务账号）",
   "ai.oauthAssertionHint":
     "在下方粘贴私钥，或原样粘贴 Google 服务账号的 JSON 密钥文件：其中已包含签发者和密钥 ID。",

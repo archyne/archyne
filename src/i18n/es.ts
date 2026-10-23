@@ -602,6 +602,7 @@ export const messages: Messages = {
   "ai.suggestStartLogin": "Dibuja un inicio de sesión con autenticación de dos factores",
   "ai.suggestStartShop": "Dibuja los servicios de una tienda online y cómo se comunican",
   "ai.suggestStartOrder": "Dibuja los estados de un pedido, de realizado a entregado",
+  "ai.loading": "Cargando…",
   "ai.oauthFlowAssertion": "Aserción firmada (cuenta de servicio)",
   "ai.oauthAssertionHint":
     "Pega abajo la clave privada, o el archivo de clave JSON de una cuenta de servicio de Google tal cual: incluye el emisor y el ID de la clave.",

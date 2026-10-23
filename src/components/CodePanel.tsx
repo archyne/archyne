@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useGraphStore } from "../store";
 import { CodeEditor } from "./CodeEditor";
 import { formatActiveEditor } from "./editorCommands";
 import { MermaidPreview } from "./MermaidPreview";
 import { GraphOutline } from "./GraphOutline";
-import { AiPanel } from "./AiPanel";
+// Generate, with its engines, services, vaults and their forms, is loaded when
+// its tab is first opened: most sessions never open it, and the editor's
+// first load should not wait for it.
+const AiPanel = lazy(() => import("./AiPanel").then((m) => ({ default: m.AiPanel })));
 import { Modal } from "./Modal";
 import { MAX_EDITOR_FONT_SIZE, MIN_EDITOR_FONT_SIZE, usePrefs } from "../prefs";
 import { useT } from "../i18n";
@@ -160,7 +163,9 @@ export function CodePanel() {
           aria-labelledby="tab-generate"
           className="tabpanel"
         >
-          <AiPanel />
+          <Suspense fallback={<p className="palette-hint">{t("ai.loading")}</p>}>
+            <AiPanel />
+          </Suspense>
         </div>
       ) : (
         <div
