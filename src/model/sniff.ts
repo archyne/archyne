@@ -23,6 +23,11 @@ const HEADERS: Array<[RegExp, DiagramKind]> = [
   [/^(flowchart|graph)\b/, "flowchart"],
 ];
 
+/** Whether one (trimmed) line is a header the editor knows. */
+export function isHeaderLine(line: string): boolean {
+  return HEADERS.some(([pattern]) => pattern.test(line));
+}
+
 /**
  * The family, or null when the source says nothing recognisable.
  *

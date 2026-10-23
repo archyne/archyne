@@ -1,6 +1,6 @@
 {
   "name": "archyne-render",
-  "version": "1.0.0-alpha.1",
+  "version": "1.1.0-alpha.1",
   "description": "Render Mermaid diagrams to a self-contained SVG string, with orthogonal edge routing and ELK layout",
   "license": "MIT",
   "type": "module",

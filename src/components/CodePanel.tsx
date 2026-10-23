@@ -1,9 +1,13 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useGraphStore } from "../store";
 import { CodeEditor } from "./CodeEditor";
 import { formatActiveEditor } from "./editorCommands";
 import { MermaidPreview } from "./MermaidPreview";
 import { GraphOutline } from "./GraphOutline";
+// Generate, with its engines, services, vaults and their forms, is loaded when
+// its tab is first opened: most sessions never open it, and the editor's
+// first load should not wait for it.
+const AiPanel = lazy(() => import("./AiPanel").then((m) => ({ default: m.AiPanel })));
 import { Modal } from "./Modal";
 import { MAX_EDITOR_FONT_SIZE, MIN_EDITOR_FONT_SIZE, usePrefs } from "../prefs";
 import { useT } from "../i18n";
@@ -72,10 +76,21 @@ export function CodePanel() {
   const code = useGraphStore((s) => s.code);
   const parseError = useGraphStore((s) => s.parseError);
   const warning = useGraphStore((s) => s.warning);
+  const aiOpen = useGraphStore((s) => s.aiOpen);
   const setCodeFromEditor = useGraphStore((s) => s.setCodeFromEditor);
-  const [tab, setTab] = useState<"code" | "preview" | "outline">("code");
+  const [tab, setTab] = useState<"code" | "preview" | "outline" | "generate">("code");
   const [expanded, setExpanded] = useState(false);
   const t = useT();
+
+  // The toolbar opens the panel with "Generate with AI": whatever clause was
+  // on screen, the AI tab is the point of the gesture. Adjusted during render
+  // (the docs' pattern for "hold this state, but jump at a prop change") so
+  // the old tab never glides in for a frame first.
+  const [seenAiOpen, setSeenAiOpen] = useState(aiOpen);
+  if (aiOpen !== seenAiOpen) {
+    setSeenAiOpen(aiOpen);
+    if (aiOpen) setTab("generate");
+  }
 
   return (
     <section className="code-panel" aria-label={t("panel.mermaidSource")}>
@@ -110,6 +125,16 @@ export function CodePanel() {
         >
           {t("panel.tabOutline")}
         </button>
+        <button
+          className={tab === "generate" ? "tab active" : "tab"}
+          role="tab"
+          id="tab-generate"
+          aria-selected={tab === "generate"}
+          aria-controls="panel-generate"
+          onClick={() => setTab("generate")}
+        >
+          {t("ai.tab")}
+        </button>
       </div>
       {tab === "code" ? (
         <div id="panel-code" role="tabpanel" aria-labelledby="tab-code" className="tabpanel">
@@ -130,6 +155,17 @@ export function CodePanel() {
           className="tabpanel outline-panel"
         >
           <GraphOutline />
+        </div>
+      ) : tab === "generate" ? (
+        <div
+          id="panel-generate"
+          role="tabpanel"
+          aria-labelledby="tab-generate"
+          className="tabpanel"
+        >
+          <Suspense fallback={<p className="palette-hint">{t("ai.loading")}</p>}>
+            <AiPanel />
+          </Suspense>
         </div>
       ) : (
         <div

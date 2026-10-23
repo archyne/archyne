@@ -97,6 +97,48 @@ Reports are in scope where diagram content reaches the extension host as
 anything other than text, where the webview can read outside that directory,
 or where an edit is applied to a document other than the one being viewed.
 
+### Generate's model connections
+
+Generate sends the diagram and the user's request to a model the user
+configures ([docs/generate.md](docs/generate.md)) — never to a service of
+Archyne's. Two boundaries carry the weight:
+
+- **The web build reaches loopback only.** Its `connect-src` names
+  `http://localhost:*` and `http://127.0.0.1:*` for this and nothing else, so
+  the page cannot send a diagram to another machine whatever it is told.
+- **The page never holds a credential.** In the desktop app and VS Code, keys,
+  passwords, private keys and OAuth tokens are given once to the host process
+  (Electron's main process, or the extension host), stored there — `safeStorage`
+  or VS Code's `SecretStorage`; on Linux without a keyring, refused rather than
+  kept in plain text — and never sent back. The host makes every request:
+  `https` only off this machine, redirects refused, a credential attached only
+  to requests made for its own connection. A page may set the secrets a person types
+  but never a token or a registered client, which only the host's own flows
+  produce. A certificate or key loaded from a file is chosen in the host's own
+  dialog and read by the host, so neither the file nor its contents pass
+  through the page. What a connection keeps is bound to where it was kept for — the
+  service's origin and, for OAuth, the authorization server — and the binding
+  is stored with it: a connection the page points elsewhere, even while the
+  host is not running, arrives there with no secrets at all.
+- **A secret from a vault goes nowhere unasked.** A service's key may be read
+  from a cloud vault (Azure Key Vault, AWS Secrets Manager, Google Secret
+  Manager, Alibaba KMS, HashiCorp Vault) through the vendor's CLI. Which secret
+  and which address are chosen in the page, so no secret is read until the
+  person authorizes that secret for that address, in a window of the host's
+  own (on the desktop a separate sandboxed window, in VS Code a modal) that
+  the page can neither draw nor answer; the answer is bound like a saved
+  secret.
+  The value is held in the host's memory only. Every identifier that reaches a
+  command line is held to a pattern with no character a shell would read.
+
+Reports are in scope where a secret can be read back by the page or is sent
+with a request that is not its own connection's or to a host other than the one
+it was saved for, where a vault's secret is sent without the host having asked,
+where a vault reference runs anything but the vendor's read command, where the
+web build can reach a
+non-loopback address, or where an OAuth flow can be completed with a forged
+state, a substituted code or another issuer's response.
+
 ## Out of scope
 
 - Vulnerabilities in dependencies with no exploitable path in Archyne (report

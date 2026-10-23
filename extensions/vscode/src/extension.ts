@@ -1,4 +1,6 @@
 import * as vscode from "vscode";
+import { setAiContext } from "./ai";
+import { associated, patternsFor } from "./association";
 import { ArchyneEditorProvider } from "./editor";
 import { FencePanels } from "./fenceEditor";
 import { FenceLensProvider, OPEN_FENCE } from "./lens";
@@ -14,7 +16,54 @@ import { FenceLensProvider, OPEN_FENCE } from "./lens";
  * gets a CodeLens and a panel bound to the block's range — which is where most
  * Mermaid in a repository actually is: a README, an ADR, a page under `docs/`.
  */
+/** How long after activation a file opened as text is taken to be the race below. */
+const STARTUP_MS = 10_000;
+
+/**
+ * VS Code 1.143 sometimes opens a file named on its command line — which is
+ * what a double click in the file manager does — as text, before it applies
+ * the person's `workbench.editorAssociations`, even when that says Archyne;
+ * intermittently, so a race on its side — and then without asking for this
+ * editor, so nothing would start the extension but the `mermaid` language it
+ * contributes for those files (`onLanguage:mermaid`). For the first seconds
+ * after it starts, such a tab is reopened on the canvas, once per file.
+ * Later, a text tab is one the person chose (Reopen Editor With… Text
+ * Editor) and is left alone; so is one with unsaved changes.
+ */
+function reopenAssociated(context: vscode.ExtensionContext): void {
+  const done = new Set<string>();
+  const fix = () => {
+    const patterns = patternsFor(
+      vscode.workspace.getConfiguration("workbench").get("editorAssociations"),
+      ArchyneEditorProvider.viewType,
+    );
+    if (patterns.length === 0) return;
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        if (!(tab.input instanceof vscode.TabInputText) || tab.isDirty) continue;
+        const uri = tab.input.uri;
+        if (uri.scheme !== "file" || done.has(uri.toString())) continue;
+        if (!associated(uri.path, patterns)) continue;
+        done.add(uri.toString());
+        void vscode.commands
+          .executeCommand("vscode.openWith", uri, ArchyneEditorProvider.viewType, {
+            viewColumn: group.viewColumn,
+            preview: tab.isPreview,
+            preserveFocus: !tab.isActive,
+          })
+          .then(() => vscode.window.tabGroups.close(tab));
+      }
+    }
+  };
+  fix();
+  const watching = vscode.window.tabGroups.onDidChangeTabs(fix);
+  const stop = setTimeout(() => watching.dispose(), STARTUP_MS);
+  context.subscriptions.push(watching, { dispose: () => clearTimeout(stop) });
+}
+
 export function activate(context: vscode.ExtensionContext): void {
+  // Generate's host side keeps its secrets in this context's SecretStorage.
+  setAiContext(context);
   const appRoot = vscode.Uri.joinPath(context.extensionUri, "media", "app");
 
   context.subscriptions.push(
@@ -30,6 +79,7 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     ),
   );
+  reopenAssociated(context);
 
   context.subscriptions.push(
     vscode.commands.registerCommand("archyne.open", async (uri?: vscode.Uri) => {

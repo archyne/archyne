@@ -32,3 +32,19 @@ await rm(target, { recursive: true, force: true });
 await cp(source, target, { recursive: true });
 
 console.log(`Bundled the editor into ${target}`);
+
+// Generate's host side (src/ai/host, built to dist-host/ai-host.cjs): the
+// extension host runs it, so the webview never holds a secret. The same file
+// the desktop app runs — see src/ai.ts.
+const hostSource = resolve(here, "..", "..", "..", "dist-host", "ai-host.cjs");
+const hostTarget = resolve(here, "..", "media", "host", "ai-host.cjs");
+try {
+  await stat(hostSource);
+} catch {
+  console.error(`No ${hostSource}: run \`npm run build\` at the repository root first.`);
+  process.exit(1);
+}
+await rm(dirname(hostTarget), { recursive: true, force: true });
+await cp(hostSource, hostTarget);
+
+console.log(`Bundled Generate's host into ${hostTarget}`);
