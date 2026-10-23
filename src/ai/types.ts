@@ -1,3 +1,4 @@
+import type { DiagramChanges } from "./changes";
 import type { DiagramKind } from "../model/types";
 
 /**
@@ -104,6 +105,12 @@ export interface AiTurn {
    * a turn that never drew one.
    */
   codeBefore: string | null;
+  /**
+   * What this answer changed in the drawing — nodes and connections added,
+   * removed, renamed — so the conversation can say it rather than only
+   * "applied". Null when the two drawings could not be compared.
+   */
+  changes?: DiagramChanges | null;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useGraphStore } from "../store";
 import { aiMode } from "../ai/provider";
 import {
@@ -10,6 +10,8 @@ import {
   type AiEngine,
 } from "../ai/engine";
 import { hostAi } from "../ai/hostBridge";
+import { hasChanges, type DiagramChanges } from "../ai/changes";
+import { suggestions } from "../ai/suggest";
 import { AiRemoteSettings } from "./AiRemoteSettings";
 import {
   isLocalUrl,
@@ -77,6 +79,12 @@ export function AiPanel() {
     details.open = false;
     details.querySelector("summary")?.focus();
   };
+
+  // What to ask, from the diagram on screen, while nothing has been asked.
+  const kind = useGraphStore((s) => s.kind);
+  const nodes = useGraphStore((s) => s.nodes);
+  const suggested = useMemo(() => suggestions(kind, nodes), [kind, nodes]);
+  const composer = useRef<HTMLTextAreaElement>(null);
 
   const run = () => {
     if (!request.trim() || !ready) return;
@@ -175,7 +183,32 @@ export function AiPanel() {
           lines tall, and the keyboard must be able to read past the fold.
           A region, not a log: a log would read every streamed token aloud. */}
       <div className="ai-thread" tabIndex={0} role="region" aria-label={t("ai.thread")}>
-        {turns.length === 0 && <p className="ai-seed">{t("ai.seed")}</p>}
+        {turns.length === 0 && (
+          <>
+            <p className="ai-seed">{t("ai.seed")}</p>
+            {/* A first request a click away, in the diagram's own words. */}
+            <div className="ai-suggestions" role="group" aria-label={t("ai.suggestTitle")}>
+              <p className="ai-suggestions-title">{t("ai.suggestTitle")}</p>
+              {suggested.map((s) => {
+                const text = t(s.key, s.params);
+                return (
+                  <button
+                    key={text}
+                    type="button"
+                    className="ai-suggestion"
+                    disabled={working || !ready}
+                    onClick={() => {
+                      setRequest(text);
+                      composer.current?.focus();
+                    }}
+                  >
+                    {text}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
         {turns.map((turn) => (
           <div className="ai-turn" key={turn.id}>
             <div className="ai-bubble ai-user">{turn.request}</div>
@@ -199,11 +232,7 @@ export function AiPanel() {
                       : serverAdvice(t, turn.reason, server.baseUrl)}
                 </p>
               )}
-              {turn.state === "done" && (
-                <p className="ai-applied" role="status">
-                  {t("ai.applied")}
-                </p>
-              )}
+              {turn.state === "done" && <ChangeSummary changes={turn.changes} />}
               {/* Only while this exchange is still the one that put the
                   current drawing there; once taken back, there is nothing
                   left for the button to undo. */}
@@ -225,6 +254,7 @@ export function AiPanel() {
 
       <div className="ai-composer">
         <textarea
+          ref={composer}
           className="ai-request"
           rows={2}
           value={request}
@@ -276,6 +306,101 @@ export function AiPanel() {
  * every preset, so the model list is never typed by hand and a refusal is
  * explained before a request is ever sent.
  */
+/** How many changes an answer lists before it says "and N more". */
+const SHOWN_CHANGES = 8;
+
+/**
+ * What an answer changed, said in the conversation: added, renamed and
+ * removed nodes and connections, by their labels — a new one a click away on
+ * the canvas. The canvas marks the same ones until the next thing done there.
+ */
+function ChangeSummary({ changes }: { changes: DiagramChanges | null | undefined }) {
+  const t = useT();
+  const show = useGraphStore((s) => s.aiShowChange);
+  if (changes === undefined) {
+    return (
+      <p className="ai-applied" role="status">
+        {t("ai.applied")}
+      </p>
+    );
+  }
+  if (changes === null || !hasChanges(changes)) {
+    return (
+      <p className="ai-applied" role="status">
+        {changes === null ? t("ai.changesRedrawn") : t("ai.changesNone")}
+      </p>
+    );
+  }
+  const gone = new Set(changes.removedNodes.map((n) => n.id));
+  type Item = {
+    kind: "added" | "renamed" | "removed";
+    text: string;
+    target?: { node: string } | { source: string; target: string };
+  };
+  const link = (e: { from: string; to: string; label: string }) =>
+    e.label ? `${e.from} → ${e.to} (${e.label})` : `${e.from} → ${e.to}`;
+  const items: Item[] = [
+    ...changes.addedNodes.map((n) => ({
+      kind: "added" as const,
+      text: n.label,
+      target: { node: n.id },
+    })),
+    ...changes.addedEdges.map((e) => ({
+      kind: "added" as const,
+      text: link(e),
+      target: { source: e.source, target: e.target },
+    })),
+    ...changes.renamedNodes.map((n) => ({
+      kind: "renamed" as const,
+      text: `${n.was} → ${n.label}`,
+      target: { node: n.id },
+    })),
+    ...changes.removedNodes.map((n) => ({ kind: "removed" as const, text: n.label })),
+    // A removed node takes its connections with it; saying each is noise.
+    ...changes.removedEdges
+      .filter((e) => !gone.has(e.source) && !gone.has(e.target))
+      .map((e) => ({ kind: "removed" as const, text: link(e) })),
+  ];
+  const marks = { added: "+", renamed: "✎", removed: "−" };
+  const words = {
+    added: t("ai.changeAdded"),
+    renamed: t("ai.changeRenamed"),
+    removed: t("ai.changeRemoved"),
+  };
+  return (
+    <div className="ai-changes" role="status">
+      <p className="ai-changes-title">{t("ai.changesTitle")}</p>
+      <ul>
+        {items.slice(0, SHOWN_CHANGES).map((item, i) => (
+          <li key={i} className={`ai-change ai-change--${item.kind}`}>
+            <span className="ai-change-mark" aria-hidden="true">
+              {marks[item.kind]}
+            </span>
+            <span className="visually-hidden">{words[item.kind]}: </span>
+            {item.target ? (
+              <button
+                type="button"
+                className="ai-change-link"
+                title={t("ai.changeShow")}
+                onClick={() => show(item.target!)}
+              >
+                {item.text}
+              </button>
+            ) : (
+              <span className="ai-change-text">{item.text}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+      {items.length > SHOWN_CHANGES && (
+        <p className="ai-changes-more">
+          {t("ai.changesMore", { count: items.length - SHOWN_CHANGES })}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /**
  * Check the local server — through the host when there is one, which has no
  * CORS to satisfy, and directly from the page otherwise. Only ever a loopback

@@ -1474,6 +1474,145 @@ body.resizing-side {
   color: var(--text-dim);
 }
 
+/* Requests to start from, while nothing has been asked yet. */
+.ai-suggestions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.ai-suggestions-title {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.ai-suggestion {
+  max-width: 100%;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.ai-suggestion:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.ai-suggestion:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ai-suggestion:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* What an answer changed: one line each, a new one a click from the canvas. */
+.ai-changes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.ai-changes-title,
+.ai-changes-more {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.ai-changes ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ai-change {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ai-change-mark {
+  flex: none;
+  width: 12px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.ai-change--added .ai-change-mark {
+  color: var(--accent);
+}
+
+.ai-change--removed .ai-change-mark,
+.ai-change--removed .ai-change-text {
+  color: var(--text-dim);
+}
+
+.ai-change--removed .ai-change-text {
+  text-decoration: line-through;
+}
+
+.ai-change-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.ai-change-link:hover {
+  text-decoration: underline;
+}
+
+.ai-change-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* On the canvas, what the last answer added or renamed, until the next
+   thing done there: a glow, not the selection's colour, so the two are
+   never confused. Pulses once on arriving, unless motion is unwelcome. */
+.react-flow__node.ai-changed {
+  filter: drop-shadow(0 0 1px var(--accent)) drop-shadow(0 0 8px var(--accent));
+  animation: ai-arrived 1.2s ease-out 1;
+}
+
+.react-flow__edge.ai-changed .react-flow__edge-path {
+  stroke: var(--accent) !important;
+  /* !important: the edges set their width inline. */
+  stroke-width: 2.5px !important;
+  filter: drop-shadow(0 0 3px var(--accent));
+}
+
+@keyframes ai-arrived {
+  0% {
+    filter: drop-shadow(0 0 1px var(--accent)) drop-shadow(0 0 18px var(--accent));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__node.ai-changed {
+    animation: none;
+  }
+}
+
 .ai-spinner {
   width: 12px;
   height: 12px;

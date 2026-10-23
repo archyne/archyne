@@ -33,6 +33,7 @@ import { DEFAULT_AI_MODEL, type AiModel, type AiTurn } from "./ai/types";
 import type { LocalStatus } from "./ai/transformers";
 import { DiagramGenerationError, generateDiagram } from "./ai/generate";
 import { applyHouseStyle } from "./ai/style";
+import { diagramChanges } from "./ai/changes";
 import { isGroup } from "./model/types";
 import { measureNode } from "./measureNode";
 import {
@@ -229,6 +230,15 @@ export interface GraphState {
    * exchange; half-drawn runs never land in it.
    */
   aiTurns: AiTurn[];
+  /**
+   * What the last answer added or renamed, marked on the canvas until the
+   * next thing the person does there — so the change is seen where it is.
+   * Connections are named by their two ends.
+   */
+  aiHighlight: { nodes: string[]; edges: Array<[string, string]> } | null;
+  clearAiHighlight: () => void;
+  /** Select on the canvas a node, or a connection by its two ends, that an answer changed. */
+  aiShowChange: (change: { node: string } | { source: string; target: string }) => void;
   /**
    * The document the conversation belongs to. `swapHistory` resets the
    * thread whenever a different document comes on screen, so each document
@@ -774,8 +784,24 @@ export const useGraphStore = create<GraphState>((set, get) => {
     aiOpen: false,
     aiModel: DEFAULT_AI_MODEL,
     aiTurns: [],
+    aiHighlight: null,
     aiDocId: null,
     aiModelStatus: { state: "idle" },
+
+    clearAiHighlight: () => {
+      if (get().aiHighlight) set({ aiHighlight: null });
+    },
+
+    aiShowChange: (change) => {
+      if ("node" in change) {
+        get().selectOnly(change.node, "node");
+        return;
+      }
+      const edge = get().edges.find(
+        (e) => e.source === change.source && e.target === change.target,
+      );
+      if (edge) get().selectOnly(edge.id, "edge");
+    },
 
     setCodeFromEditor: (code) => {
       // Group typing bursts into one history entry.
@@ -1512,7 +1538,7 @@ export const useGraphStore = create<GraphState>((set, get) => {
       // keeps the first mount (aiDocId null) from being mistaken for a move.
       if (get().aiDocId !== incomingId) {
         aiRun?.abort();
-        set({ aiDocId: incomingId, aiTurns: [] });
+        set({ aiDocId: incomingId, aiTurns: [], aiHighlight: null });
       }
     },
 
@@ -1555,6 +1581,7 @@ export const useGraphStore = create<GraphState>((set, get) => {
       // thread reads like a conversation even while the run is only a minute
       // in, and the streaming below fills its answer side.
       set({
+        aiHighlight: null,
         aiTurns: [
           ...get().aiTurns,
           {
@@ -1619,6 +1646,8 @@ export const useGraphStore = create<GraphState>((set, get) => {
         // drawing is telling the reader something that is not yet true.
         await get().applyCode(code, { record: true, forceLayout: true });
         get().requestFit();
+        // What changed, for the conversation to say and the canvas to show.
+        const changes = await diagramChanges(before, code);
         set({
           aiTurns: patchTurn(get().aiTurns, id, {
             state: "done",
@@ -1626,7 +1655,14 @@ export const useGraphStore = create<GraphState>((set, get) => {
             error: null,
             attempts: result.attempts,
             codeBefore: before,
+            changes,
           }),
+          aiHighlight: changes
+            ? {
+                nodes: [...changes.addedNodes, ...changes.renamedNodes].map((n) => n.id),
+                edges: changes.addedEdges.map((e) => [e.source, e.target] as [string, string]),
+              }
+            : null,
         });
       } catch (err) {
         if (isAbortError(err)) {
@@ -1663,7 +1699,10 @@ export const useGraphStore = create<GraphState>((set, get) => {
       // The turn keeps its answer but gives up its way back: undoing the same
       // exchange twice would restore a document that is no longer the one it
       // came before.
-      set({ aiTurns: patchTurn(get().aiTurns, turnId, { codeBefore: null }) });
+      set({
+        aiTurns: patchTurn(get().aiTurns, turnId, { codeBefore: null }),
+        aiHighlight: null,
+      });
       void get()
         .applyCode(back, { record: true, forceLayout: true })
         .then(() => get().requestFit());

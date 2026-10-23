@@ -119,13 +119,14 @@ check(
   JSON.stringify(good.aiTurns.map((t) => [t.request, t.code.slice(0, 16)])),
 );
 check(
-  "the bubble reports that it landed, instead of drawing it a second time",
+  "the bubble says what changed, instead of drawing it a second time",
   // The diagram is on the canvas at full size; a preview here would be a
-  // smaller copy of what the reader is already looking at.
-  (await page.locator(".ai-assistant .ai-applied").count()) === 1 &&
+  // smaller copy of what the reader is already looking at. What the bubble
+  // gives instead is the change: a list, or that nothing changed.
+  (await page.locator(".ai-assistant .ai-changes, .ai-assistant .ai-applied").count()) === 1 &&
     (await page.locator(".ai-assistant .ai-preview").count()) === 0 &&
     good.code === last(good).code,
-  `${await page.locator(".ai-applied").count()} applied notes`,
+  `${await page.locator(".ai-changes, .ai-applied").count()} change notes`,
 );
 
 await request("colour it blue");
