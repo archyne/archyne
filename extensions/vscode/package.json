@@ -37,7 +37,8 @@
   "main": "./out/extension.js",
   "activationEvents": [
     "onLanguage:markdown",
-    "onLanguage:mdx"
+    "onLanguage:mdx",
+    "onLanguage:mermaid"
   ],
   "contributes": {
     "configuration": {
@@ -50,6 +51,18 @@
         }
       }
     },
+    "languages": [
+      {
+        "id": "mermaid",
+        "aliases": [
+          "Mermaid"
+        ],
+        "extensions": [
+          ".mmd",
+          ".mermaid"
+        ]
+      }
+    ],
     "customEditors": [
       {
         "viewType": "archyne.editor",
