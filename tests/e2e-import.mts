@@ -59,7 +59,17 @@ async function open(page: Page, file: string, expected: string, canvas = true) {
     // Connections are the part that silently vanished twice: the editor's own
     // edge components read the live store, and React Flow drops an edge whose
     // handle it cannot resolve. Both failures looked like boxes and no arrows.
-    const drawn = await page.locator(".import-canvas .react-flow__edge").count();
+    //
+    // Waited for, not counted on the spot: React Flow draws an edge only once
+    // both its ends have been measured, a beat after the first node shows —
+    // longer for a bigger diagram on a busy machine, which is how the Lucid
+    // preview came out with "no connections" on the CI runner now and then.
+    const edges = page.locator(".import-canvas .react-flow__edge");
+    await edges
+      .first()
+      .waitFor({ timeout: 30000 })
+      .catch(() => {});
+    const drawn = await edges.count();
     check(`${file}: the preview draws the connections, not just the boxes`, drawn > 0);
     // And draws them with the editor's own router, not a stand-in: the class
     // React Flow puts on an edge is its type, so `routed` means the real
@@ -302,7 +312,17 @@ try {
     await page.setInputFiles('input[type="file"]', fixture("vpc-swimlanes.drawio"));
     await page.locator(".import-canvas .react-flow__node").first().waitFor({ timeout: 30000 });
     await page.locator(".export-opts select").selectOption("architecture");
-    await page.waitForTimeout(3000);
+    // Until the services are all there, rather than a fixed pause that a slow
+    // machine outlasts; then a moment for the layout to settle.
+    await page
+      .waitForFunction(
+        () =>
+          document.querySelectorAll(".import-canvas .react-flow__node-service").length >= 19,
+        undefined,
+        { timeout: 30000 },
+      )
+      .catch(() => {});
+    await page.waitForTimeout(500);
 
     const { services, overlaps } = await page.evaluate(() => {
       const boxes = [
