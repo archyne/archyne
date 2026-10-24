@@ -112,6 +112,33 @@ describe("what is in it", () => {
     );
   });
 
+  it("draws no head on a connection written without one", async () => {
+    const { svg } = await render("flowchart LR\n  a --- b\n  c --> d");
+    const heads = [...parse(svg).querySelectorAll("path.e")].map((p) => [
+      p.getAttribute("marker-start"),
+      p.getAttribute("marker-end"),
+    ]);
+    expect(heads).toEqual(
+      expect.arrayContaining([
+        [null, null],
+        [null, "url(#arch-arrow)"],
+      ]),
+    );
+  });
+
+  it("draws no head on an architecture edge drawn without an arrow", async () => {
+    const { svg } = await render(
+      "architecture-beta\n  service a(server)[A]\n  service b(server)[B]\n  service c(server)[C]\n  a:R -- L:b\n  b:R --> L:c",
+    );
+    const heads = [...parse(svg).querySelectorAll("path.e")].map((p) => [
+      p.getAttribute("marker-start"),
+      p.getAttribute("marker-end"),
+    ]);
+    expect(heads).toHaveLength(2);
+    expect(heads).toContainEqual([null, null]);
+    expect(heads.filter(([, end]) => end !== null)).toHaveLength(1);
+  });
+
   it("keeps both heads on a C4 relationship that runs both ways", async () => {
     const { svg } = await render(
       'C4Context\n  Person(a, "A")\n  System(b, "B")\n  BiRel(a, b, "talks")',
