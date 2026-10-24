@@ -755,9 +755,12 @@ function edgeAttrs(edge: FlowEdge): string {
   // A class diagram's inheritance edge carries a triangle at its *start* and
   // nothing at its end, and adding the plain arrowhead anyway would draw an
   // arrow the canvas does not. So once an edge names a marker at either end,
-  // what it names is all it gets. An edge naming none — one a consumer built
-  // by hand — ends in the plain arrowhead.
-  const fallback = !end && !start ? "arch-arrow" : null;
+  // what it names is all it gets. An edge naming none ends in the plain
+  // arrowhead only if it says nothing about its ends — one a consumer built
+  // by hand. A flowchart's open link (`---`) and an architecture edge drawn
+  // without `<` or `>` do say: no head, and the canvas draws none either.
+  const headless = edge.data?.arrow === "arrow_open" || edge.data?.arch !== undefined;
+  const fallback = !end && !start && !headless ? "arch-arrow" : null;
   const dash = (edge.style as { strokeDasharray?: string } | undefined)?.strokeDasharray;
 
   return (

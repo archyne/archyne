@@ -32,6 +32,10 @@ CSS class names and internal store shape are _not_ public API.
   two-way flowchart arrow (`a <--> b`) and a C4 `BiRel` lost the head at their
   start in SVG export and in `archyne-render`; the canvas was never affected.
   Thanks to [@jspizziri](https://github.com/jspizziri).
+- **A connection drawn without an arrowhead is exported without one.** A
+  flowchart's open link (`a --- b`) and an architecture edge without `<` or
+  `>` came out of SVG export and `archyne-render` with an arrowhead the
+  canvas does not draw.
 
 ## [1.1.0-alpha.1] — 2026-10-24
 
