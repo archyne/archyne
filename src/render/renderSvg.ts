@@ -733,19 +733,30 @@ function edgeLabelMarkup(text: string, at: { x: number; y: number }): string {
  * them, so an ER diagram came out with no cardinalities at all.
  *
  * React Flow's own marker is an object rather than a name; ours are names, and
- * only a name can point at a definition in this document.
+ * only a name can point at a definition in this document. The object is the
+ * plain closed arrowhead wherever the model uses it — a flowchart's, a state's,
+ * a C4 relationship's — so it is drawn as `arch-arrow`, at whichever end has it.
  */
 function edgeAttrs(edge: FlowEdge): string {
-  const named = (m: unknown) => (typeof m === "string" && m ? m : null);
+  // Flowchart edges carry their arrowhead as an object, not a marker id;
+  // map it to the plain arrow so `<-->` keeps both heads.
+  const named = (m: unknown) => {
+    if (typeof m === "string" && m) {
+      return m;
+    } else if (typeof m === "object" && m) {
+      return "arch-arrow";
+    } else {
+      return null;
+    }
+  };
   const end = named(edge.markerEnd);
   const start = named(edge.markerStart);
 
   // A class diagram's inheritance edge carries a triangle at its *start* and
   // nothing at its end, and adding the plain arrowhead anyway would draw an
   // arrow the canvas does not. So once an edge names a marker at either end,
-  // what it names is all it gets. An edge naming none — a flowchart's, whose
-  // `markerEnd` is React Flow's own object, or one a consumer built by hand —
-  // ends in the plain arrowhead.
+  // what it names is all it gets. An edge naming none — one a consumer built
+  // by hand — ends in the plain arrowhead.
   const fallback = !end && !start ? "arch-arrow" : null;
   const dash = (edge.style as { strokeDasharray?: string } | undefined)?.strokeDasharray;
 

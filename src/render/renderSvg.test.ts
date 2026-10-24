@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { render } from "./fromCode";
 import { renderSvg, UnsupportedFamilyError } from "./renderSvg";
 import type { AnyNode, FlowEdge } from "../model/types";
 
@@ -92,6 +93,32 @@ describe("what is in it", () => {
     expect(paths).toHaveLength(1);
     expect(paths[0].getAttribute("marker-end")).toBe("url(#arch-arrow)");
     expect(doc.querySelector("marker#arch-arrow")).not.toBeNull();
+  });
+
+  // Through the parser, not by hand: the model hands a two-way connection over
+  // with React Flow's arrowhead object at both ends, not a marker name, and
+  // that is the shape that lost its start head.
+  it("keeps both heads on a two-way flowchart connection", async () => {
+    const { svg } = await render("flowchart LR\n  a --> b\n  c <--> d");
+    const heads = [...parse(svg).querySelectorAll("path.e")].map((p) => [
+      p.getAttribute("marker-start"),
+      p.getAttribute("marker-end"),
+    ]);
+    expect(heads).toEqual(
+      expect.arrayContaining([
+        [null, "url(#arch-arrow)"],
+        ["url(#arch-arrow)", "url(#arch-arrow)"],
+      ]),
+    );
+  });
+
+  it("keeps both heads on a C4 relationship that runs both ways", async () => {
+    const { svg } = await render(
+      'C4Context\n  Person(a, "A")\n  System(b, "B")\n  BiRel(a, b, "talks")',
+    );
+    const path = parse(svg).querySelector("path.e");
+    expect(path?.getAttribute("marker-start")).toBe("url(#arch-arrow)");
+    expect(path?.getAttribute("marker-end")).toBe("url(#arch-arrow)");
   });
 
   it("carries its labels", () => {
