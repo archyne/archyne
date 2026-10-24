@@ -24,6 +24,15 @@ itself ships, the following count as the public API for semver purposes:
 Breaking any of those requires a major version. The React component structure,
 CSS class names and internal store shape are _not_ public API.
 
+## [Unreleased]
+
+### Fixed
+
+- **A connection drawn both ways keeps both arrowheads in exported SVG.** A
+  two-way flowchart arrow (`a <--> b`) and a C4 `BiRel` lost the head at their
+  start in SVG export and in `archyne-render`; the canvas was never affected.
+  Thanks to [@jspizziri](https://github.com/jspizziri).
+
 ## [1.1.0-alpha.1] — 2026-10-24
 
 ### Added
