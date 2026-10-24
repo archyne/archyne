@@ -280,9 +280,17 @@ const send = async (request: string) => {
     // Open, the settings have the panel; the conversation is a click away.
     await page.getByRole("button", { name: "Back to the conversation" }).click();
   }
+  // A turn already answered matches ".done" too: wait for one more answer
+  // than there was, not for any — or the check after this reads the stand-in
+  // before this turn has reached it, and passes or fails by how fast it went.
+  const before = await page.locator(".ai-assistant.done, .ai-assistant.error").count();
   await page.locator(".ai-composer textarea").fill(request);
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await page.waitForSelector(".ai-assistant.done, .ai-assistant.error", { timeout: 30_000 });
+  await page.waitForFunction(
+    (n) => document.querySelectorAll(".ai-assistant.done, .ai-assistant.error").length > n,
+    before,
+    { timeout: 30_000 },
+  );
   return (await page.locator(".ai-assistant").last().textContent()) ?? "";
 };
 
@@ -499,7 +507,11 @@ check(
   qwenCall?.body?.model === "qwen-plus" &&
     !qwenTurn.includes("THINKING-NOT-ANSWER") &&
     (await onCanvas("Via Model Studio")),
-  JSON.stringify(qwenCall?.body?.model ?? null),
+  JSON.stringify({
+    model: qwenCall?.body?.model ?? null,
+    turn: qwenTurn,
+    seen: seen.slice(-6).map((s) => s.url),
+  }),
 );
 
 await app.close();
