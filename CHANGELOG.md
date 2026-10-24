@@ -24,7 +24,7 @@ itself ships, the following count as the public API for semver purposes:
 Breaking any of those requires a major version. The React component structure,
 CSS class names and internal store shape are _not_ public API.
 
-## [Unreleased]
+## [1.1.1-alpha.1] — 2026-10-24
 
 ### Fixed
 
@@ -36,6 +36,10 @@ CSS class names and internal store shape are _not_ public API.
   flowchart's open link (`a --- b`) and an architecture edge without `<` or
   `>` came out of SVG export and `archyne-render` with an arrowhead the
   canvas does not draw.
+
+### Security
+
+- Electron 44.9.1, and current versions of undici, body-parser and fast-uri.
 
 ## [1.1.0-alpha.1] — 2026-10-24
 
