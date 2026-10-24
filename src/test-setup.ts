@@ -42,10 +42,15 @@ Object.defineProperty(globalThis, "localStorage", { configurable: true, value: s
  * is what jsdom returns anyway, and the fallback engages exactly as it does in
  * a real environment without a canvas.
  */
-Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
-  configurable: true,
-  value: () => null,
-});
+// Only where there is a DOM: a test that asks for the plain Node environment
+// (src/ai/host/oauth.test.ts, whose crypto must not cross into jsdom's realm)
+// has no canvas to quieten.
+if (typeof HTMLCanvasElement !== "undefined") {
+  Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+    configurable: true,
+    value: () => null,
+  });
+}
 
 beforeEach(() => {
   store.clear();

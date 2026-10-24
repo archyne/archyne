@@ -27,6 +27,30 @@ import type {
   ShapeNode,
   StateNode,
 } from "./model/types";
+import { DEFAULT_AI_MODEL, type AiModel, type AiTurn } from "./ai/types";
+import type { LocalStatus } from "./ai/transformers";
+
+/**
+ * Generate's own code — the engines, the prompt, the house style, the
+ * comparison of drawings — loaded with the first request rather than with
+ * the editor, which most sessions use without ever asking for one.
+ */
+function loadAi() {
+  return Promise.all([
+    import("./ai/provider"),
+    import("./ai/server"),
+    import("./ai/generate"),
+    import("./ai/style"),
+    import("./ai/changes"),
+  ]).then(([provider, server, generate, style, changes]) => ({
+    getProvider: provider.getProvider,
+    ServerError: server.ServerError,
+    DiagramGenerationError: generate.DiagramGenerationError,
+    generateDiagram: generate.generateDiagram,
+    applyHouseStyle: style.applyHouseStyle,
+    diagramChanges: changes.diagramChanges,
+  }));
+}
 import { isGroup } from "./model/types";
 import { measureNode } from "./measureNode";
 import {
@@ -36,7 +60,12 @@ import {
   serializeDiagram,
   UnsupportedDiagramError,
 } from "./model/diagram";
-import { patchPositions, readPositions, type PositionMap } from "./model/positions";
+import {
+  patchPositions,
+  readPositions,
+  stripPositions,
+  type PositionMap,
+} from "./model/positions";
 import {
   patchWaypoints,
   readWaypoints,
@@ -184,6 +213,15 @@ export interface GraphState {
    */
   arranging: boolean;
   /**
+   * Bumped whenever the drawing changed enough to be worth looking at again.
+   *
+   * The viewport belongs to the canvas — React Flow's `fitView` only exists
+   * inside its provider — so the store cannot move it and says this instead.
+   * A counter rather than a flag: two replacements in a row are two requests,
+   * and a boolean would collapse them into one and fit only once.
+   */
+  fitSeq: number;
+  /**
    * Which arrangement the canvas last rearranged with, when a real one was
    * asked for. `auto` hides the winner, so the run records it here — the
    * only place that knows. Cleared when a different document is loaded,
@@ -198,6 +236,62 @@ export interface GraphState {
   accDescr: string;
   /** Sequence: ordered statement stream (messages reference edge ids). */
   seqItems: SeqItem[];
+
+  /* ---- AI generation (see `src/ai/`) ---- */
+  /** Whether the Generate panel is showing. The toolbar opens it. */
+  aiOpen: boolean;
+  /** Which of the small local models the next run should use. */
+  aiModel: AiModel;
+  /**
+   * The conversation so far, most recent last. One entry per answered
+   * exchange; half-drawn runs never land in it.
+   */
+  aiTurns: AiTurn[];
+  /**
+   * What the last answer added or renamed, marked on the canvas until the
+   * next thing the person does there — so the change is seen where it is.
+   * Connections are named by their two ends.
+   */
+  aiHighlight: { nodes: string[]; edges: Array<[string, string]> } | null;
+  clearAiHighlight: () => void;
+  /** Select on the canvas a node, or a connection by its two ends, that an answer changed. */
+  aiShowChange: (change: { node: string } | { source: string; target: string }) => void;
+  /**
+   * The document the conversation belongs to. `swapHistory` resets the
+   * thread whenever a different document comes on screen, so each document
+   * keeps its own — and no thread follows you across tabs.
+   */
+  aiDocId: string | null;
+  /**
+   * Where the real local engine's model is, so the panel can show a download
+   * in progress without pretending the chat is idle. In stub builds this
+   * stays quiet.
+   */
+  aiModelStatus: LocalStatus;
+
+  setAiOpen: (open: boolean) => void;
+  setAiModel: (model: AiModel) => void;
+  setAiModelStatus: (status: LocalStatus) => void;
+  /**
+   * Append the request as a new turn and run the local model on it. The
+   * open document is what the model edits, so a follow-up changes that same
+   * document.
+   */
+  aiGenerate: (request: string) => Promise<void>;
+  /** Stop the running generation; the half-drawn turn disappears. */
+  aiCancel: () => void;
+  /**
+   * Put the diagram back as it stood before this turn's answer landed.
+   *
+   * An answer applies itself now, so the way back has to name its turn: plain
+   * undo serves the most recent change, but not the one three exchanges ago
+   * that the reader has only just decided against.
+   */
+  aiUndoTurn: (turnId: string) => void;
+  /** Ask the canvas to fit the drawing into view. */
+  requestFit: () => void;
+  /** Throw the whole conversation away ("New conversation"). */
+  aiClear: () => void;
 
   setCodeFromEditor: (code: string) => void;
   applyCode: (
@@ -419,6 +513,15 @@ function carryEdges(before: AnyNode[], after: AnyNode[], edges: FlowEdge[]): Flo
   return touched ? next : edges;
 }
 
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === "AbortError";
+}
+
+/** Rewrite one turn of the conversation while the others stay untouched. */
+function patchTurn(turns: AiTurn[], id: string, patch: Partial<AiTurn>): AiTurn[] {
+  return turns.map((t) => (t.id === id ? { ...t, ...patch } : t));
+}
+
 export const useGraphStore = create<GraphState>((set, get) => {
   /**
    * Undo/redo: because the mermaid code is the single source of truth, the
@@ -450,6 +553,16 @@ export const useGraphStore = create<GraphState>((set, get) => {
 
   /** Clipboard for copy/paste, kept out of react state. */
   let clipboard: { nodes: AnyNode[]; edges: FlowEdge[] } | null = null;
+
+  /**
+   * The in-flight generation, so a new one can cut the old one off and the
+   * Stop button can too. Not in state: it is a handle, not something to paint.
+   */
+  let aiRun: AbortController | null = null;
+  // Turns are numbered, never re-used across a clear: the conversation may be
+  // wiped and start again, but its ids must stay unique for the lifetimes of
+  // the ui that holds them.
+  let aiTurnSeq = 0;
 
   const collectPositions = (): PositionMap => {
     const positions: PositionMap = {};
@@ -677,12 +790,35 @@ export const useGraphStore = create<GraphState>((set, get) => {
     canRedo: false,
     booted: false,
     arranging: false,
+    fitSeq: 0,
     lastArranged: null,
     c4Flavor: "C4Context",
     title: "",
     accTitle: "",
     accDescr: "",
     seqItems: [],
+
+    aiOpen: false,
+    aiModel: DEFAULT_AI_MODEL,
+    aiTurns: [],
+    aiHighlight: null,
+    aiDocId: null,
+    aiModelStatus: { state: "idle" },
+
+    clearAiHighlight: () => {
+      if (get().aiHighlight) set({ aiHighlight: null });
+    },
+
+    aiShowChange: (change) => {
+      if ("node" in change) {
+        get().selectOnly(change.node, "node");
+        return;
+      }
+      const edge = get().edges.find(
+        (e) => e.source === change.source && e.target === change.target,
+      );
+      if (edge) get().selectOnly(edge.id, "edge");
+    },
 
     setCodeFromEditor: (code) => {
       // Group typing bursts into one history entry.
@@ -1414,6 +1550,13 @@ export const useGraphStore = create<GraphState>((set, get) => {
       past = next.past;
       future = next.future;
       syncHistoryFlags();
+      // Each document owns its own AI conversation: a request is about the
+      // diagram on screen, so it dies when its diagram steps off. The guard
+      // keeps the first mount (aiDocId null) from being mistaken for a move.
+      if (get().aiDocId !== incomingId) {
+        aiRun?.abort();
+        set({ aiDocId: incomingId, aiTurns: [], aiHighlight: null });
+      }
     },
 
     newDiagram: (kind) => {
@@ -1435,6 +1578,169 @@ export const useGraphStore = create<GraphState>((set, get) => {
       syncHistoryFlags();
       await get().applyCode(next);
     },
+
+    setAiOpen: (open) => set({ aiOpen: open }),
+    setAiModel: (model) => set({ aiModel: model }),
+    // The real engine reports its download through this; stub builds never
+    // call it, so the status line stays quiet there.
+    setAiModelStatus: (status) => set({ aiModelStatus: status }),
+
+    aiGenerate: async (request) => {
+      aiRun?.abort();
+      const ctrl = new AbortController();
+      aiRun = ctrl;
+      const id = `ai-${++aiTurnSeq}`;
+      // The request becomes the next pair of bubbles straight away — before
+      // even Generate's own code has loaded on a first request — so the
+      // thread reads like a conversation from the moment Send is pressed,
+      // and the streaming below fills its answer side.
+      set({
+        aiHighlight: null,
+        aiTurns: [
+          ...get().aiTurns,
+          {
+            id,
+            request: request.trim(),
+            state: "working",
+            code: "",
+            error: null,
+            attempts: 1,
+            codeBefore: null,
+          },
+        ],
+      });
+      const {
+        getProvider,
+        ServerError,
+        DiagramGenerationError,
+        generateDiagram,
+        applyHouseStyle,
+        diagramChanges,
+      } = await loadAi();
+      // The local engine loads its model on first use, so "available" is not
+      // the gate here: only the mode mattering is "no provider at all" —
+      // and then the request was never sent, so its bubble goes again.
+      const provider = getProvider((status) => set({ aiModelStatus: status }));
+      if (!provider || ctrl.signal.aborted) {
+        set({ aiTurns: get().aiTurns.filter((t) => t.id !== id) });
+        return;
+      }
+      try {
+        const result = await generateDiagram(
+          {
+            kind: get().kind,
+            // Without the positions comment: it is a line of JSON coordinates
+            // the model has no use for (the answer is laid out afresh), and a
+            // small model shown one tends to recite it back — measured on the
+            // 1.5B, a two-second answer became a thousand tokens of loop.
+            code: stripPositions(get().code),
+            request: request.trim(),
+            model: get().aiModel,
+          },
+          provider,
+          {
+            signal: ctrl.signal,
+            // Paint the running text, so "Draw" shows work rather than a
+            // busy cursor with nothing happening.
+            onToken: (text) => set({ aiTurns: patchTurn(get().aiTurns, id, { code: text }) }),
+            // A retry starts a fresh draw: the half-written first answer is
+            // gone and a new one takes its place.
+            onAttempt: (attempt) =>
+              set({ aiTurns: patchTurn(get().aiTurns, id, { attempts: attempt, code: "" }) }),
+          },
+        );
+        // The house style is applied here rather than asked of the model —
+        // see `src/ai/style.ts` for why. A pass that produced something
+        // mermaid cannot read is thrown away: the model's own answer parsed,
+        // and a styling flourish is never worth losing the drawing over.
+        let code = result.code;
+        try {
+          const styled = applyHouseStyle(code);
+          await parseDiagram(styled);
+          code = styled;
+        } catch {
+          /* keep the answer exactly as the model drew it */
+        }
+        // What was on the canvas a moment ago, kept on the turn so this one
+        // exchange can be taken back later without disturbing the others.
+        const before = get().code;
+        // The answer goes onto the canvas by itself. A turn is an instruction
+        // to change the drawing, so making the reader press a second button
+        // to watch their own request take effect is a step with nothing in
+        // it — and the fit afterwards is what makes the change visible: a new
+        // node laid out below the last one is off-screen otherwise, which
+        // reads as nothing having happened at all.
+        //
+        // Applied *before* the turn is called done, and not after: a turn
+        // that reports having landed while the canvas still holds the old
+        // drawing is telling the reader something that is not yet true.
+        await get().applyCode(code, { record: true, forceLayout: true });
+        get().requestFit();
+        // What changed, for the conversation to say and the canvas to show.
+        const changes = await diagramChanges(before, code);
+        set({
+          aiTurns: patchTurn(get().aiTurns, id, {
+            state: "done",
+            code,
+            error: null,
+            attempts: result.attempts,
+            codeBefore: before,
+            changes,
+          }),
+          aiHighlight: changes
+            ? {
+                nodes: [...changes.addedNodes, ...changes.renamedNodes].map((n) => n.id),
+                edges: changes.addedEdges.map((e) => [e.source, e.target] as [string, string]),
+              }
+            : null,
+        });
+      } catch (err) {
+        if (isAbortError(err)) {
+          // Stopped on purpose: the half-drawn turn never happened, so the
+          // conversation shows only exchanges that reached an end.
+          set({ aiTurns: get().aiTurns.filter((t) => t.id !== id) });
+          return;
+        }
+        const failed = err instanceof DiagramGenerationError ? err : null;
+        const turn = get().aiTurns.find((t) => t.id === id);
+        set({
+          aiTurns: patchTurn(get().aiTurns, id, {
+            state: "error",
+            // The last draw is shown back, so the user sees what the model
+            // made of their request instead of an opaque failure.
+            code: failed?.code ?? turn?.code ?? "",
+            error: err instanceof Error ? err.message : String(err),
+            reason: err instanceof ServerError ? err.reason : null,
+            attempts: failed?.attempts ?? turn?.attempts ?? 1,
+          }),
+        });
+      } finally {
+        if (aiRun === ctrl) aiRun = null;
+      }
+    },
+
+    aiCancel: () => aiRun?.abort(),
+
+    aiUndoTurn: (turnId) => {
+      const turn = get().aiTurns.find((t) => t.id === turnId);
+      // Only a turn that actually reached the canvas has a way back.
+      if (!turn || !turn.codeBefore) return;
+      const back = turn.codeBefore;
+      // The turn keeps its answer but gives up its way back: undoing the same
+      // exchange twice would restore a document that is no longer the one it
+      // came before.
+      set({
+        aiTurns: patchTurn(get().aiTurns, turnId, { codeBefore: null }),
+        aiHighlight: null,
+      });
+      void get()
+        .applyCode(back, { record: true, forceLayout: true })
+        .then(() => get().requestFit());
+    },
+
+    requestFit: () => set({ fitSeq: get().fitSeq + 1 }),
+
+    aiClear: () => set({ aiTurns: [] }),
 
     copySelection: () => {
       const nodes = get().nodes.filter((n) => n.selected && !isGroup(n));

@@ -5,6 +5,9 @@ directories:
 files:
   - dist/**
   - desktop/**
+  # The host half of Generate, which desktop/main.cjs requires (see
+  # vite.host.config.ts).
+  - dist-host/**
   - build/icon.png
 
 # Ad-hoc signs the macOS bundle before electron-builder's own signing step,

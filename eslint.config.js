@@ -10,6 +10,10 @@ export default tseslint.config(
   {
     ignores: [
       "dist/**",
+      "dist-host/**",
+      // The VS Code that tests/e2e-vscode-ai.mts downloads: thousands of
+      // minified files, enough to run the linter out of memory.
+      ".vscode-test/**",
       "release/**",
       "build/**",
       "node_modules/**",

@@ -23,6 +23,22 @@ export function inWebview(): boolean {
   return typeof window.acquireVsCodeApi === "function";
 }
 
+let vscode: VsCodeApi | null = null;
+
+/**
+ * The webview's one handle on the extension host.
+ *
+ * `acquireVsCodeApi()` may be called once per page — a second call throws —
+ * and two features talk over it: the canvas bridge (`embed.ts`) and
+ * Generate's host engine (`ai/hostBridge.ts`). So it is acquired here, once,
+ * and shared.
+ */
+export function vscodeApi(): VsCodeApi | null {
+  if (!inWebview()) return null;
+  vscode ??= window.acquireVsCodeApi!();
+  return vscode;
+}
+
 /**
  * True when Archyne is running inside something that hands it a diagram:
  * `?embed=1` in an iframe, or a VS Code webview, where there is no query

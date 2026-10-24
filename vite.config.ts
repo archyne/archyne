@@ -21,6 +21,18 @@ export default defineConfig({
   base: "./",
   define: { __APP_VERSION__: JSON.stringify(version) },
   plugins: [react()],
+  optimizeDeps: {
+    // Transformers.js ships Web Workers and .wasm that Vite should not try to
+    // pre-bundle; it is imported lazily only when a local model runs anyway.
+    exclude: ["@huggingface/transformers"],
+  },
+  worker: {
+    // The generation worker (src/ai/aiWorker.ts) imports Transformers.js
+    // dynamically. Vite's default worker format is `iife`, which cannot carry
+    // a dynamic import — so the built worker would fail where the dev one
+    // works, which is the worst of both.
+    format: "es",
+  },
   test: {
     environment: "jsdom",
     // Installs a complete localStorage and empties it between tests; see the

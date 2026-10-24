@@ -24,6 +24,71 @@ itself ships, the following count as the public API for semver purposes:
 Breaking any of those requires a major version. The React component structure,
 CSS class names and internal store shape are _not_ public API.
 
+## [1.1.0-alpha.1] — 2026-10-24
+
+### Added
+
+- **Generate: edit the diagram on screen by asking.** In the overflow menu,
+  **More → Generate** takes a request in your own words — "put a cache in
+  front of the database", "retry the payment twice" — and turns it into an
+  edit of the diagram you are looking at. The answer is ordinary Mermaid: it
+  lands on the canvas and in the code, and each one can be undone on its own.
+  Archyne ships and hosts no model; Generate uses one you choose. The guide is
+  [`docs/generate.md`](docs/generate.md).
+- **A model on your own computer, everywhere.** Any server that speaks the
+  OpenAI chat API — Ollama and LM Studio have presets — works in the web
+  app, the desktop app and VS Code. The web app reaches this computer only:
+  its content security policy allows nothing else, so a diagram cannot be
+  sent to another machine from it by mistake.
+- **A hosted service, from the desktop app and VS Code**: anything
+  OpenAI-compatible, Anthropic, Azure OpenAI and AI Foundry, Amazon Bedrock,
+  Google Vertex AI and Alibaba Cloud Model Studio. Signing in can be a key in
+  any header, HTTP Basic, OAuth (in the browser with PKCE, with a device code,
+  as a machine with a secret, a private key or a certificate, or as a service
+  account — a Google key file is taken as it is), AWS Signature V4, or a
+  client certificate; certificates and keys are loaded from a file, `.pfx`
+  included. Checked by hand against Azure: a key, a Microsoft Entra sign-in,
+  and in seven languages gpt-5-mini drew 104 of 105 held-out requests right.
+- **Keys kept in a cloud vault instead of on this computer.** A service's
+  secrets can be read, through the vendor's own command-line tool, from Azure
+  Key Vault, AWS Secrets Manager, Google Secret Manager, Alibaba Cloud KMS or
+  HashiCorp Vault / OpenBao. Nothing is read until you authorize it, once, in
+  a window of the app's own that names the secret, the vault and where it
+  goes; the value is held in memory only.
+- **Each answer says what it changed.** Nodes and connections added, renamed
+  or removed are listed under the answer and marked on the canvas until the
+  next thing you do there, and an empty conversation suggests requests built
+  from the diagram's own names. All of it in the seven languages of the
+  interface.
+
+### Changed
+
+- **Mermaid 12.** The Preview tab draws with Mermaid's own new defaults —
+  white fills, black strokes, orthogonal connections — which is what Preview
+  is for. Mermaid 12 needs Node 22.12 or later, and so does Archyne.
+- Generate loads when it is first opened, so the editor's first load did not
+  grow with it.
+
+### Fixed
+
+- **In VS Code 1.143, a `.mmd` file opened from outside VS Code could come
+  up as text** despite being associated with Archyne: VS Code sometimes
+  opens it before it starts the extension. The extension now starts on the
+  file and moves it onto the canvas.
+
+### Security
+
+- **The page never holds a credential.** Every key, password, token and
+  certificate stays with the desktop app's main process or VS Code's
+  extension host, in the operating system's keychain or VS Code's secret
+  storage, and is never sent back to the page. A secret is bound to the
+  address it was saved for: a service pointed elsewhere arrives there with
+  none. `SECURITY.md` sets out what is in scope.
+- DOMPurify 3.4.17, which closes a critical and a high advisory in the
+  sanitizer Mermaid's output passes through, and current versions of the MCP
+  SDK, Zod, Hono, ip-address and, in the extension, follow-redirects and
+  markdown-it.
+
 ## [1.0.0-alpha.1] — 2026-08-30
 
 ### Changed

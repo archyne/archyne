@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ContextMenu, type MenuState } from "./ContextMenu";
 import {
   Background,
@@ -101,8 +101,26 @@ export function CanvasView() {
   const onNodeDragStop = useGraphStore((s) => s.onNodeDragStop);
   const addNode = useGraphStore((s) => s.addNode);
   const selectOnly = useGraphStore((s) => s.selectOnly);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
+  const fitSeq = useGraphStore((s) => s.fitSeq);
   const [menu, setMenu] = useState<MenuState | null>(null);
+
+  /**
+   * Fit the drawing into view when the store asks.
+   *
+   * Replacing the document does not move the viewport, so a diagram that grew
+   * downwards put its new part off the bottom of the screen and the canvas
+   * looked untouched. The store bumps a counter when something replaced the
+   * drawing wholesale; this answers it. Deliberately not on `nodes`: fitting
+   * on every change would yank the viewport around while someone is working.
+   */
+  useEffect(() => {
+    if (fitSeq === 0) return;
+    // After the nodes have been measured, or the fit is computed against
+    // boxes that do not have their real size yet.
+    const id = requestAnimationFrame(() => void fitView({ duration: 200 }));
+    return () => cancelAnimationFrame(id);
+  }, [fitSeq, fitView]);
   const connect = useKeyboardConnect();
   /**
    * Whether a connection is being dragged, so the canvas can show every
@@ -138,18 +156,33 @@ export function CanvasView() {
     [addNode, screenToFlowPosition],
   );
 
-  // Mark the pending connection source so it is visible, not just announced.
-  const flowNodes = useMemo(
-    () =>
-      connect.source
-        ? nodes.map((n) =>
-            n.id === connect.source
-              ? { ...n, className: `${n.className ?? ""} connect-source`.trim() }
-              : n,
-          )
-        : nodes,
-    [nodes, connect.source],
-  );
+  // Mark the pending connection source so it is visible, not just announced,
+  // and what the last Generate answer added or renamed, so it is seen where
+  // it landed.
+  const aiHighlight = useGraphStore((s) => s.aiHighlight);
+  const clearAiHighlight = useGraphStore((s) => s.clearAiHighlight);
+  const flowNodes = useMemo(() => {
+    const changed = new Set(aiHighlight?.nodes ?? []);
+    if (!connect.source && changed.size === 0) return nodes;
+    return nodes.map((n) => {
+      const extra = [
+        n.id === connect.source ? "connect-source" : "",
+        changed.has(n.id) ? "ai-changed" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      return extra ? { ...n, className: `${n.className ?? ""} ${extra}`.trim() } : n;
+    });
+  }, [nodes, connect.source, aiHighlight]);
+  const flowEdges = useMemo(() => {
+    const changed = new Set((aiHighlight?.edges ?? []).map(([a, b]) => `${a}\u0000${b}`));
+    if (changed.size === 0) return edges;
+    return edges.map((e) =>
+      changed.has(`${e.source}\u0000${e.target}`)
+        ? { ...e, className: `${e.className ?? ""} ai-changed`.trim() }
+        : e,
+    );
+  }, [edges, aiHighlight]);
 
   if (unsupported) {
     // Valid Mermaid we cannot edit visually. Render it rather than refusing
@@ -173,12 +206,16 @@ export function CanvasView() {
          generic label on every diagram. */
       aria-label={accTitle ? `${accTitle} — ${t("canvas.label")}` : t("canvas.label")}
       aria-describedby="canvas-summary"
-      onMouseDownCapture={() => (panMovedRef.current = false)}
+      onMouseDownCapture={() => {
+        panMovedRef.current = false;
+        // The next thing done on the canvas ends the "just changed" marking.
+        clearAiHighlight();
+      }}
     >
       <MarkerDefs />
       <ReactFlow<AnyNode, FlowEdge>
         nodes={flowNodes}
-        edges={edges}
+        edges={flowEdges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}

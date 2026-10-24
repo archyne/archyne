@@ -237,7 +237,10 @@ try {
           ?.getAttribute("content") ?? "",
     );
     check(/script-src\s+'self'/.test(policy), "policy still pins script-src to 'self'");
-    check(!/unsafe-eval/.test(policy), "policy does not allow unsafe-eval");
+    // The narrow 'wasm-unsafe-eval' token is fine — it admits only
+    // WebAssembly compilation, for onnxruntime-web — but bare 'unsafe-eval',
+    // which lets any string run as code, is what must stay out.
+    check(!/(?<!-)unsafe-eval/.test(policy), "policy does not allow unsafe-eval");
     check(!/script-src[^;]*unsafe-inline/.test(policy), "policy does not allow inline script");
 
     await context.close();

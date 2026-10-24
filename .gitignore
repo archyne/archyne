@@ -1,5 +1,10 @@
 node_modules
 dist
+# The host half of Generate, built by `npm run build:host` (vite.host.config.ts).
+dist-host
+
+# VS Code downloaded by @vscode/test-electron for tests/e2e-vscode-ai.mts.
+.vscode-test
 *.local
 *.tsbuildinfo
 release
@@ -10,6 +15,7 @@ sbom.json
 # `extensions/vscode` → `npm run build`.
 extensions/*/out
 extensions/*/media/app
+extensions/*/media/host
 extensions/*/*.vsix
 
 # Output of the browser-driven e2e scripts (tests/e2e-*.mts). They write their
@@ -28,3 +34,7 @@ e2e-out
 # tarball carries it. Generated rather than kept, so that the package's licence
 # cannot drift from the project's.
 packages/render/LICENSE
+
+# Browser profile of tests/smoke-ai-local.mts: it caches the model weights so a
+# rerun skips a download of several hundred megabytes. Local only.
+.smoke-profile

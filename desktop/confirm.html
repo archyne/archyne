@@ -1,0 +1,37 @@
+<!doctype html>
+<!--
+  The question the shell asks before a secret from a vault first goes to a
+  service (desktop/ai.cjs, askInWindow). A window of the shell's own, apart
+  from the app's page: the page can neither draw it nor answer it. Nothing
+  here is loaded from anywhere, and the text arrives through its own preload
+  (confirm-preload.cjs), set as text, never as markup.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'"
+    />
+    <title>Archyne</title>
+    <link rel="stylesheet" href="confirm.css" />
+    <script src="confirm.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <svg class="mark" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="4" y="10" width="16" height="11" rx="2" />
+          <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+        </svg>
+        <h1 id="message"></h1>
+      </header>
+      <dl id="rows"></dl>
+      <p id="note"></p>
+      <div class="actions">
+        <button type="button" id="deny"></button>
+        <button type="button" id="allow" class="primary"></button>
+      </div>
+    </main>
+  </body>
+</html>
