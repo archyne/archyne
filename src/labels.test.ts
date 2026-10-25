@@ -224,3 +224,34 @@ describe("a label and the connections it does not name", () => {
     expect(out.get("e1")!.at).toEqual({ x: 200, y: 0 });
   });
 });
+
+describe("a label and an arrowhead", () => {
+  const straight = [p(0, 0), p(400, 0)];
+  const half = () => plateSize("hello").h / 2;
+
+  it("does not sit on the body of a head whose tip it misses", () => {
+    // A connection coming up from below, through where the plate would be,
+    // its tip just past the plate's top edge. Only the tip and the far end
+    // used to count as the head, so a plate covering the rest of it was fine.
+    const tipY = -half() - 2;
+    const routes = new Map([
+      ["e1", straight],
+      ["e2", [p(200, 120), p(200, tipY)]],
+    ]);
+    const placed = placeLabels([edge("e1", "hello"), edge("e2", "")], routes, []).get("e1")!;
+    expect(placed.at.y).toBe(0);
+    expect(placed.at.x).not.toBe(200);
+  });
+
+  it("keeps a few units clear of one, not merely off it", () => {
+    // A head ending just short of the plate: not covered, but a pixel's
+    // difference in how the words are drawn would cover it.
+    const tipY = half() + 3;
+    const routes = new Map([
+      ["e1", straight],
+      ["e2", [p(200, 120), p(200, tipY)]],
+    ]);
+    const placed = placeLabels([edge("e1", "hello"), edge("e2", "")], routes, []).get("e1")!;
+    expect(placed.at.x).not.toBe(200);
+  });
+});

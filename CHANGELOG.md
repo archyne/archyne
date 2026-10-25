@@ -191,6 +191,11 @@ CSS class names and internal store shape are _not_ public API.
   ends happened to give. Once routed, lines that turned through one shared
   column are put in order again — places, columns or both swapped wherever
   that crosses fewer lines and hides none.
+- **A connection's label keeps clear of arrowheads.** Only an arrowhead's tip
+  was kept out from under a label, so a plate could cover the rest of the
+  head on a straight last leg, and one that just cleared a head on one
+  machine sat on it where the font is a little wider. The whole head is
+  avoided now, with a few units to spare.
 - **Arrowheads on one face no longer touch.** Heads are kept apart along the
   face whatever moved them there, and on a round node only the middle of
   each face takes connections, so heads from two faces do not meet on the
