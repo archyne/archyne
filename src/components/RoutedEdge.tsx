@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { Fragment, useRef } from "react";
 import { BaseEdge, EdgeLabelRenderer, useReactFlow, type EdgeProps } from "@xyflow/react";
 import type { FlowEdge } from "../model/types";
 import {
@@ -14,6 +14,7 @@ import { useGraphView } from "./useGraphView";
 import { prune, segmentsOf, slideRun, type Axis } from "../orthogonal";
 import { allEnds, allRoutes } from "../routes";
 import { allLabels, midpointOf } from "../labels";
+import { labelLines } from "../model/label";
 import { crossings } from "../jumps";
 import { edgeColors } from "../theme";
 import { clearGuides, computeSnap, GRID, setGuides, type Box } from "../guides";
@@ -391,7 +392,13 @@ export function RoutedEdge({
               setEdgeStyle(id, { label: { x: 0, y: 0 } });
             }}
           >
-            {String(label)}
+            {/* Broken where Mermaid breaks it, as the plate was measured. */}
+            {labelLines(String(label)).map((line, i) => (
+              <Fragment key={i}>
+                {i > 0 && <br />}
+                {line}
+              </Fragment>
+            ))}
           </div>
         </EdgeLabelRenderer>
       )}

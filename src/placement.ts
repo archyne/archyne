@@ -1,6 +1,6 @@
 import { useCallback, useRef } from "react";
 import { useReactFlow } from "@xyflow/react";
-import { useGraphStore } from "./store";
+import { addSeed } from "./iconPicture";
 import type { NodeSeed } from "./model/types";
 
 /**
@@ -13,7 +13,6 @@ import type { NodeSeed } from "./model/types";
  */
 export function useAddNodeAtCenter() {
   const { screenToFlowPosition } = useReactFlow();
-  const addNode = useGraphStore((s) => s.addNode);
   const added = useRef(0);
 
   return useCallback(
@@ -23,8 +22,8 @@ export function useAddNodeAtCenter() {
       const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
       // Stagger repeat additions so they don't stack invisibly on each other.
       const step = (added.current++ % 6) * 34;
-      addNode(seed, screenToFlowPosition({ x: x + step, y: y + step }));
+      addSeed(seed, screenToFlowPosition({ x: x + step, y: y + step }));
     },
-    [addNode, screenToFlowPosition],
+    [screenToFlowPosition],
   );
 }

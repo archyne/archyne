@@ -62,6 +62,24 @@ describe("which faces two boxes should be joined by", () => {
     });
   });
 
+  it("uses the other faces when the nearer pair has no room for the stubs", () => {
+    // Wide boxes, side by side ten units apart across but far apart down the
+    // page. The sides face each other across a gap too narrow to leave one
+    // and arrive at the other square, and the route went round the outside of
+    // both; the ends have all the room in the world.
+    expect(bestSides(box(0, 0, 300, 60), box(310, 200, 300, 60))).toEqual({
+      from: "bottom",
+      to: "top",
+    });
+  });
+
+  it("keeps the nearer pair when neither has room", () => {
+    expect(bestSides(box(0, 0, 300, 60), box(310, 70, 300, 60))).toEqual({
+      from: "right",
+      to: "left",
+    });
+  });
+
   it("answers for boxes lying on top of one another rather than refusing", () => {
     const sides = bestSides(box(0, 0), box(10, 10));
     expect(["left", "right", "top", "bottom"]).toContain(sides.from);

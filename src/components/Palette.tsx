@@ -13,7 +13,7 @@ import { useT, type MessageKey } from "../i18n";
 import { IconView } from "./ArchView";
 
 /** Draggable icon cell with a favorite toggle. */
-function IconCell({ name }: { name: string }) {
+function IconCell({ name, onShow }: { name: string; onShow?: (name: string | null) => void }) {
   const favorites = useIconPrefs((s) => s.favorites);
   const toggleFavorite = useIconPrefs((s) => s.toggleFavorite);
   const addAtCenter = useAddNodeAtCenter();
@@ -22,7 +22,9 @@ function IconCell({ name }: { name: string }) {
   // A virtual network is a thing you put things inside; a function app is a
   // thing you put in one. Adding both as the same box made the containers
   // useless — you cannot draw a topology if the VNet cannot hold the subnet.
-  const container = iconRole(plainName(name)) === "group";
+  // In a flowchart every icon is a picture, so none of them is a container.
+  const flowchart = useGraphStore((s) => s.kind === "flowchart");
+  const container = !flowchart && iconRole(plainName(name)) === "group";
   const seed: NodeSeed = container
     ? { type: "group", icon: name }
     : { type: "service", icon: name };
@@ -32,6 +34,10 @@ function IconCell({ name }: { name: string }) {
     <div
       className="icon-cell"
       draggable
+      onMouseEnter={() => onShow?.(name)}
+      onMouseLeave={() => onShow?.(null)}
+      onFocus={() => onShow?.(name)}
+      onBlur={() => onShow?.(null)}
       onDragStart={(e) => {
         e.dataTransfer.setData("application/x-graph-node", JSON.stringify(seed));
       }}
@@ -237,6 +243,13 @@ interface IconCategory {
   prefixes: string[];
   /** Restrict the category to specific collections (default: all). */
   collections?: string[];
+  /**
+   * Prefixes for one collection in place of `prefixes`. Azure needs it: all of
+   * Microsoft's own set belongs, which is an empty prefix — and an empty
+   * prefix anywhere else is every icon in that collection, which is how the
+   * Azure chip came to show Adobe, Airbnb and Amazon.
+   */
+  byCollection?: Record<string, string[]>;
 }
 
 const ICON_CATEGORIES: IconCategory[] = [
@@ -246,7 +259,8 @@ const ICON_CATEGORIES: IconCategory[] = [
     label: "Azure",
     // Microsoft's own set first — it is the one that has a VNet in it — with
     // the brand logos behind it for anything it does not cover.
-    prefixes: ["", "azure", "microsoft"],
+    prefixes: ["azure", "microsoft"],
+    byCollection: { azure: [""] },
     collections: ["azure", "logos", "devicon", "simple-icons"],
   },
   {
@@ -317,8 +331,17 @@ const ICON_CATEGORIES: IconCategory[] = [
   },
 ];
 
-function ArchPalette() {
+/**
+ * The vendor icons: the ones this diagram carries, the recent and favourite
+ * ones, and the search over the bundled collections. Shared by architecture,
+ * where an icon is a service, and flowchart, where it is a picture with its
+ * name under it — the cloud diagrams drawn as flowcharts, and every one
+ * imported from draw.io, are made of exactly these.
+ */
+function VendorIcons() {
   const [query, setQuery] = useState("");
+  /** The icon under the pointer or the focus, named under the search. */
+  const [shown, setShown] = useState<string | null>(null);
   const [category, setCategory] = useState<string | null>(null);
   const [results, setResults] = useState<string[]>([]);
 
@@ -337,7 +360,8 @@ function ArchPalette() {
             const cat = ICON_CATEGORIES.find((c) => c.label === category)!;
             const out: string[] = [];
             for (const collection of cat.collections ?? ICON_COLLECTIONS) {
-              out.push(...(await iconsByPrefix(collection, cat.prefixes, 48)));
+              const prefixes = cat.byCollection?.[collection] ?? cat.prefixes;
+              out.push(...(await iconsByPrefix(collection, prefixes, 48)));
               if (out.length >= 144) break;
             }
             return out.slice(0, 144);
@@ -370,6 +394,95 @@ function ArchPalette() {
     icons: carried.filter((ref) => (vendorOf[plainName(ref)] ?? "other") === vendor),
   })).filter((section) => section.icons.length > 0);
 
+  return (
+    <>
+      {/* Imported icons. They are in no bundled collection, so without a
+          place of their own the only way back to one was to remember its
+          name — and filed by vendor, because a pack is hundreds of them. */}
+      {byVendor.map(({ vendor, icons }) => (
+        <div key={vendor}>
+          <div className="panel-title">
+            {VENDOR_LABELS[vendor] || t("palette.sectionCarried")}
+          </div>
+          <div className="icon-grid pinned">
+            {icons.map((name) => (
+              <IconCell key={name} name={name} onShow={setShown} />
+            ))}
+          </div>
+        </div>
+      ))}
+      {pinned.length > 0 && (
+        <>
+          <div className="panel-title">{t("palette.sectionPinned")}</div>
+          <div className="icon-grid pinned">
+            {pinned.map((name) => (
+              <IconCell key={name} name={name} onShow={setShown} />
+            ))}
+          </div>
+        </>
+      )}
+      <div className="panel-title">{t("palette.sectionVendor")}</div>
+      <div className={`icon-search-wrap${query ? " has-query" : ""}`}>
+        <svg className="icon-search-glass" viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="7" cy="7" r="4.5" />
+          <path d="M10.5 10.5 14 14" />
+        </svg>
+        <input
+          className="icon-search"
+          placeholder={t("palette.searchIcons")}
+          aria-label={t("palette.search")}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        {query && (
+          <button
+            type="button"
+            className="icon-search-clear"
+            aria-label={t("palette.clearSearch")}
+            title={t("palette.clearSearch")}
+            onClick={() => setQuery("")}
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        )}
+      </div>
+      <div className="chip-row">
+        {ICON_CATEGORIES.map((c) => (
+          <button
+            key={c.label}
+            className={`chip${category === c.label && !query.trim() ? " active" : ""}`}
+            onClick={() => {
+              setQuery("");
+              setCategory(category === c.label ? null : c.label);
+            }}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+      {/* The name of the icon pointed at: the pictures alone do not say which
+          of three blue clouds is which, and a tooltip takes a while. */}
+      <div className="icon-readout-line" aria-hidden="true">
+        {shown ?? "\u00a0"}
+      </div>
+      <div className="icon-grid">
+        {icons.map((name) => (
+          <IconCell key={name} name={name} onShow={setShown} />
+        ))}
+        {query.trim() && icons.length === 0 && (
+          <div className="palette-hint">{t("palette.noIcons")}</div>
+        )}
+      </div>
+      {/* Last, for the icon none of the bundled sets has. */}
+      <div className="icon-import">
+        <ImportIcon />
+      </div>
+    </>
+  );
+}
+
+function ArchPalette() {
+  const t = useT();
   return (
     <aside className="palette palette-arch" aria-label={t("palette.architecture")}>
       <div className="panel-title">{t("palette.sectionBase")}</div>
@@ -411,66 +524,7 @@ function ArchPalette() {
         </div>
         <PaletteItem item={GROUP_ITEM} />
       </div>
-      {/* Imported icons. They are in no bundled collection, so without a
-          place of their own the only way back to one was to remember its
-          name — and filed by vendor, because a pack is hundreds of them. */}
-      {byVendor.map(({ vendor, icons }) => (
-        <div key={vendor}>
-          <div className="panel-title">
-            {VENDOR_LABELS[vendor] || t("palette.sectionCarried")}
-          </div>
-          <div className="icon-grid pinned">
-            {icons.map((name) => (
-              <IconCell key={name} name={name} />
-            ))}
-          </div>
-        </div>
-      ))}
-      {pinned.length > 0 && (
-        <>
-          <div className="panel-title">{t("palette.sectionPinned")}</div>
-          <div className="icon-grid pinned">
-            {pinned.map((name) => (
-              <IconCell key={name} name={name} />
-            ))}
-          </div>
-        </>
-      )}
-      <div className="panel-title">{t("palette.sectionVendor")}</div>
-      {/* Beside the search, because this is where you are when you want an
-          icon the bundled sets do not have. */}
-      <div className="icon-import">
-        <ImportIcon />
-      </div>
-      <input
-        className="icon-search"
-        placeholder={t("palette.searchIcons")}
-        aria-label={t("palette.search")}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
-      <div className="chip-row">
-        {ICON_CATEGORIES.map((c) => (
-          <button
-            key={c.label}
-            className={`chip${category === c.label && !query.trim() ? " active" : ""}`}
-            onClick={() => {
-              setQuery("");
-              setCategory(category === c.label ? null : c.label);
-            }}
-          >
-            {c.label}
-          </button>
-        ))}
-      </div>
-      <div className="icon-grid">
-        {icons.map((name) => (
-          <IconCell key={name} name={name} />
-        ))}
-        {query.trim() && icons.length === 0 && (
-          <div className="palette-hint">{t("palette.noIcons")}</div>
-        )}
-      </div>
+      <VendorIcons />
     </aside>
   );
 }
@@ -522,7 +576,10 @@ export function Palette() {
   const items: Item[] = groupLabel ? [...base, { ...GROUP_ITEM, labelKey: groupLabel }] : base;
 
   return (
-    <aside className="palette" aria-label={t("palette.shapes")}>
+    <aside
+      className={`palette${kind === "flowchart" ? " palette-arch" : ""}`}
+      aria-label={t("palette.shapes")}
+    >
       <div className="panel-title">{t("palette.sectionShapes")}</div>
       <div className="palette-hint">{t("palette.hint")}</div>
       <div className="palette-grid">
@@ -530,6 +587,11 @@ export function Palette() {
           <PaletteItem key={item.labelKey} item={item} />
         ))}
       </div>
+      {kind === "flowchart" && (
+        <div className="palette-divided">
+          <VendorIcons />
+        </div>
+      )}
     </aside>
   );
 }

@@ -287,8 +287,11 @@ export function documentMenuActions() {
  * anything lands: the preview dialog holds one of these and calls this when
  * the user accepts it.
  */
-export async function placeOpened({ file, imported }: OpenedFile): Promise<void> {
-  if (shouldOpenInNewDoc()) await createDoc();
+export async function placeOpened(
+  { file, imported }: OpenedFile,
+  opts: { newDoc?: boolean; announce?: boolean } = {},
+): Promise<void> {
+  if (opts.newDoc || shouldOpenInNewDoc()) await createDoc();
 
   // An imported diagram has never been written anywhere. Leaving `savedCode`
   // null is what marks it as work to be saved rather than a clean copy of a
@@ -309,8 +312,44 @@ export async function placeOpened({ file, imported }: OpenedFile): Promise<void>
     handle: file.handle,
     savedCode,
   });
-  if (imported) announceImport(imported);
+  if (imported && opts.announce !== false) announceImport(imported);
 }
+
+/**
+ * Place several pages of one file, each in a document of its own named after
+ * its page — "aks-baseline - Overview.mmd" — so the tabs say which is which.
+ * The first goes where a single import would; the rest open beside it.
+ */
+export async function placeOpenedPages(list: OpenedFile[], titles: string[]): Promise<void> {
+  if (list.length === 1) return placeOpened(list[0]);
+  for (const [i, opened] of list.entries()) {
+    // A page's name may hold what a file name cannot.
+    const title = (titles[i] ?? `${i + 1}`).replace(/[\\/:*?"<>|]+/g, " ").trim();
+    const name = `${opened.file.name.replace(/\.mmd$/, "")} - ${title}.mmd`;
+    await placeOpened(
+      { ...opened, file: { ...opened.file, name } },
+      { newDoc: i > 0, announce: false },
+    );
+  }
+  const format = list[0].imported?.format;
+  if (format) {
+    toast("toast.importedPages", "info", {
+      count: String(list.length),
+      source: SOURCE_NAMES[format],
+    });
+  }
+}
+
+/** Product names rather than message keys: none of them is translated. */
+const SOURCE_NAMES: Record<ImportSummary["format"], string> = {
+  dot: "Graphviz",
+  drawio: "draw.io",
+  sql: "SQL",
+  excalidraw: "Excalidraw",
+  plantuml: "PlantUML",
+  vsdx: "Visio",
+  lucid: "Lucidchart",
+};
 
 /**
  * Say what came across, and what did not.
@@ -319,17 +358,7 @@ export async function placeOpened({ file, imported }: OpenedFile): Promise<void>
  * than left to spot the missing pages themselves.
  */
 function announceImport(imported: ImportSummary): void {
-  // Product names rather than message keys: none of them is translated.
-  const SOURCE = {
-    dot: "Graphviz",
-    drawio: "draw.io",
-    sql: "SQL",
-    excalidraw: "Excalidraw",
-    plantuml: "PlantUML",
-    vsdx: "Visio",
-    lucid: "Lucidchart",
-  } as const;
-  const source = SOURCE[imported.format];
+  const source = SOURCE_NAMES[imported.format];
   toast("toast.imported", "info", {
     source,
     nodes: String(imported.nodes),

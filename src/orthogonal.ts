@@ -36,6 +36,13 @@ export interface Frame {
 
 const centre = (r: Frame): Point => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
 
+/** The space between two boxes along an axis; negative where they overlap. */
+function gap(a: Frame, b: Frame, axis: Axis): number {
+  const [aLo, aHi] = axis === "x" ? [a.x, a.x + a.w] : [a.y, a.y + a.h];
+  const [bLo, bHi] = axis === "x" ? [b.x, b.x + b.w] : [b.y, b.y + b.h];
+  return Math.max(aLo, bLo) - Math.min(aHi, bHi);
+}
+
 /** Do these two boxes share any of the given axis? */
 function overlaps(a: Frame, b: Frame, axis: Axis): boolean {
   const [aLo, aHi] = axis === "x" ? [a.x, a.x + a.w] : [a.y, a.y + a.h];
@@ -68,7 +75,18 @@ export function bestSides(from: Frame, to: Frame): { from: Side; to: Side } {
   const dy = b.y - a.y;
 
   const horizontal = Math.abs(dx) >= Math.abs(dy);
-  const useX = horizontal ? !overlaps(from, to, "x") : overlaps(from, to, "y");
+  let useX = horizontal ? !overlaps(from, to, "x") : overlaps(from, to, "y");
+
+  // Two faces closer together than a stub each have no room between them
+  // for the line to leave one square and arrive at the other square, so the
+  // route went out, round the outside of both boxes and back — hundreds of
+  // units to cross a gap of ten. When the other pair of faces has that room,
+  // they are the ones to use.
+  const room = 2 * STUB;
+  const gapX = gap(from, to, "x");
+  const gapY = gap(from, to, "y");
+  if (useX && gapX < room && gapY >= room) useX = false;
+  else if (!useX && gapY < room && gapX >= room) useX = true;
 
   if (useX) {
     return dx >= 0 ? { from: "right", to: "left" } : { from: "left", to: "right" };
@@ -157,14 +175,23 @@ export function withStubs(anchors: Point[], from: Side, to: Side, stub = STUB): 
   if (anchors.length < 2) return anchors;
   const out = [...anchors];
 
+  // Already square: the next point is straight out from the face, however
+  // near. A stub then would land beyond it, and the line would go out past
+  // its own corner and come back.
+  const square = (a: Point, b: Point, d: Point) =>
+    reach(a, b, d) > 0.5 && (d.x !== 0 ? Math.abs(a.y - b.y) < 0.5 : Math.abs(a.x - b.x) < 0.5);
+
   const leaving = outward(from);
-  if (reach(out[0], out[1], leaving) < stub) {
+  if (reach(out[0], out[1], leaving) < stub && !square(out[0], out[1], leaving)) {
     out.splice(1, 0, { x: out[0].x + leaving.x * stub, y: out[0].y + leaving.y * stub });
   }
 
   const arriving = outward(to);
   const last = out.length - 1;
-  if (reach(out[last], out[last - 1], arriving) < stub) {
+  if (
+    reach(out[last], out[last - 1], arriving) < stub &&
+    !square(out[last], out[last - 1], arriving)
+  ) {
     out.splice(last, 0, {
       x: out[last].x + arriving.x * stub,
       y: out[last].y + arriving.y * stub,

@@ -24,6 +24,190 @@ itself ships, the following count as the public API for semver purposes:
 Breaking any of those requires a major version. The React component structure,
 CSS class names and internal store shape are _not_ public API.
 
+## [Unreleased]
+
+### Fixed
+
+- **Connections go round the nodes in their way.** A connection whose two
+  ends faced each other — the commonest kind — went straight through any
+  node between them: the search for a way round started on the node's own
+  face, inside its own margin, and gave up at once.
+- **Connections leave and arrive square.** Moving apart two connections that
+  shared a corridor could slide the run attached to a node, so a line set
+  off along the node's border, or ran along it into the arrowhead with a
+  small curl at the end.
+- **Two or more connections between the same two nodes start from the right
+  side.** They were hung from a node's first handle — its left side — so
+  `a --> b` written twice set off from behind `a` and crossed it. They are now
+  drawn like every other connection, side by side, as SVG export already drew
+  them.
+- **A connection between two nearly level nodes is straight**, instead of a
+  Z with a step a few units high.
+- **Connections reach the outline of a diamond, circle or other shaped
+  node**, not the box around it. Off a diamond's point, where several
+  connections sharing a side are placed, a line stopped short in the air.
+- **Copy from the canvas, paste anywhere.** Ctrl+C (or Copy in the menu)
+  puts the selection on the system clipboard as a picture and as its
+  Mermaid at once: PowerPoint and Word paste the picture, a text editor
+  pastes the code. The picture has no background, so it sits on the slide
+  or page as drawn shapes do, and is drawn in the light theme's colours
+  so its words read on a white page whatever theme the app is in. With nothing selected the whole diagram goes. The right-click menu adds
+  "Copy as image" and "Copy as text", for when the form an application
+  prefers is not the one wanted. Before, a
+  copy never left the app.
+- **Resizing a picture resizes the picture.** Dragging the handles of a
+  picture with no frame round it made the box bigger and left the picture
+  small in the middle of it, and the Mermaid kept the old size. Now the
+  picture grows and shrinks with the handles, in proportion, and the box
+  hugs it when let go; the size fields do the same.
+- **Crop a picture.** "Crop image…" in a picture's right-click menu opens
+  it with a frame to drag, or numbers to type. The crop is cut into the
+  picture itself, so the Live Editor and every export show it cropped too;
+  the part kept stays the size it was on the canvas, and undo brings the
+  rest back.
+- **Pictures in the SVG export and in a copy.** A node's picture — every
+  icon of an imported Azure or AWS diagram — was missing from the SVG
+  export and from a copy pasted into a slide, which kept only the captions.
+  Pictures linked from the web are fetched and carried inside the copy.
+  Captions with no box round them keep the slim padding they have on the
+  canvas, rather than breaking onto an extra line over the icon above.
+- **Paste a picture onto the canvas.** An image copied from a web page or
+  any other application, pasted onto a flowchart, becomes an image node in
+  the middle of the view — scaled down if it is large, since it travels
+  inside the Mermaid. Pasting the app's own copy still brings back the
+  nodes, not a picture of them.
+- **Any page of a draw.io or Visio file can be imported — or several.** The
+  import dialog lists the pages and previews the one picked; only the first
+  was reachable before, and a file of an overview and its details lost the
+  details. Ticking more than one, or "All pages", imports each into a tab of
+  its own, named after its page. A file of dozens of pages keeps the list
+  in a box that scrolls, so the dialog still fits the window.
+- **draw.io pictures come across as pictures.** Icons pasted into a drawing —
+  most Azure, AWS and GCP diagrams — and ones from draw.io's own library are
+  drawn with their caption above or below and no box round them, instead of
+  an empty square with the caption cut short inside it. A drawing made mostly
+  of such pictures opens as a flowchart rather than as `architecture-beta`.
+- **draw.io groups are dissolved.** A group made with Ctrl+G became a
+  subgraph titled with its id — `g1`, `g10` — round the panel that really
+  was the box; its shapes now stand where they were, and the panel becomes
+  the group. Panels nested inside containers are found as well, and a
+  container with no title has none.
+- **draw.io connections keep where they meet their boxes.** An end pinned to
+  a point of a box, or resting on one, becomes a corner just outside that
+  point, so the line leaves and arrives where the author put it instead of
+  by whichever face lay nearest the far end — two lines leaving one box no
+  longer lie along each other for it. An arrow with its only head at the
+  start is turned round, where its head was dropped.
+- **Imported pictures stay where they were drawn**: a caption wider than its
+  icon no longer pushes the icon off to one side.
+- **Groups take the colours a diagram gives them.** `style vnet fill:…` on a
+  flowchart subgraph was read and thrown away; it is now kept, written back,
+  and drawn on the canvas and in SVG export — with a solid frame, as mermaid
+  draws a styled subgraph, unless it has a `stroke-dasharray`. draw.io panels
+  arrive with their own fill, frame and dash, white where draw.io leaves the
+  fill to its default, and words lying on a panel are written in a colour
+  that reads on it rather than in the theme's.
+- **A flowchart group's colours can be set in the inspector** — fill, border
+  and title — as a node's can.
+- **Ready-made colours in the inspector.** A row of fill-and-border pairs —
+  draw.io's palette, and a dark one — sets a node's or a group's colours in a
+  click, with a text colour that reads on the fill; the pickers offer the
+  same colours among their suggestions.
+- **Undo takes back a colour picked by dragging in one step.** The picker
+  sends a change for every colour the pointer crosses, and each was a step
+  of its own, so undo walked back through all of them.
+- **Exporting mermaid's own drawing works when a label has two lines.**
+  Mermaid hands its drawing back with a bare `<br>` in such a label, which no
+  XML reader accepts: PNG and PDF export failed with "could not rasterize the
+  mermaid SVG", and the .svg it saved opened nowhere. It is now written out
+  as well-formed XML.
+- **Large diagrams are drawn in the preview and in export.** Mermaid stops at
+  50,000 characters and draws "Maximum text size in diagram exceeded"
+  instead; a draw.io import whose icons travel in the file passes that with a
+  dozen of them. The limit is now 5,000,000.
+- **A group on the canvas has one frame, on its edge.** React Flow's own
+  styling drew a second, solid frame round it and set the dashed one 11px
+  inside, where neither the SVG export nor draw.io draws it.
+- **Imported words stay inside what holds them.** The canvas's text runs a
+  little wider than draw.io's, so a label that fitted there could run over
+  its box's border here, or across the frame of the zone it sat in. Such a
+  label is now set a little smaller — down to the size at which it fits — and
+  a zone's title drawn across the frame is moved in off it, unless that
+  would put it on a shape beside it. A name breaks at its hyphens, as the
+  browser breaks it, and words drawn beside a shape are left as they are.
+- **More of a draw.io drawing arrives.** A shape in the corner of its group,
+  which draw.io writes with no coordinates, is no longer dropped, and an arrow
+  whose end rests on a shape without being glued to it is tied to that shape.
+- **Words with no box keep their whole text** on the canvas rather than being
+  cut to the box they came in.
+- **draw.io and Visio files with an unlabelled shape open.** A box with no
+  text — an icon, a dot, a separator — was written as `n1[""]`, which Mermaid
+  refuses, so one of them stopped the whole import from opening. The same
+  went for a flowchart node or group whose text was deleted in the editor.
+- **draw.io colours Mermaid cannot read are left to the theme**: `default`,
+  and the `light-dark(…)` pair draw.io writes since its dark mode, whose light
+  half is kept.
+- **An architecture import with a node named "Title…" opens**: the grammar
+  reads `title` at the start of any id as the diagram's title.
+- **A draw.io zone drawn round other shapes is imported as a group.** A
+  trust boundary, a VPC or a coloured panel laid over the shapes it encloses
+  became a giant node with its title in the middle, and an obstacle every
+  connection inside it was walled in by. An unfilled box round any shapes, or
+  a filled one round two or more, is now a subgraph holding them.
+- **Connections drawn inside a draw.io swimlane keep their corners where they
+  were**, instead of short of the lane by its offset.
+- **A connection's label breaks at `<br>` on the canvas and in exported SVG**,
+  instead of showing the tag; a `<br>` draw.io wrote with a style on it no
+  longer joins the lines it separated.
+- **Small imported tags show their text**: a 40×20 box read "A" for "AV11".
+- **A connection with corners leaves and arrives by the faces that look at
+  its first and last corner**, and meets the face level with that corner, as
+  Visio and draw.io glue one. Chosen against the far node instead, imported
+  connections tied knots beside their ends.
+- **Busy diagrams route round their nodes.** The search for a way round was
+  switched off for any diagram of more than sixty nodes; it now looks only at
+  the boxes near each connection. A panel behind other nodes, and text with
+  no box, are no longer obstacles.
+- **No connection is drawn on the slant**: separating two runs that shared a
+  line could pull a neighbouring run off square.
+- **Renaming a node in place shows the words as they will be.** The field
+  came up in the browser's own type size rather than the label's, so the text
+  grew when double-clicked; and it was painted with the canvas's background,
+  so a pale node's dark text — common in imported drawings — turned black on
+  black in the dark theme. It now sits inside the label and takes the node's
+  fill.
+- **The import preview and `archyne-render` draw connections as the canvas
+  does.** Both rebuilt the diagram from its text without the corners, the
+  connection styles and the node looks the document keeps in its comments,
+  so an imported drawing's connections were routed from scratch there and
+  looked nothing like the canvas it was about to open on.
+- **Lines leaving one face set off from different points**, instead of from
+  one spot and on top of each other for their first stretch — including two
+  boxes stacked edge to edge, whose imported corner sat on the line between
+  them.
+- **Lines on one face are ordered so that turning off does not cross**: of
+  two lines leaving a side and both dropping down, the one that drops first
+  takes the lower place, as on a metro map, instead of the order their far
+  ends happened to give. Once routed, lines that turned through one shared
+  column are put in order again — places, columns or both swapped wherever
+  that crosses fewer lines and hides none.
+- **A connection's label keeps clear of arrowheads.** Only an arrowhead's tip
+  was kept out from under a label, so a plate could cover the rest of the
+  head on a straight last leg, and one that just cleared a head on one
+  machine sat on it where the font is a little wider. The whole head is
+  avoided now, with a few units to spare.
+- **Arrowheads on one face no longer touch.** Heads are kept apart along the
+  face whatever moved them there, and on a round node only the middle of
+  each face takes connections, so heads from two faces do not meet on the
+  curve.
+- **Connections sharing a corridor are fanned out in the order that crosses
+  least**, onto lanes nobody else holds, never across a node, and never in
+  towards the node a run leaves — that last check was the wrong way round, so
+  a separated run could end up a couple of units off its node with no
+  straight line behind the arrowhead.
+- **No long detour round both boxes** when two nodes sit close side by side
+  but far apart down the page: the faces with room between them are used.
+
 ## [1.1.1-alpha.1] — 2026-10-24
 
 ### Fixed

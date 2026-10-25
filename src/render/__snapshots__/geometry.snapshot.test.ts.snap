@@ -15,8 +15,8 @@ g transform=translate(24,24)
 exports[`the geometry it emits > places a flowchart the same way every time 1`] = `
 "rect width=100% height=100%
 g transform=translate(24,24)
-  path class=e d=M 80,54 L 80,94.5 Q 80,97 77.5,97 L 77.5,97 Q 75,97 75,99.5 L 75,140
-  path class=e d=M 75,226 L 75,260.5 Q 75,263 77.5,263 L 77.5,263 Q 80,263 80,265.5 L 80,300
+  path class=e d=M 75,54 L 75,140
+  path class=e d=M 75,226 L 75,300
   g transform=translate(0,0)
     rect class=sf x=1 y=1 width=158 height=52 rx=26
     text class=t text-anchor=middle
@@ -29,7 +29,7 @@ g transform=translate(24,24)
     rect class=sf x=1 y=1 width=158 height=52
     text class=t text-anchor=middle
       tspan x=80 y=31.5 font-size=12 "Process the request"
-  g transform=translate(63.63,252.69)
+  g transform=translate(61.13,252.69)
     rect class=el-bg x=0 y=0 width=27.74 height=20.63 rx=4
     text class=el x=13.87 y=10.32 text-anchor=middle "yes""
 `;

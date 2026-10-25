@@ -113,6 +113,20 @@ describe("the converted diagram", () => {
       link("21", "12", "13"),
   );
 
+  it("keeps an id from beginning with a word the grammar takes over", async () => {
+    // `service title_text(server)` does not parse: `title` starts the
+    // diagram's title wherever it begins a token, so the id never arrives.
+    const { code } = drawioToMermaid(
+      file(
+        aws("11", "Title text", "ec2", 'x="40" y="60" width="78" height="78"') +
+          aws("12", "Orders API", "ec2", 'x="240" y="60" width="78" height="78"') +
+          link("20", "11", "12"),
+      ),
+    );
+    expect(code).toContain("service n_title_text(server)[Title text]");
+    await expect(parseDiagram(code)).resolves.toBeTruthy();
+  });
+
   it("makes the container a group and the shapes services", () => {
     // Lower-case ids: `architecture-beta` rejects a capital outright, which
     // the labels beside them do not.

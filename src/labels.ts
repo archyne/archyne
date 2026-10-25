@@ -34,6 +34,7 @@
  * A label the user has dragged is never moved. It is where it was put, and it
  * takes part only as something for the others to avoid.
  */
+import { labelLines } from "./model/label";
 import type { Rect } from "./avoid";
 import { absoluteBoxes } from "./boxes";
 import { isGroup, type AnyNode, type DiagramKind, type FlowEdge } from "./model/types";
@@ -226,10 +227,21 @@ export function labelTextOf(edge: FlowEdge): string {
   return edge.data?.label ?? "";
 }
 
-/** The plate a label is drawn on, given the text. */
+/**
+ * The plate a label is drawn on, given the text: its widest line, all its
+ * lines tall. An imported label breaks often — `6443<br/>HTTPS<br/>TLS1.2` —
+ * and measured as one line it claimed a plate three times too wide and a
+ * third of the height it is drawn at.
+ */
 export function plateSize(text: string): { w: number; h: number } {
-  const size = textMetrics().measure(text, LABEL_FONT);
-  return { w: size.width + LABEL_PAD.x * 2, h: size.height + LABEL_PAD.y * 2 };
+  let width = 0;
+  let height = 0;
+  for (const line of labelLines(text)) {
+    const size = textMetrics().measure(line, LABEL_FONT);
+    width = Math.max(width, size.width);
+    height += size.height;
+  }
+  return { w: width + LABEL_PAD.x * 2, h: height + LABEL_PAD.y * 2 };
 }
 
 /** The plate, as a rectangle, centred on a point. */
@@ -370,6 +382,41 @@ function holds(box: Rect, p: Point): boolean {
  */
 export const HEAD_REACH = 16;
 
+/** How finely the stretch a head covers is sampled. */
+const HEAD_STEP = 2;
+
+/**
+ * The room kept between a label and an arrowhead. Labels are placed from
+ * measured text and drawn by the browser, and the two disagree by a pixel or
+ * two from one font to the next — with none to spare, a plate that cleared a
+ * head on Windows sat on it on Linux.
+ */
+const HEAD_CLEARANCE = 6;
+
+/**
+ * The points along the first `reach` units of a line: where its marker is
+ * drawn. Sampled rather than taken at the corners, since a head on a straight
+ * last leg has no corner under it but its tip — and a plate could cover the
+ * rest of it while missing that one point.
+ */
+function alongFrom(line: Point[], reach: number): Point[] {
+  const out: Point[] = [line[0]];
+  let walked = 0;
+  let next = HEAD_STEP;
+  for (let i = 1; i < line.length && next <= reach; i++) {
+    const a = line[i - 1];
+    const b = line[i];
+    const leg = Math.hypot(b.x - a.x, b.y - a.y);
+    while (next <= reach && next <= walked + leg) {
+      const t = leg === 0 ? 0 : (next - walked) / leg;
+      out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+      next += HEAD_STEP;
+    }
+    walked += leg;
+  }
+  return out;
+}
+
 /**
  * One connection as it is drawn: the line, its two ends, and what it covers.
  *
@@ -416,13 +463,10 @@ export function drawnLines(routes: Map<string, Point[]>): Drawn[] {
   for (const [id, route] of routes) {
     if (route.length < 2) continue;
     const line = drawnPoints(route);
-    const total = legs(line).total;
-    const heads: Point[] = [line[0]];
-    let walked = 0;
-    for (let i = 1; i < line.length; i++) {
-      walked += Math.hypot(line[i].x - line[i - 1].x, line[i].y - line[i - 1].y);
-      if (walked <= HEAD_REACH || total - walked <= HEAD_REACH) heads.push(line[i]);
-    }
+    const heads = [
+      ...alongFrom(line, HEAD_REACH),
+      ...alongFrom([...line].reverse(), HEAD_REACH),
+    ];
     out.push({ id, line, heads, bounds: boundsOf(line) });
   }
   return out;
@@ -504,9 +548,10 @@ function costOf(
   let onHead = 0;
   let onStranger = 0;
   let crossed = 0;
+  const clear = grow(box, HEAD_CLEARANCE);
   for (const other of lines) {
-    if (!near(box, other.bounds)) continue;
-    for (const p of other.heads) if (holds(box, p)) onHead++;
+    if (!near(clear, other.bounds)) continue;
+    if (other.heads.some((p) => holds(clear, p))) onHead++;
     if (other.id === mine.id) continue;
     const along = seen(lyingAlong(box, other.line));
     if (along > 0) {

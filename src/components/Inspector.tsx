@@ -13,6 +13,8 @@ import type { RouteStyle } from "../model/edgeStyle";
 import type { NodeLook } from "../model/nodeStyle";
 import { useIconPrefs } from "../iconPrefs";
 import { labelToText, textToLabel } from "../model/label";
+import { readableOn } from "../model/importShared";
+import { useId } from "react";
 import {
   C4_SHAPES,
   CLASS_MARKERS,
@@ -80,6 +82,27 @@ function styleValue(styles: string[] | undefined, key: string, fallback: string)
 }
 
 /**
+ * Fill and border together, a click each: draw.io's own palette, which the
+ * diagrams imported from it already speak, and one dark pair for the dark
+ * theme. The text colour is whichever reads on the fill.
+ */
+const COLOUR_PRESETS: Array<{ fill: string; stroke: string }> = [
+  { fill: "#dae8fc", stroke: "#6c8ebf" },
+  { fill: "#d5e8d4", stroke: "#82b366" },
+  { fill: "#ffe6cc", stroke: "#d79b00" },
+  { fill: "#fff2cc", stroke: "#d6b656" },
+  { fill: "#f8cecc", stroke: "#b85450" },
+  { fill: "#e1d5e7", stroke: "#9673a6" },
+  { fill: "#f5f5f5", stroke: "#666666" },
+  { fill: "#2d3748", stroke: "#718096" },
+];
+
+/** Offered inside each picker as well, where the browser shows suggestions. */
+const SWATCHES = [
+  ...new Set([...COLOUR_PRESETS.flatMap((p) => [p.fill, p.stroke]), "#ffffff", "#000000"]),
+];
+
+/**
  * Fill, border, text colour and type size — the `style <id> …` statement,
  * as controls.
  *
@@ -89,69 +112,113 @@ function styleValue(styles: string[] | undefined, key: string, fallback: string)
  * colour picker. `architecture-beta` has no `style` statement at all, so a
  * service is simply not offered one.
  */
-function StyleRow({ node }: { node: AnyNode & { data: { styles?: string[] } } }) {
+function StyleRow({
+  node,
+  sized = true,
+}: {
+  node: AnyNode & { data: { styles?: string[] } };
+  /** Whether its type size is offered: a container's title has none to set. */
+  sized?: boolean;
+}) {
   const t = useT();
   const updateNodeData = useGraphStore((s) => s.updateNodeData);
   const styles = node.data.styles;
+  // Dragging through a picker sends a change per pointer move; sent as one
+  // gesture they are one step of undo, not a step for every colour crossed.
   const set = (key: string, value: string) =>
-    updateNodeData(node.id, { styles: withStyle(styles, key, value) });
+    updateNodeData(node.id, { styles: withStyle(styles, key, value) }, { burst: key });
+  const swatches = useId();
 
   return (
-    <div className="color-row">
-      <label>
-        {t("insp.fill")}
-        <input
-          type="color"
-          value={styleValue(styles, "fill", "#232a3a")}
-          onChange={(e) => set("fill", e.target.value)}
-        />
-      </label>
-      <label>
-        {t("insp.border")}
-        <input
-          type="color"
-          value={styleValue(styles, "stroke", "#5b8def")}
-          onChange={(e) => set("stroke", e.target.value)}
-        />
-      </label>
-      <label>
-        {t("insp.text")}
-        <input
-          type="color"
-          value={styleValue(styles, "color", "#e6e9f0")}
-          onChange={(e) => set("color", e.target.value)}
-        />
-      </label>
-      {/* `font-size` is a label style in mermaid's own reckoning, so a
+    <>
+      <div className="colour-presets" role="group" aria-label={t("insp.presets")}>
+        {COLOUR_PRESETS.map(({ fill, stroke }) => (
+          <button
+            key={fill}
+            type="button"
+            className="colour-preset"
+            style={{ background: fill, borderColor: stroke }}
+            aria-label={t("insp.preset", { fill, stroke })}
+            title={`${fill} / ${stroke}`}
+            onClick={() => {
+              const color = readableOn(fill);
+              updateNodeData(node.id, {
+                styles: withStyle(
+                  withStyle(withStyle(styles, "fill", fill), "stroke", stroke),
+                  "color",
+                  color ?? "#111111",
+                ),
+              });
+            }}
+          />
+        ))}
+      </div>
+      <datalist id={swatches}>
+        {SWATCHES.map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
+      <div className="color-row">
+        <label>
+          {t("insp.fill")}
+          <input
+            type="color"
+            list={swatches}
+            value={styleValue(styles, "fill", "#232a3a")}
+            onChange={(e) => set("fill", e.target.value)}
+          />
+        </label>
+        <label>
+          {t("insp.border")}
+          <input
+            type="color"
+            list={swatches}
+            value={styleValue(styles, "stroke", "#5b8def")}
+            onChange={(e) => set("stroke", e.target.value)}
+          />
+        </label>
+        <label>
+          {t("insp.text")}
+          <input
+            type="color"
+            list={swatches}
+            value={styleValue(styles, "color", "#e6e9f0")}
+            onChange={(e) => set("color", e.target.value)}
+          />
+        </label>
+        {/* `font-size` is a label style in mermaid's own reckoning, so a
           number here is a number every reader of the file draws with.
           Back at the default it is removed rather than written out:
           12px spelled explicitly on every node is 12px nobody chose. */}
-      <label className="type-size">
-        {t("insp.fontSize")}
-        <input
-          type="number"
-          min={6}
-          max={96}
-          step={1}
-          value={labelSize(styles)}
-          onChange={(e) => {
-            const px = Number(e.target.value);
-            if (!Number.isFinite(px) || px <= 0) return;
-            updateNodeData(node.id, {
-              styles:
-                px === LABEL_SIZE
-                  ? withoutStyles(styles, ["font-size"])
-                  : withStyle(styles, "font-size", `${px}px`),
-            });
-          }}
-        />
-      </label>
-      {(styles?.length ?? 0) > 0 && (
-        <button className="mini" onClick={() => updateNodeData(node.id, { styles: [] })}>
-          {t("insp.reset")}
-        </button>
-      )}
-    </div>
+        {sized && (
+          <label className="type-size">
+            {t("insp.fontSize")}
+            <input
+              type="number"
+              min={6}
+              max={96}
+              step={1}
+              value={labelSize(styles)}
+              onChange={(e) => {
+                const px = Number(e.target.value);
+                if (!Number.isFinite(px) || px <= 0) return;
+                updateNodeData(node.id, {
+                  styles:
+                    px === LABEL_SIZE
+                      ? withoutStyles(styles, ["font-size"])
+                      : withStyle(styles, "font-size", `${px}px`),
+                });
+              }}
+            />
+          </label>
+        )}
+        {(styles?.length ?? 0) > 0 && (
+          <button className="mini" onClick={() => updateNodeData(node.id, { styles: [] })}>
+            {t("insp.reset")}
+          </button>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -159,6 +226,7 @@ function NodeFields({ node }: { node: AnyNode }) {
   const t = useT();
   const updateNodeData = useGraphStore((s) => s.updateNodeData);
   const setNodeStyle = useGraphStore((s) => s.setNodeStyle);
+  const kind = useGraphStore((s) => s.kind);
   switch (node.type) {
     case "shape":
       return (
@@ -497,6 +565,9 @@ function NodeFields({ node }: { node: AnyNode }) {
               <option value="plain">{t("insp.lookPlain")}</option>
             </select>
           </label>
+          {/* A flowchart subgraph takes a `style` statement as a node does;
+              the other families' containers have none to write. */}
+          {kind === "flowchart" && <StyleRow node={node} sized={false} />}
           <NodeSize node={node} />
         </>
       );

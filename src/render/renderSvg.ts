@@ -29,7 +29,7 @@
  * most PDF pipelines all drop it, leaving boxes with no words in them.
  */
 import { labelLines } from "../model/label";
-import { labelSize } from "../model/types";
+import { IMG_SIZE, labelSize } from "../model/types";
 import { styleProps } from "../model/nodeStyle";
 import {
   C4_TAGS,
@@ -42,7 +42,7 @@ import {
   type ShapeNodeData,
 } from "../model/types";
 import { absoluteBoxes } from "../boxes";
-import { allLabels, plateSize } from "../labels";
+import { allLabels, LABEL_PAD, plateSize } from "../labels";
 import { allRoutes } from "../routes";
 import { roundedPolyline, type Point } from "../routing";
 import {
@@ -58,6 +58,8 @@ import {
   ARCH_ICON,
   BORDER_WIDTH as BOX_MODEL_BORDER,
   BOXES,
+  COMPACT_SHAPE,
+  SLIM_LABEL_PAD_X,
   C4_COLOURS,
   C4_HEAD,
   FONTS,
@@ -365,13 +367,96 @@ function shapeLabel(node: AnyNode, w: number, h: number, classDefs: ClassDefs): 
   const data = node.data as ShapeNodeData;
   const custom = drawnStyle(node, classDefs);
   const { font, attrs } = labelFace(custom, face(labelSize(data.styles)));
+  // Neither fill nor stroke: no box to draw, nor to fit the words into.
+  const unboxed = (v?: string) => v === "none" || v === "transparent";
+  const boxless = unboxed(custom.fill) && unboxed(custom.stroke);
+  if (data.img) {
+    return pictureLabel(data, w, h, font, attrs, boxless, node.style?.width == null);
+  }
+  // Words with no box round them, and a box too small for the usual padding,
+  // keep 2px a side, as `.text-only` and `.compact` give them on the canvas.
+  // With the full padding an imported caption — "Azure Firewall" in a box
+  // drawn just wide enough for it — broke onto a third line and climbed up
+  // over the icon above it.
+  const slim =
+    boxless ||
+    (node.style?.width != null && (w < COMPACT_SHAPE.width || h < COMPACT_SHAPE.height));
+  const padX = slim ? SLIM_LABEL_PAD_X : BOXES.shape.padX;
   return textStack([{ text: data.label, font, align: "middle", attrs }], {
-    x: BOXES.shape.padX / 2,
-    width: w - BOXES.shape.padX,
+    x: padX / 2,
+    width: w - padX,
     top: 0,
     height: h,
     place: "centre",
   });
+}
+
+/**
+ * Mermaid's image shape: the picture, and the name above or below it.
+ *
+ * Laid out as `.shape-label.with-image` lays it out on the canvas — a column
+ * centred in the box, 6px 8px of padding, 4px between picture and name, the
+ * picture at its own size unless the box is too small for it, and then fitted
+ * inside keeping its proportions. Without this every picture was missing from
+ * the SVG export and from a copy pasted into a slide: an imported cloud
+ * diagram came out as its captions with nothing above them.
+ */
+function pictureLabel(
+  data: ShapeNodeData,
+  w: number,
+  h: number,
+  font: FontSpec,
+  attrs: string,
+  bare: boolean,
+  unsized: boolean,
+): string {
+  const PAD_X = 8;
+  const PAD_Y = 6;
+  const GAP = 4;
+  const metrics = textMetrics();
+  const inner = { width: w - PAD_X * 2, height: h - PAD_Y * 2 };
+  // A bare picture nobody sized is as wide as its widest line, so on the
+  // canvas its words break only where the label breaks them. Wrapped at the
+  // box instead, a line measured here a fraction wider than the browser made
+  // it broke in two — "Azure / Container / Registry" — and ran out of the box.
+  const widest = Math.max(
+    0,
+    ...labelLines(data.label).map((line) => metrics.measure(line, font).width),
+  );
+  const wrapAt = bare && unsized ? Math.max(inner.width, widest) : inner.width;
+  let words = 0;
+  for (const raw of labelLines(data.label)) {
+    for (const line of wrapText(raw, font, wrapAt, metrics)) {
+      words += metrics.measure(line, font).height;
+    }
+  }
+  const gap = words > 0 ? GAP : 0;
+  const pw = Math.max(0, Math.min(data.imgWidth ?? IMG_SIZE, inner.width));
+  // In a frame the column is the frame's height and the picture gives way to
+  // the words; with none (`.bare`) it keeps its height and the column runs
+  // past the box, centred on it, as it does on the canvas.
+  const ph = bare
+    ? (data.imgHeight ?? IMG_SIZE)
+    : Math.max(0, Math.min(data.imgHeight ?? IMG_SIZE, inner.height - words - gap));
+  const top = PAD_Y + (inner.height - (ph + gap + words)) / 2;
+  const above = data.imgPos === "t";
+  const imageTop = above ? top + words + gap : top;
+  const wordsTop = above ? top : top + ph + gap;
+  const href = esc(data.img ?? "");
+  const image =
+    pw > 0 && ph > 0
+      ? `<image href="${href}" xlink:href="${href}" x="${n((w - pw) / 2)}" y="${n(imageTop)}" ` +
+        `width="${n(pw)}" height="${n(ph)}" preserveAspectRatio="xMidYMid meet"/>`
+      : "";
+  return (
+    image +
+    textStack([{ text: data.label, font, align: "middle", attrs }], {
+      x: (w - wrapAt) / 2,
+      width: wrapAt,
+      top: wordsTop,
+      place: "hang",
+    })
+  );
 }
 
 /** A state: a rounded box with its name, or one of the markers that carry none. */
@@ -580,7 +665,7 @@ function nodeInner(
   icons: Record<string, string>,
   classDefs: ClassDefs,
 ): string {
-  if (isGroup(node)) return groupMarkup(node, w, h);
+  if (isGroup(node)) return groupMarkup(node, w, h, drawnStyle(node, classDefs));
   // Every box-shaped family takes the colours the diagram gives it, from a
   // `style` statement or from a `classDef` the node is a member of.
   const custom = drawnStyle(node, classDefs);
@@ -689,14 +774,32 @@ function ACTOR_GLYPH_MARKUP(h: number): string {
   );
 }
 
-/** A group's frame and its title, which sits above the children. */
-function groupMarkup(node: AnyNode, w: number, h: number): string {
+/**
+ * A group's frame and its title, which sits above the children. Given
+ * colours, the frame is solid unless given a dash as well — as on the canvas
+ * (`.group-node.painted`) and as mermaid draws a styled subgraph.
+ */
+function groupMarkup(
+  node: AnyNode,
+  w: number,
+  h: number,
+  custom: ReturnType<typeof drawnStyle>,
+): string {
   const title = isGroup(node) ? node.data.label : "";
-  const frame = `<rect class="gf" x="0.75" y="0.75" width="${n(w - 1.5)}" height="${n(h - 1.5)}" rx="10"/>`;
+  const decls = [
+    ...(custom.fill ? [`fill:${custom.fill}`] : []),
+    ...(custom.stroke ? [`stroke:${custom.stroke}`] : []),
+    ...(custom.fill || custom.stroke
+      ? [`stroke-dasharray:${custom.strokeDasharray ?? "none"}`]
+      : []),
+  ];
+  const paint = decls.length ? ` style="${esc(decls.join(";"))}"` : "";
+  const frame = `<rect class="gf" x="0.75" y="0.75" width="${n(w - 1.5)}" height="${n(h - 1.5)}" rx="10"${paint}/>`;
   if (!title) return frame;
+  const { font, attrs } = labelFace(custom, FONTS.groupTitle);
   return (
     frame +
-    textStack([{ text: title, font: FONTS.groupTitle, align: "start" }], {
+    textStack([{ text: title, font, align: "start", attrs }], {
       x: GROUP_TITLE.padX / 2,
       width: w - GROUP_TITLE.padX,
       top: GROUP_TITLE.padY / 2,
@@ -714,10 +817,23 @@ function groupMarkup(node: AnyNode, w: number, h: number): string {
 function edgeLabelMarkup(text: string, at: { x: number; y: number }): string {
   if (!text) return "";
   const { w, h } = plateSize(text);
+  const lines = labelLines(text);
+  // One line per `<br>`, stacked about the middle of the plate.
+  const step = (h - LABEL_PAD.y * 2) / lines.length;
+  const body =
+    lines.length === 1
+      ? esc(text)
+      : lines
+          .map(
+            (line, i) =>
+              `<tspan x="${n(w / 2)}"${i ? ` dy="${n(step)}"` : ""}>${esc(line)}</tspan>`,
+          )
+          .join("");
+  const y = h / 2 - ((lines.length - 1) * step) / 2;
   return (
     `<g transform="translate(${n(at.x - w / 2)},${n(at.y - h / 2)})">` +
     `<rect class="el-bg" x="0" y="0" width="${n(w)}" height="${n(h)}" rx="4"/>` +
-    `<text class="el" x="${n(w / 2)}" y="${n(h / 2)}" text-anchor="middle" dominant-baseline="central">${esc(text)}</text>` +
+    `<text class="el" x="${n(w / 2)}" y="${n(y)}" text-anchor="middle" dominant-baseline="central">${body}</text>` +
     `</g>`
   );
 }

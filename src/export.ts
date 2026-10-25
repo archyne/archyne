@@ -187,6 +187,31 @@ async function captureCanvas(
 
 /* ---------- mermaid source ---------- */
 
+/**
+ * The SVG mermaid returns, as a document an image can be loaded from.
+ *
+ * mermaid builds its labels as HTML inside `<foreignObject>` and hands the
+ * drawing back serialised as HTML: a label of two lines holds a bare `<br>`.
+ * Put in the page that is fine; as a file, or as an `<img>` source on the way
+ * to a PNG, it is XML, and one `<br>` with no end tag made the whole document
+ * unreadable — "could not rasterize the mermaid SVG", and an .svg that
+ * opened nowhere. Read as HTML and written out as XML, every element is
+ * closed and the labels keep their XHTML namespace.
+ */
+export function wellFormedSvg(svg: string): string {
+  const doc = new DOMParser().parseFromString(svg, "text/html");
+  const root = doc.querySelector("svg");
+  if (!root) return svg;
+  // The HTML reader keeps a label's `xmlns="…xhtml"` as a plain attribute as
+  // well as putting the element in that namespace, and some serialisers then
+  // write it twice — a duplicate attribute, unreadable again. The serialiser
+  // declares the namespace itself.
+  for (const el of root.querySelectorAll("[xmlns]")) {
+    if (el.namespaceURI !== root.namespaceURI) el.removeAttribute("xmlns");
+  }
+  return new XMLSerializer().serializeToString(root);
+}
+
 function prepareSvg(svg: string, background: string | undefined) {
   let width = 800;
   let height = 600;
@@ -229,7 +254,7 @@ function svgToPng(
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       resolve(canvas.toDataURL("image/png"));
     };
-    img.onerror = () => reject(new Error("could not rasterize the mermaid SVG"));
+    img.onerror = () => reject(new Error("could not rasterize the SVG"));
     img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`;
   });
 }
@@ -237,7 +262,7 @@ function svgToPng(
 async function renderMermaid(opts: ExportOptions, code: string): Promise<string> {
   const src = `%%{init: {"theme": "${opts.theme}"}}%%\n${stripPositions(code)}`;
   const raw = (await renderWithMermaid(`export-${Date.now()}`, src)).svg;
-  const { svg, width, height } = prepareSvg(raw, BG[opts.background]);
+  const { svg, width, height } = prepareSvg(wellFormedSvg(raw), BG[opts.background]);
   if (opts.format === "svg") {
     return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   }
@@ -412,6 +437,92 @@ export async function copyExport(dataUrl: string): Promise<void> {
     return;
   }
   await navigator.clipboard.write([new ClipboardItem({ "image/png": dataUrlToBlob(dataUrl) })]);
+}
+
+export function readDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error("could not read the picture"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Carry the pictures a drawing links to inside it.
+ *
+ * An SVG drawn as an image may not fetch anything, so a picture it names by
+ * URL — draw.io's Azure and AWS icons, which come from draw.io's repository —
+ * was simply not drawn: the copy pasted into a slide had every caption and no
+ * icon above any of them. Fetched here and written in as data, they are. One
+ * that cannot be fetched (a host the page may not reach) is left as it was,
+ * and is missing, as before, rather than failing the whole picture.
+ */
+async function inlinePictures(svg: string): Promise<string> {
+  const linked = /<image href="(https?:[^"]+)" xlink:href="\1"/g;
+  const urls = [...new Set([...svg.matchAll(linked)].map((m) => m[1]))];
+  const data = new Map<string, string>();
+  await Promise.all(
+    urls.map(async (attr) => {
+      try {
+        const url = attr.replace(/&amp;/g, "&");
+        const res = await fetch(url);
+        if (!res.ok) return;
+        let blob = await res.blob();
+        // Served as text by some hosts — raw.githubusercontent.com among them —
+        // and an image of type text/plain is not drawn.
+        if (/\.svg(\?|$)/i.test(url) && blob.type !== "image/svg+xml") {
+          blob = new Blob([blob], { type: "image/svg+xml" });
+        }
+        data.set(attr, await readDataUrl(blob));
+      } catch {
+        // Left linked, and so left out.
+      }
+    }),
+  );
+  return svg.replace(linked, (whole, attr: string) => {
+    const inline = data.get(attr);
+    return inline ? `<image href="${inline}" xlink:href="${inline}"` : whole;
+  });
+}
+
+/**
+ * Part of the diagram as a PNG, for the clipboard: what a copy on the canvas
+ * hands to a slide or a document.
+ *
+ * Drawn by the renderer from the part alone, so whatever else lies inside its
+ * frame stays out of the picture, as it would not in a capture of the canvas.
+ * The capture is still the way for a family the renderer does not draw.
+ *
+ * With no ground of its own: pasted onto a slide or into a document, the
+ * diagram sits on the page as drawn shapes do, rather than in a dark or white
+ * block of the app's colour.
+ */
+export async function picturePng(
+  nodes: AnyNode[],
+  edges: FlowEdge[],
+  kind: DiagramKind,
+  theme: "dark" | "light",
+  classDefs?: ClassDefs,
+): Promise<{ dataUrl: string; width: number; height: number }> {
+  if (canRender(kind) && kind !== "sequence") {
+    const raw = await inlinePictures(
+      await renderSvgWithIcons(nodes, edges, kind, {
+        theme,
+        padding: 16,
+        background: false,
+        classDefs,
+      }),
+    );
+    const { svg, width, height } = prepareSvg(raw, BG.transparent);
+    return { dataUrl: await svgToPng(svg, width, height, 2, BG.transparent), width, height };
+  }
+  const { width, height, viewport } = frameFor(nodes, 16);
+  return {
+    dataUrl: await captureCanvas("png", width, height, viewport, BG.transparent, 2),
+    width,
+    height,
+  };
 }
 
 export function downloadDataUrl(dataUrl: string, filename: string) {

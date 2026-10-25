@@ -95,6 +95,22 @@ describe("flowchart", () => {
     );
     expect(g2.nodes.find((n) => n.id === "api")?.parentId).toBe("backend");
   });
+
+  it("keeps a subgraph's colours", async () => {
+    // Read, they were dropped: every draw.io panel came out the same tint.
+    const { g2 } = await roundTrip(
+      `flowchart LR
+  subgraph vnet ["VNet"]
+    api["API"]
+  end
+  style vnet fill:#dae8fc,stroke:#6c8ebf
+`,
+      "flowchart",
+    );
+    expect(g2.nodes.find((n) => n.id === "vnet")?.data).toMatchObject({
+      styles: ["fill:#dae8fc", "stroke:#6c8ebf"],
+    });
+  });
 });
 
 describe("state diagram", () => {

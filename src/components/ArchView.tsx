@@ -89,7 +89,9 @@ export function C4NodeView({ id, data, selected }: NodeProps<import("../model/ty
       <NodeResize id={id} visible={selected} />
       {person && <div className="c4-head" />}
       <div className="c4-tag">«{C4_TAGS[data.c4Shape] ?? data.c4Shape}»</div>
-      {rename.editing ? rename.field : <div className="c4-label">{data.label}</div>}
+      {/* Inside the label, so the field has the label's type, not the
+          browser's. */}
+      <div className="c4-label">{rename.editing ? rename.field : data.label}</div>
       {data.descr && <div className="c4-descr">{data.descr}</div>}
       <SideHandles />
     </div>

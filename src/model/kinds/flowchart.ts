@@ -57,6 +57,7 @@ export function parseFlowchart(db: Record<string, (...a: unknown[]) => unknown>)
   const direction = normalizeDirection(db.getDirection?.());
 
   const groupIds = new Set(rawSubgraphs.map((sg) => String(sg.id)));
+  const vertexOf = new Map(vertices);
   const parentOf = new Map<string, string>();
   for (const sg of rawSubgraphs) {
     for (const child of (sg.nodes ?? []) as unknown[]) {
@@ -71,11 +72,18 @@ export function parseFlowchart(db: Record<string, (...a: unknown[]) => unknown>)
     if (!sg) return;
     const parent = parentOf.get(gid);
     if (parent) emitGroup(parent);
+    // mermaid keeps a `style` statement naming a subgraph with the vertices,
+    // under the subgraph's id.
+    const styles = ((vertexOf.get(gid)?.styles ?? []) as unknown[]).map(String);
     const g: GroupNode = {
       id: gid,
       type: "group",
       position: { x: 0, y: 0 },
-      data: { label: String(sg.title ?? gid), subgraphId: gid },
+      data: {
+        label: String(sg.title ?? gid),
+        subgraphId: gid,
+        ...(styles.length ? { styles } : {}),
+      },
       style: { width: 320, height: 220 },
       ...(parent ? { parentId: parent } : {}),
     };
@@ -181,8 +189,21 @@ function pictureDecl(data: ShapeNode["data"]): string | null {
   return `@{ ${parts.join(", ")} }`;
 }
 
+/**
+ * A node's or group's label, quoted for its brackets.
+ *
+ * Mermaid refuses an empty pair of quotes — `n1[""]` is a parse error, and so
+ * is a subgraph titled `""` — and a box with no text is everywhere in what
+ * comes in from draw.io and Visio: icons, dots, separators. A single space
+ * draws the same nothing, parses, and reads back as an empty label, so the
+ * file survives being saved and opened again.
+ */
+function boxLabel(label: string): string {
+  return quote(label === "" ? " " : label);
+}
+
 function bracket(shape: Shape, label: string): string {
-  const l = quote(label);
+  const l = boxLabel(label);
   switch (shape) {
     case "square":
       return `[${l}]`;
@@ -260,7 +281,7 @@ export function serializeFlowchart(
   for (const n of byParent.get(undefined) ?? []) emitNode(n, "  ");
 
   const emitGroup = (g: GroupNode, indent: string) => {
-    lines.push(`${indent}subgraph ${g.id} [${quote(g.data.label)}]`);
+    lines.push(`${indent}subgraph ${g.id} [${boxLabel(g.data.label)}]`);
     for (const child of byParent.get(g.id) ?? []) emitNode(child, indent + "  ");
     for (const nested of groups.filter((x) => x.parentId === g.id)) {
       emitGroup(nested, indent + "  ");
@@ -280,6 +301,9 @@ export function serializeFlowchart(
   const styleLines: string[] = [];
   for (const [name, styles] of Object.entries(classDefs)) {
     if (styles.length) styleLines.push(`  classDef ${name} ${styles.join(",")}`);
+  }
+  for (const g of groups) {
+    if (g.data.styles?.length) styleLines.push(`  style ${g.id} ${g.data.styles.join(",")}`);
   }
   const byClass = new Map<string, string[]>();
   for (const n of nodes) {

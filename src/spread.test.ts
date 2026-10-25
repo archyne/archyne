@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GAP, spreadRuns } from "./spread";
-import { segmentsOf } from "./orthogonal";
+import { crosses } from "./avoid";
+import { segmentsOf, STUB } from "./orthogonal";
 import type { Point } from "./routing";
 
 const p = (x: number, y: number): Point => ({ x, y });
@@ -29,14 +30,17 @@ describe("fanning out connections that share a corridor", () => {
     expect(Math.abs(first - second)).toBe(GAP);
   });
 
-  it("leaves the first one exactly where the router put it", () => {
+  it("leaves one exactly where the router put it — the one that avoids a crossing", () => {
+    // Moving `b` aside would take its top run across `a`'s column; moving `a`
+    // crosses nothing. Picking by name, it was `b` that moved.
     const out = spreadRuns(
       new Map([
         ["a", one],
         ["b", two],
       ]),
     );
-    expect(verticalAt(out.get("a")!)).toEqual([200]);
+    expect(verticalAt(out.get("b")!)).toEqual([200]);
+    expect(verticalAt(out.get("a")!)).not.toEqual([200]);
   });
 
   it("does nothing to a corridor with one connection in it", () => {
@@ -148,11 +152,35 @@ describe("what a corridor may not be moved into", () => {
     const along = [p(0, 300), p(400, 300)];
     const frame = { x: 0, y: 100, w: 500, h: 200 };
     const out = spreadRuns(new Map([["a", along]]), [frame]);
-    // The two ends stay on the boxes they came from; the long run between
-    // them is what steps off the border.
+    // The two ends stay on the boxes they came from, each with a stub that
+    // leaves its face square; the long run between them is what steps off
+    // the border.
     const runs = segmentsOf(out.get("a")!).filter((r) => r.axis === "x");
-    expect(runs).toHaveLength(1);
-    expect(Math.abs(runs[0].from.y - 300)).toBe(GAP);
+    expect(runs).toHaveLength(3);
+    expect(runs[0].from).toEqual(p(0, 300));
+    expect(runs[0].to).toEqual(p(STUB, 300));
+    expect(Math.abs(runs[1].from.y - 300)).toBe(GAP);
+    expect(runs[2].from).toEqual(p(400 - STUB, 300));
+    expect(runs[2].to).toEqual(p(400, 300));
+  });
+
+  it("keeps an approach square when it is the run that moves", () => {
+    // Two connections leaving one face and running together the whole way:
+    // the one that moves still sets off away from the face, not along it.
+    const one = [p(0, 0), p(0, 200)];
+    const two = [p(0, 0.5), p(0, 200)];
+    const out = spreadRuns(
+      new Map([
+        ["a", one],
+        ["b", two],
+      ]),
+    );
+    const moved = out.get("b")!;
+    expect(moved[0]).toEqual(p(0, 0.5));
+    expect(moved[1].x).toBe(0);
+    expect(moved[1].y - moved[0].y).toBeCloseTo(STUB);
+    expect(moved[moved.length - 1]).toEqual(p(0, 200));
+    expect(moved[moved.length - 2].x).toBe(0);
   });
 
   it("leaves a connection that only crosses a border alone", () => {
@@ -170,5 +198,73 @@ describe("what a corridor may not be moved into", () => {
     // Only the one route comes back; a frame is not a route and cannot be
     // returned as one.
     expect([...out.keys()]).toEqual(["a"]);
+  });
+});
+
+describe("what a separation may not do", () => {
+  it("never draws a run on the slant", () => {
+    // `b` comes down to a corner and steps back up a few units before it
+    // turns: two runs on one line. Moving the first moved the corner they
+    // share, and the second was dragged off square.
+    const a = [p(0, 0), p(0, 200), p(100, 200)];
+    const b = [p(0.5, 0), p(0.5, 160), p(0.5, 150), p(-100, 150)];
+    const out = spreadRuns(
+      new Map([
+        ["a", a],
+        ["b", b],
+      ]),
+    );
+    for (const route of out.values()) {
+      expect(
+        route.every(
+          (q, i) =>
+            i === 0 ||
+            Math.abs(q.x - route[i - 1].x) < 0.5 ||
+            Math.abs(q.y - route[i - 1].y) < 0.5,
+        ),
+      ).toBe(true);
+    }
+  });
+});
+
+describe("what a separation must leave alone", () => {
+  it("never moves a run in towards the node it leaves", () => {
+    // Out of a left face at x=100, a stub to x=80, then down a column shared
+    // with another connection. The run moved in to x=89 — a stub of eleven,
+    // and the room was checked on the wrong side.
+    const a = [p(100, 0), p(80, 0), p(80, 300), p(300, 300)];
+    const b = [p(100, 40), p(80, 40), p(80, 300.4), p(300, 300.4)];
+    const out = spreadRuns(
+      new Map([
+        ["a", a],
+        ["b", b],
+      ]),
+    );
+    for (const route of out.values()) expect(route[1].x).toBeLessThanOrEqual(80);
+  });
+
+  it("does not push a lane across a node", () => {
+    // A box on each side of the shared column, a lane's width off: one lane
+    // either way runs through a box, and only two lanes clears it.
+    const one = [p(0, 0), p(100, 0), p(100, 400), p(300, 400)];
+    const two = [p(0, 50), p(100, 50), p(100, 400.4), p(300, 400.4)];
+    const boxes = [
+      { x: 85, y: 100, w: 10, h: 200 },
+      { x: 105, y: 100, w: 10, h: 200 },
+    ];
+    const out = spreadRuns(
+      new Map([
+        ["one", one],
+        ["two", two],
+      ]),
+      [],
+      undefined,
+      boxes,
+    );
+    for (const route of out.values()) {
+      for (const box of boxes) {
+        expect(route.every((q, i) => i === 0 || !crosses(route[i - 1], q, box))).toBe(true);
+      }
+    }
   });
 });

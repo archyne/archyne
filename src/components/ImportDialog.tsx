@@ -4,7 +4,7 @@ import { MermaidPreview } from "./MermaidPreview";
 import { PanZoom } from "./PanZoom";
 import { CanvasPreview } from "./CanvasPreview";
 import { useT } from "../i18n";
-import { placeOpened, usePendingImport } from "../documents";
+import { placeOpenedPages, usePendingImport } from "../documents";
 import { sniffKind } from "../model/sniff";
 import { openAsMermaid, type OpenedFile } from "../importFile";
 import type { DiagramKind } from "../model/types";
@@ -48,23 +48,56 @@ export function ImportDialog({ opened }: { opened: OpenedFile }) {
   const kind = sniffKind(file.content);
   const choices = imported?.choices ?? [];
   const pages = imported?.pages ?? [];
-  // A Lucid file can have several pages; the index that was imported lives
-  // on the summary so this selection and the conversion always agree.
+  // A file can have several pages; the index that was imported lives on the
+  // summary so this selection and the conversion always agree.
   const page = imported?.page ?? 0;
+  const pickable = imported?.page !== undefined && pages.length > 1;
+  // The pages that will be imported. Until one is ticked by hand, it is the
+  // page on show — so picking a page to look at and pressing Import does what
+  // it always did — and after that, whatever was ticked.
+  const [ticked, setTicked] = useState<Set<number> | null>(null);
+  const chosen = ticked ?? new Set([page]);
+  const tick = (next: Set<number>) => setTicked(new Set(next));
+  // The family the reader picked by hand, which every page is read as; left
+  // unset, each page is read as whatever it looks like.
+  const [as, setAs] = useState<DiagramKind | undefined>(undefined);
 
   /** Convert again, the reader's guess overruled or another page picked. */
   const reconvert = (over: { as?: DiagramKind; page?: number }) => {
     setBusy(true);
     setError(null);
-    openAsMermaid(opened.source, over.as, over.page)
+    // Each choice keeps the other: picking a page does not undo the family
+    // the reader chose, and choosing a family does not go back to page one.
+    openAsMermaid(
+      opened.source,
+      over.as ?? (choices.includes(kind as DiagramKind) ? (kind as DiagramKind) : undefined),
+      over.page ?? (imported?.page !== undefined ? page : undefined),
+    )
       .then((next) => usePendingImport.setState({ pending: next }))
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setBusy(false));
   };
 
-  const confirm = () => {
+  const confirm = async () => {
     setBusy(true);
-    void placeOpened(opened).finally(close);
+    setError(null);
+    const wanted = [...chosen].sort((a, b) => a - b);
+    try {
+      // Every page is converted before any is placed: one that fails stops
+      // the import with nothing half-done, as a single page always has.
+      const list = [];
+      for (const i of wanted) {
+        list.push(i === page ? opened : await openAsMermaid(opened.source, as, i));
+      }
+      await placeOpenedPages(
+        list,
+        wanted.map((i) => pages[i]),
+      );
+      close();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setBusy(false);
+    }
   };
 
   return (
@@ -81,7 +114,10 @@ export function ImportDialog({ opened }: { opened: OpenedFile }) {
             <select
               value={kind ?? choices[0]}
               disabled={busy || choices.length < 2}
-              onChange={(e) => reconvert({ as: e.target.value as DiagramKind })}
+              onChange={(e) => {
+                setAs(e.target.value as DiagramKind);
+                reconvert({ as: e.target.value as DiagramKind });
+              }}
             >
               {(choices.includes(kind as DiagramKind) || !kind
                 ? choices
@@ -94,11 +130,13 @@ export function ImportDialog({ opened }: { opened: OpenedFile }) {
             </select>
           </label>
 
-          {/* A Lucid file is one page in the way a book is one chapter: the
-              first page is a guess at what was meant, and only some files
-              are one page. The reader picks, the conversion runs again, and
-              nothing lands until the confirm below. */}
-          {imported?.format === "lucid" && pages.length > 1 && (
+          {/* A file of several pages is one page in the way a book is one
+              chapter: the first is a guess at what was meant — a draw.io
+              file is often an overview and then its details. The reader
+              picks, the conversion runs again, and nothing lands until the
+              confirm below. Offered by every format that can convert a page
+              other than the first. */}
+          {pickable && (
             <label>
               {t("import.readAsPage")}
               <select
@@ -114,6 +152,48 @@ export function ImportDialog({ opened }: { opened: OpenedFile }) {
               </select>
             </label>
           )}
+          {/* Which pages land, each as a document of its own: an overview
+              and its details are worth having side by side, and importing
+              them one at a time meant going through this dialog per page. */}
+          {pickable && (
+            <fieldset className="import-pages" disabled={busy}>
+              <legend>{t("import.pagesToImport")}</legend>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={chosen.size === pages.length}
+                  // Some but not all: with the list scrolled, the dash says
+                  // there is a choice made further down.
+                  ref={(box) => {
+                    if (box) box.indeterminate = chosen.size > 0 && chosen.size < pages.length;
+                  }}
+                  onChange={(e) =>
+                    tick(e.target.checked ? new Set(pages.map((_, i) => i)) : new Set())
+                  }
+                />
+                {t("import.allPages")}
+              </label>
+              {/* A file can hold dozens of pages: the list scrolls in a box of
+                  its own so the rest of the dialog stays where it is. */}
+              <div className="import-page-list">
+                {pages.map((title, i) => (
+                  <label key={i}>
+                    <input
+                      type="checkbox"
+                      checked={chosen.has(i)}
+                      onChange={(e) => {
+                        const next = new Set(chosen);
+                        if (e.target.checked) next.add(i);
+                        else next.delete(i);
+                        tick(next);
+                      }}
+                    />
+                    {title}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
           <p className="import-summary">
             {t("import.counts", {
               nodes: String(imported?.nodes ?? 0),
@@ -123,7 +203,7 @@ export function ImportDialog({ opened }: { opened: OpenedFile }) {
 
           {/* Everything the conversion could not do, stated here rather than
               in a toast that has gone by the time the diagram is on screen. */}
-          {imported && imported.pages.length > 1 && imported.format !== "lucid" && (
+          {imported && imported.pages.length > 1 && imported.page === undefined && (
             <p className="field-hint">
               {t("import.onePage", {
                 page: imported.pages[0],
@@ -202,8 +282,14 @@ export function ImportDialog({ opened }: { opened: OpenedFile }) {
       </div>
       <div className="modal-actions">
         <button onClick={close}>{t("import.cancel")}</button>
-        <button className="primary" onClick={confirm} disabled={busy}>
-          {t("import.confirm")}
+        <button
+          className="primary"
+          onClick={() => void confirm()}
+          disabled={busy || chosen.size === 0}
+        >
+          {chosen.size > 1
+            ? t("import.confirmPages", { count: String(chosen.size) })
+            : t("import.confirm")}
         </button>
       </div>
     </Modal>

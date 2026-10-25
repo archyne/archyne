@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pointsAttr, shapeGeometry, type Primitive } from "./shapes";
+import { outlineDepth, pointsAttr, shapeGeometry, type Primitive } from "./shapes";
 import { SHAPES } from "../model/types";
 
 /**
@@ -155,5 +155,37 @@ describe("pointsAttr", () => {
         [3.5, 4],
       ]),
     ).toBe("1,2 3.5,4");
+  });
+});
+
+describe("how far in from its box a shape's outline lies", () => {
+  it("is nothing for a box", () => {
+    expect(outlineDepth("square", 160, 54, "left", 10)).toBe(0);
+    expect(outlineDepth("square", 160, 54, "top", 150)).toBe(0);
+  });
+
+  it("is nothing at a diamond's point, and grows away from it", () => {
+    expect(outlineDepth("diamond", 150, 86, "right", 43)).toBe(0);
+    // Halfway from the point to the corner the edge is about half of the
+    // half-width in: the drawn point sits at 149, the edge at 112 there.
+    expect(outlineDepth("diamond", 150, 86, "right", 22)).toBeCloseTo(37, 0);
+    expect(outlineDepth("diamond", 150, 86, "top", 75 + 12.5)).toBeGreaterThan(5);
+  });
+
+  it("follows a circle round", () => {
+    expect(outlineDepth("circle", 96, 96, "left", 48)).toBe(0);
+    expect(outlineDepth("circle", 96, 96, "left", 20)).toBeGreaterThan(5);
+  });
+
+  it("is nothing along the flat of a rounded box, and something at its corners", () => {
+    expect(outlineDepth("stadium", 160, 54, "top", 80)).toBe(0);
+    expect(outlineDepth("stadium", 160, 54, "left", 27)).toBeCloseTo(0, 0);
+    expect(outlineDepth("stadium", 160, 54, "left", 8)).toBeGreaterThan(3);
+  });
+
+  it("reaches a cylinder's lid, not the top of its box", () => {
+    expect(outlineDepth("cylinder", 160, 80, "top", 80)).toBe(0);
+    expect(outlineDepth("cylinder", 160, 80, "top", 20)).toBeGreaterThan(1);
+    expect(outlineDepth("cylinder", 160, 80, "left", 40)).toBe(0);
   });
 });

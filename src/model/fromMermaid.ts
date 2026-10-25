@@ -9,6 +9,9 @@ import type { Mermaid } from "mermaid";
 // to exist before the module is evaluated.
 let mermaidPromise: Promise<Mermaid> | null = null;
 
+/** The longest source mermaid will draw — see `maxTextSize` below. */
+export const MAX_TEXT_SIZE = 5_000_000;
+
 /**
  * mermaid's per-kind parser DBs are singletons cleared at the start of each
  * parse/render — two concurrent calls corrupt each other (empty results, no
@@ -65,6 +68,15 @@ export function getMermaid(): Promise<Mermaid> {
         // Never inject mermaid's own "Syntax error" bomb into the DOM —
         // the editor surfaces parse errors in its own banner.
         suppressErrorRendering: true,
+        // Mermaid's own limit is 50,000 characters, past which it draws
+        // "Maximum text size in diagram exceeded" instead of the diagram. A
+        // picture carried in the file as a data URI is a few thousand on its
+        // own, so a draw.io architecture of a dozen icons — aks-baseline, at
+        // 57,000 — showed that in the preview and in export while the canvas
+        // drew it whole. What makes a diagram slow to draw is its edges, which
+        // `maxEdges` still caps; this one is on mermaid's `secure` list too, so
+        // a `%%{init}%%` directive cannot change it.
+        maxTextSize: MAX_TEXT_SIZE,
       });
       return m.default;
     });

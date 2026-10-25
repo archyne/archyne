@@ -38,9 +38,23 @@ import { contentMinSize } from "../contentSize";
  * A snap at the end of the gesture rather than a wall during it — which also
  * leaves a wide flat box reachable, since at that width it fits.
  */
-export function NodeResize({ id, visible }: { id: string; visible: boolean }) {
+export function NodeResize({
+  id,
+  visible,
+  picture = false,
+}: {
+  id: string;
+  visible: boolean;
+  /**
+   * A picture with no frame: the box is the picture, so it keeps the
+   * picture's proportions while dragged, and on release the picture takes
+   * the new size and the box hugs it again.
+   */
+  picture?: boolean;
+}) {
   const setNodeSize = useGraphStore((s) => s.setNodeSize);
   const resizeEnd = useGraphStore((s) => s.onNodeDragStop);
+  const fitPictureTo = useGraphStore((s) => s.fitPictureTo);
   // Measured as the gesture starts rather than when the handles appear: that
   // is the last moment the content can still have changed, and it lands
   // before the first move, which is the first thing there is to clamp.
@@ -51,13 +65,18 @@ export function NodeResize({ id, visible }: { id: string; visible: boolean }) {
     <NodeResizer
       isVisible={visible}
       minWidth={minWidth}
-      minHeight={NODE_MIN.height}
+      minHeight={picture ? 16 : NODE_MIN.height}
+      keepAspectRatio={picture}
       onResizeStart={(_, p) => {
         startY.current = p.y;
-        setMinWidth(contentMinSize(id)?.width ?? NODE_MIN.width);
+        setMinWidth(picture ? 16 : (contentMinSize(id)?.width ?? NODE_MIN.width));
       }}
       onResize={(_, p) => setNodeSize(id, p.width, p.height, p.x, p.y)}
       onResizeEnd={(_, p) => {
+        if (picture) {
+          fitPictureTo(id, p.width, p.height);
+          return;
+        }
         const needed = contentMinSize(id, p.width)?.height ?? 0;
         if (needed > p.height) {
           // Dragging a top handle moves the origin, which means the bottom

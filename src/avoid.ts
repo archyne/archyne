@@ -41,7 +41,7 @@ export const CLEARANCE = 14;
  */
 const BEND_COST = 40;
 
-/** Beyond this many boxes the lattice stops being cheap; the caller falls back. */
+/** Beyond this many boxes near a path the lattice stops being cheap; the caller falls back. */
 const TOO_MANY = 60;
 
 const grown = (r: Rect, by: number): Rect => ({
@@ -82,13 +82,22 @@ const sortedUnique = (values: number[]): number[] =>
 interface State {
   at: number; // index into the lattice
   dir: Axis;
+  /** Which way along `dir`: +1 towards larger coordinates, -1 towards smaller. */
+  sign: number;
 }
 
-const key = (s: State): string => `${s.at}:${s.dir}`;
+const key = (s: State): string => `${s.at}:${s.dir}${s.sign}`;
 
 /**
  * An orthogonal path from `a` to `b` that touches none of `obstacles`,
  * leaving along `from` and arriving along `to`.
+ *
+ * `leave` and `arrive`, when given, also fix *which way* along those axes:
+ * the direction the path is already travelling at `a`, and the one it must be
+ * travelling in at `b`. A path never turns straight back on itself, so a
+ * search starting a stub out from a face cannot step back towards it — that
+ * step is free, being on the axis it set out on, and it drew a spike at the
+ * node: out, back a few units, and only then away.
  *
  * Returns the corners including both ends, or `null` when there is no way
  * through — a node sitting on the target, most often — so the caller can fall
@@ -101,13 +110,80 @@ export function routeAround(
   to: Axis,
   obstacles: Rect[],
   clearance = CLEARANCE,
+  leave?: Point,
+  arrive?: Point,
 ): Point[] | null {
-  if (obstacles.length === 0 || obstacles.length > TOO_MANY) return null;
+  if (obstacles.length === 0) return null;
+  // Only the boxes near the two ends take part, widening the neighbourhood
+  // when the path found there runs into one left out. The cap below is on
+  // the search, not on the diagram: applied to every box on the page, it
+  // switched the search off for any drawing of more than sixty nodes — which
+  // is to say every busy one — and their connections went straight through.
+  for (const margin of NEIGHBOURHOODS) {
+    const near =
+      margin === Infinity ? obstacles : obstacles.filter((r) => meets(r, around(a, b, margin)));
+    if (near.length === 0) continue;
+    if (near.length > TOO_MANY) return null;
+    const found = search(a, b, from, to, near, clearance, leave, arrive);
+    // Fewer boxes is more room: no way through these is no way through all.
+    if (!found) return null;
+    if (found.every((q, i) => i === 0 || !blocked(found[i - 1], q, obstacles))) return found;
+  }
+  return null;
+}
+
+/** How far round the two ends the boxes that matter are looked for, in turn. */
+const NEIGHBOURHOODS = [160, 480, Infinity];
+
+/** The box spanning two points, grown by `by` on every side. */
+function around(a: Point, b: Point, by: number): Rect {
+  const x = Math.min(a.x, b.x) - by;
+  const y = Math.min(a.y, b.y) - by;
+  return { x, y, w: Math.abs(a.x - b.x) + by * 2, h: Math.abs(a.y - b.y) + by * 2 };
+}
+
+/** Do two boxes share any area? */
+function meets(r: Rect, s: Rect): boolean {
+  return r.x < s.x + s.w && s.x < r.x + r.w && r.y < s.y + s.h && s.y < r.y + r.h;
+}
+
+/** The search itself, over the boxes it is given. */
+function search(
+  a: Point,
+  b: Point,
+  from: Axis,
+  to: Axis,
+  obstacles: Rect[],
+  clearance: number,
+  leave?: Point,
+  arrive?: Point,
+): Point[] | null {
   const walls = obstacles.map((r) => grown(r, clearance));
 
-  // The lines worth turning on: every wall's sides, and the ends themselves.
-  const xs = sortedUnique([a.x, b.x, ...walls.flatMap((r) => [r.x, r.x + r.w])]);
-  const ys = sortedUnique([a.y, b.y, ...walls.flatMap((r) => [r.y, r.y + r.h])]);
+  // The lines worth turning on: every wall's sides, and the ends themselves —
+  // and, where a direction is fixed, one a little way along it from each end.
+  // A path told to arrive travelling downwards has to come from somewhere
+  // above the goal, and with no wall up there the lattice had no line to come
+  // from, so it found nothing at all.
+  const ahead = Math.max(clearance, 1);
+  const extra: Point[] = [];
+  if (leave)
+    extra.push({ x: a.x + Math.sign(leave.x) * ahead, y: a.y + Math.sign(leave.y) * ahead });
+  if (arrive) {
+    extra.push({ x: b.x - Math.sign(arrive.x) * ahead, y: b.y - Math.sign(arrive.y) * ahead });
+  }
+  const xs = sortedUnique([
+    a.x,
+    b.x,
+    ...extra.map((q) => q.x),
+    ...walls.flatMap((r) => [r.x, r.x + r.w]),
+  ]);
+  const ys = sortedUnique([
+    a.y,
+    b.y,
+    ...extra.map((q) => q.y),
+    ...walls.flatMap((r) => [r.y, r.y + r.h]),
+  ]);
 
   const lattice: Point[] = [];
   const indexOf = new Map<string, number>();
@@ -142,20 +218,25 @@ export function routeAround(
   });
   for (const row of byRow.values()) row.sort((m, n) => lattice[m].x - lattice[n].x);
   for (const col of byColumn.values()) col.sort((m, n) => lattice[m].y - lattice[n].y);
+  // Where each point stands in its row and its column, so finding its
+  // neighbours is a lookup rather than a scan along the line.
+  const inRow = new Map<number, number>();
+  const inColumn = new Map<number, number>();
+  for (const row of byRow.values()) row.forEach((at, i) => inRow.set(at, i));
+  for (const col of byColumn.values()) col.forEach((at, i) => inColumn.set(at, i));
 
-  function neighbours(at: number): Array<{ at: number; dir: Axis }> {
+  function neighbours(at: number): Array<{ at: number; dir: Axis; sign: number }> {
     const p = lattice[at];
-    const out: Array<{ at: number; dir: Axis }> = [];
-    for (const [line, dir] of [
-      [byRow.get(p.y) ?? [], "x"],
-      [byColumn.get(p.x) ?? [], "y"],
-    ] as Array<[number[], Axis]>) {
-      const here = line.indexOf(at);
+    const out: Array<{ at: number; dir: Axis; sign: number }> = [];
+    for (const [line, dir, here] of [
+      [byRow.get(p.y) ?? [], "x", inRow.get(at) ?? -1],
+      [byColumn.get(p.x) ?? [], "y", inColumn.get(at) ?? -1],
+    ] as Array<[number[], Axis, number]>) {
       if (here < 0) continue;
       for (const step of [-1, 1]) {
         const next = line[here + step];
         if (next === undefined) continue;
-        if (!blocked(p, lattice[next], walls)) out.push({ at: next, dir });
+        if (!blocked(p, lattice[next], walls)) out.push({ at: next, dir, sign: step });
       }
     }
     return out;
@@ -166,39 +247,99 @@ export function routeAround(
 
   const best = new Map<string, number>();
   const cameFrom = new Map<string, State>();
-  const open: Array<{ state: State; cost: number; guess: number }> = [];
+  // A binary heap, cheapest guess first and, between equals, the one pushed
+  // first — the order the sorted list this replaces gave, so the same path
+  // wins every tie. Sorting the whole list on every step was most of the
+  // time a busy drawing took to route.
+  type Entry = { state: State; cost: number; guess: number; seq: number };
+  const open: Entry[] = [];
+  let pushed = 0;
+  const before = (m: Entry, n: Entry) =>
+    m.guess < n.guess || (m.guess === n.guess && m.seq < n.seq);
   const push = (state: State, cost: number) => {
     const k = key(state);
     if ((best.get(k) ?? Infinity) <= cost) return;
     best.set(k, cost);
-    open.push({ state, cost, guess: cost + manhattan(state.at) });
+    const entry = { state, cost, guess: cost + manhattan(state.at), seq: pushed++ };
+    let i = open.push(entry) - 1;
+    while (i > 0) {
+      const up = (i - 1) >> 1;
+      if (!before(open[i], open[up])) break;
+      [open[i], open[up]] = [open[up], open[i]];
+      i = up;
+    }
+  };
+  const pop = (): Entry => {
+    const top = open[0];
+    const last = open.pop()!;
+    if (open.length) {
+      open[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1;
+        const r = l + 1;
+        let m = i;
+        if (l < open.length && before(open[l], open[m])) m = l;
+        if (r < open.length && before(open[r], open[m])) m = r;
+        if (m === i) break;
+        [open[i], open[m]] = [open[m], open[i]];
+        i = m;
+      }
+    }
+    return top;
   };
   // Leaving along `from` is not optional: an edge quits its node sideways or
   // vertically according to the handle it is tied to.
-  push({ at: startAt, dir: from }, 0);
+  const signOf = (v: Point | undefined, axis: Axis): number | null =>
+    v ? Math.sign(axis === "x" ? v.x : v.y) || null : null;
+  const leaving = signOf(leave, from);
+  const arriving = signOf(arrive, to);
+  for (const sign of leaving === null ? [1, -1] : [leaving]) {
+    push({ at: startAt, dir: from, sign }, 0);
+  }
 
   let guard = 20000;
   while (open.length && guard-- > 0) {
-    open.sort((m, n) => m.guess - n.guess);
-    const { state, cost } = open.shift()!;
+    const { state, cost } = pop();
     if (cost > (best.get(key(state)) ?? Infinity)) continue;
 
-    if (state.at === goalAt && state.dir === to) {
+    if (
+      state.at === goalAt &&
+      state.dir === to &&
+      (arriving === null || state.sign === arriving || startAt === goalAt)
+    ) {
       const path: Point[] = [];
       for (let s: State | undefined = state; s; s = cameFrom.get(key(s))) {
-        path.push(lattice[s.at]);
+        path.push({ ...lattice[s.at] });
       }
       // The lattice puts a point wherever a line crosses, so a straight run
       // arrives chopped into pieces. They are not corners and must not be
       // reported as any: a handle would appear on each.
-      return tidy(path.reverse());
+      // The lattice works in whole units, so the ends it reports are `a` and
+      // `b` rounded. Put the real ones back, and the corner beside each with
+      // them, or the first and last runs come out half a unit off square.
+      // Tidied first, so the corner beside each end is the real one and not
+      // the next lattice point along a straight run.
+      const corners = tidy(path.reverse());
+      const snap = (end: Point, at: number, next: number) => {
+        const p0 = corners[at];
+        const p1 = corners[next];
+        if (p1 && Math.abs(p1.x - p0.x) < 0.5) p1.x = end.x;
+        if (p1 && Math.abs(p1.y - p0.y) < 0.5) p1.y = end.y;
+        corners[at] = { ...end };
+      };
+      snap(a, 0, 1);
+      snap(b, corners.length - 1, corners.length - 2);
+      return tidy(corners);
     }
 
     for (const step of neighbours(state.at)) {
       const p = lattice[state.at];
       const q = lattice[step.at];
       const length = Math.abs(q.x - p.x) + Math.abs(q.y - p.y);
-      const next: State = { at: step.at, dir: step.dir };
+      // Straight back the way it came is not a turn, it is a fold.
+      if (step.dir === state.dir && step.sign !== state.sign) continue;
+      const next: State = { at: step.at, dir: step.dir, sign: step.sign };
       const k = key(next);
       const total = cost + length + (step.dir === state.dir ? 0 : BEND_COST);
       if ((best.get(k) ?? Infinity) <= total) continue;

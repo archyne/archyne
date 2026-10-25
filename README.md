@@ -404,7 +404,8 @@ read-only, rendered rather than refused.
 The palette, inspector, and "New…" menu adapt to the active diagram kind.
 Plus: **undo/redo** (Ctrl+Z/Y — the code being the source of truth makes
 history a stack of snapshots), **copy/paste** (Ctrl+C/V, id-remapped, edges
-included), **resizing** with drag handles or typed width and height,
+included — a copy is also a picture for a slide and Mermaid for an editor,
+and a picture pasted onto a flowchart becomes an image node), **resizing** with drag handles or typed width and height,
 snap-to-grid, **alignment guides** while dragging, double-click any node or
 edge to rename it, drag-and-drop, direction switch, ELK auto-layout,
 `.mmd` open/save, **PNG/SVG/PDF export** of the canvas — to a file, or

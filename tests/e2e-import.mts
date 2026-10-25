@@ -23,6 +23,9 @@ interface TestApi {
   files: {
     getState: () => { name: string | null; path: string | null; savedCode: string | null };
   };
+  workspace: {
+    getState: () => { docs: Array<{ id: string; name: string }>; activeId: string };
+  };
 }
 
 declare global {
@@ -184,6 +187,110 @@ try {
     check("it counts as unsaved work", file.savedCode === null);
 
     await page.locator(".react-flow").screenshot({ path: `${PREFIX}-drawio.png` });
+  }
+
+  console.log("\ndraw.io, a file of several pages");
+  {
+    // An overview and its details: only the first page could ever be
+    // imported, and the dialog said so instead of letting it be chosen.
+    await page.setInputFiles('input[type="file"]', fixture("two-pages.drawio"));
+    await page.locator(".modal").waitFor({ timeout: 30000 });
+    // The select named "Page", not the "Pages to import" list beside it.
+    const pageSelect = page.getByRole("combobox", { name: /^Page(?!s)/ });
+    check("the dialog offers the pages to choose from", (await pageSelect.count()) === 1);
+    const options = await pageSelect.locator("option").allTextContents();
+    check(
+      `both pages are named (got ${options.join(", ")})`,
+      options.join("|") === "Overview|Details",
+    );
+    await pageSelect.selectOption({ label: "Details" });
+    await page
+      .locator(".import-canvas .react-flow__node", { hasText: "Detail one" })
+      .waitFor({ timeout: 30000 });
+    check("the preview shows the page chosen", true);
+    await page.getByRole("button", { name: "Import", exact: true }).click();
+    await page.waitForFunction(
+      () => __graphTest.files.getState().name === "two-pages.mmd",
+      null,
+      {
+        timeout: 30000,
+      },
+    );
+    const code = await page.evaluate(() => __graphTest.store.getState().code);
+    check(
+      "the page chosen is the one imported",
+      code.includes("Detail one") && !code.includes("Front door"),
+    );
+  }
+
+  console.log("\ndraw.io, every page at once");
+  {
+    // One page per pass through the dialog was the only way to bring over an
+    // overview and its details.
+    const before = await page.evaluate(() => __graphTest.workspace.getState().docs.length);
+    await page.setInputFiles('input[type="file"]', fixture("two-pages.drawio"));
+    await page.locator(".modal").waitFor({ timeout: 30000 });
+    await page.getByLabel("All pages").check();
+    await page.getByRole("button", { name: "Import 2 pages", exact: true }).click();
+    await page.locator(".modal").waitFor({ state: "detached", timeout: 30000 });
+    const docs = await page.evaluate(() =>
+      __graphTest.workspace.getState().docs.map((d) => d.name),
+    );
+    const added = docs.slice(before);
+    check(
+      `each page opens in a tab of its own (got ${added.join(", ")})`,
+      added.join("|") === "two-pages - Overview.mmd|two-pages - Details.mmd",
+    );
+    const code = await page.evaluate(() => __graphTest.store.getState().code);
+    check("the last page is the one on show", code.includes("Detail one"));
+  }
+
+  console.log("\ndraw.io, forty pages");
+  {
+    // A row per page with nothing to stop it ran the list out of the dialog.
+    const diagram = (i: number) =>
+      `<diagram name="Region ${i} with a name long enough to need wrapping" id="p${i}"><mxGraphModel><root>` +
+      `<mxCell id="0"/><mxCell id="1" parent="0"/>` +
+      `<mxCell id="n${i}" value="Box ${i}" vertex="1" parent="1"><mxGeometry x="40" y="40" width="120" height="60" as="geometry"/></mxCell>` +
+      `</root></mxGraphModel></diagram>`;
+    const xml = `<mxfile>${Array.from({ length: 40 }, (_, i) => diagram(i + 1)).join("")}</mxfile>`;
+    await page.setInputFiles('input[type="file"]', {
+      name: "forty-pages.drawio",
+      mimeType: "application/xml",
+      buffer: Buffer.from(xml),
+    });
+    const modal = page.locator(".modal");
+    await modal.waitFor({ timeout: 30000 });
+    const list = page.locator(".import-page-list");
+    const scrolls = await list.evaluate((el) => el.scrollHeight > el.clientHeight + 1);
+    check("the page list scrolls in a box of its own", scrolls);
+    const viewport = page.viewportSize()!;
+    const box = (await modal.boundingBox())!;
+    check(
+      `the dialog stays inside the window (bottom ${Math.round(box.y + box.height)} of ${viewport.height})`,
+      box.y + box.height <= viewport.height,
+    );
+    const column = page.locator(".import-modal .export-opts");
+    const width = await column.evaluate((el) => [el.scrollWidth, el.clientWidth]);
+    check(`a long page name wraps (${width[0]} wide in ${width[1]})`, width[0] <= width[1]);
+    await page.getByRole("checkbox", { name: /^Region 3 with/ }).check();
+    await page.getByRole("checkbox", { name: /^Region 37 with/ }).check();
+    const partial = await page
+      .getByLabel("All pages")
+      .evaluate((el) => (el as HTMLInputElement).indeterminate);
+    check("a partial choice shows on the all-pages tick", partial);
+    const overlap = await list.evaluate((el) => {
+      const rows = [...el.querySelectorAll("label")].map((r) => r.getBoundingClientRect());
+      return rows.some((r, i) => i > 0 && r.top < rows[i - 1].bottom - 0.5);
+    });
+    check("a wrapped name does not run into the next row", !overlap);
+    await modal.screenshot({ path: `${PREFIX}-many-pages.png` });
+    check(
+      "the button counts the choice",
+      await page.getByRole("button", { name: "Import 3 pages", exact: true }).isVisible(),
+    );
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await modal.waitFor({ state: "detached", timeout: 30000 });
   }
 
   console.log("\nGraphviz");

@@ -25,7 +25,7 @@
  * frees it from one and leaves it buried in the other.
  */
 import { moveSegment, segmentsOf, STUB, type Axis } from "./orthogonal";
-import type { Rect } from "./avoid";
+import { blocked, type Rect } from "./avoid";
 import type { Point } from "./routing";
 
 /**
@@ -72,7 +72,7 @@ const WORTH_MOVING = 24;
  * in three, which is already rare enough that a fourth would be arithmetic
  * nobody will ever see.
  */
-const PASSES = 3;
+const PASSES = 6;
 
 interface Candidate {
   id: string;
@@ -112,23 +112,91 @@ function share(a: Candidate, b: Candidate): boolean {
  */
 function roomFor(route: Point[], index: number, axis: Axis, at: number): Candidate["room"] {
   const across: Axis = axis === "x" ? "y" : "x";
-  const limits = { back: Infinity, on: Infinity };
   const last = route.length - 2;
+  // An approach itself moves only from a stub out, which `slide` keeps where
+  // it is — and so only when there is a run beyond the stub to move.
+  if (index === 0 || index === last) {
+    const a = route[index];
+    const b = route[index + 1];
+    const stubs = (index === 0 ? 1 : 0) + (index === last ? 1 : 0);
+    const free = Math.abs(b[axis] - a[axis]) - stubs * STUB;
+    return free >= WORTH_MOVING ? { back: Infinity, on: Infinity } : { back: 0, on: 0 };
+  }
+  const limits = { back: Infinity, on: Infinity };
   // The segment before this one is the route's first, so moving this run
   // changes how long that approach is.
+  //
+  // What is limited is the move *towards* the end: that is the one that
+  // shortens the approach. A run standing above the end can only lose height
+  // by moving down, so its downward room is the slack. These two were the
+  // other way round, so the move towards the node went unchecked — a run
+  // twenty units out from a face was slid in to two, and the line ran down
+  // the node's own edge into an arrowhead with nothing behind it.
   if (index - 1 === 0) {
     const anchor = route[0][across];
     const slack = Math.abs(at - anchor) - STUB;
-    if (at >= anchor) limits.back = Math.max(0, slack);
-    else limits.on = Math.max(0, slack);
+    if (at >= anchor) limits.on = Math.max(0, slack);
+    else limits.back = Math.max(0, slack);
   }
   if (index + 1 === last) {
     const anchor = route[route.length - 1][across];
     const slack = Math.abs(at - anchor) - STUB;
-    if (at >= anchor) limits.back = Math.min(limits.back, Math.max(0, slack));
-    else limits.on = Math.min(limits.on, Math.max(0, slack));
+    if (at >= anchor) limits.on = Math.min(limits.on, Math.max(0, slack));
+    else limits.back = Math.min(limits.back, Math.max(0, slack));
   }
   return limits;
+}
+
+/** `from` carried `d` along the straight run towards `to`. */
+function along(from: Point, to: Point, d: number): Point {
+  const len = Math.hypot(to.x - from.x, to.y - from.y);
+  return {
+    x: from.x + ((to.x - from.x) * d) / len,
+    y: from.y + ((to.y - from.y) * d) / len,
+  };
+}
+
+/**
+ * `moveSegment`, except that an approach keeps its first `STUB`.
+ *
+ * Moving the run a route leaves or arrives on slides its end along the
+ * node's face, since the end itself is pinned there: the line set off along
+ * the border instead of away from it, or ran its last few units along it into
+ * the arrowhead. So the stub next to the node stays, and only the run beyond
+ * it moves — out, a short step aside, and on.
+ */
+function slide(route: Point[], index: number, value: number): Point[] {
+  const last = route.length - 2;
+  if (index !== 0 && index !== last) return moveSegment(route, index, value);
+  // Each stub's end goes in twice: `moveSegment` moves one copy with the run
+  // and leaves the other, and the step between them is the corner aside.
+  const points = [...route];
+  let run = index;
+  if (index === last) {
+    const stub = along(route[last + 1], route[last], STUB);
+    points.splice(last + 1, 0, stub, stub);
+  }
+  if (index === 0) {
+    const stub = along(route[0], route[1], STUB);
+    points.splice(1, 0, stub, stub);
+    run = 2;
+  }
+  return moveSegment(points, run, value);
+}
+
+/** How many runs of the route pass through a box. */
+function hits(route: Point[], boxes: Rect[]): number {
+  let n = 0;
+  for (let i = 1; i < route.length; i++) if (blocked(route[i - 1], route[i], boxes)) n++;
+  return n;
+}
+
+/** Is every run of the route horizontal or vertical? */
+function square(route: Point[]): boolean {
+  return route.every(
+    (q, i) =>
+      i === 0 || Math.abs(q.x - route[i - 1].x) < 0.5 || Math.abs(q.y - route[i - 1].y) < 0.5,
+  );
 }
 
 /** Every run long enough to be a corridor rather than a join. */
@@ -217,8 +285,67 @@ function bundles(runs: Candidate[]): Candidate[][] {
   return out;
 }
 
+/** Where two routes cross at right angles, ends aside. */
+function crossingsBetween(a: Point[], b: Point[]): number {
+  let n = 0;
+  for (let i = 0; i < a.length - 1; i++) {
+    for (let j = 0; j < b.length - 1; j++) {
+      const [p, q, r, t] = [a[i], a[i + 1], b[j], b[j + 1]];
+      const level = Math.abs(p.y - q.y) < 0.5;
+      if (level === Math.abs(r.y - t.y) < 0.5) continue;
+      const [h0, h1, v0, v1] = level ? [p, q, r, t] : [r, t, p, q];
+      if (
+        v0.x > Math.min(h0.x, h1.x) + 0.5 &&
+        v0.x < Math.max(h0.x, h1.x) - 0.5 &&
+        h0.y > Math.min(v0.y, v1.y) + 0.5 &&
+        h0.y < Math.max(v0.y, v1.y) - 0.5
+      ) {
+        n++;
+      }
+    }
+  }
+  return n;
+}
+
+/** What a run that cannot move costs as the one asked to. */
+const STUCK = 1000;
+
+/**
+ * How many times two runs' routes cross if `first` keeps its line and
+ * `second` takes the next lane up from it.
+ */
+function crossingsIfFirst(
+  first: Candidate,
+  second: Candidate,
+  routes: Map<string, Point[]>,
+  gap: number,
+  moved: Set<string>,
+  obstacles: Rect[],
+): number {
+  if (first.fixed || second.fixed) return 0;
+  // Each connection moves once a pass; one already moved elsewhere will not
+  // take the lane, and would be left lying where it is.
+  if (moved.has(second.id)) return STUCK;
+  // The one taking the next lane has to be able to move a whole lane; one
+  // boxed in by its own approaches would stay lying on the other, which is
+  // worse than any crossing.
+  if (Math.max(second.room.back, second.room.on) < gap) return STUCK;
+  const a = routes.get(first.id);
+  const b = routes.get(second.id);
+  if (!a || !b) return 0;
+  const slid = slide(b, second.index, first.at + gap);
+  // A slide the pass would refuse leaves it lying where it is, too.
+  if (!square(slid) || hits(slid, obstacles) > hits(b, obstacles)) return STUCK;
+  return crossingsBetween(a, slid);
+}
+
 /** One look at the picture: every bundle found in it, fanned apart. */
-function once(routes: Map<string, Point[]>, frames: Rect[], gap: number): Map<string, Point[]> {
+function once(
+  routes: Map<string, Point[]>,
+  frames: Rect[],
+  gap: number,
+  obstacles: Rect[],
+): Map<string, Point[]> {
   const moved = new Set<string>();
   const out = new Map(routes);
   for (const group of bundles([...corridors(routes), ...borders(frames)])) {
@@ -237,8 +364,18 @@ function once(routes: Map<string, Point[]>, frames: Rect[], gap: number): Map<st
     // means a new one slots in beside them and the rest stay put. Ties — two
     // runs on exactly the same line — still fall back to the id, so a fresh
     // diagram is laid out the same way every time.
+    //
+    // Except where the order decides whether they cross. Two runs on exactly
+    // the same line — a bus of connections sharing one corner — fan out one
+    // way round or the other, and one of the two often has them crossing
+    // where they leave the bundle. Both are tried, and the one with fewer
+    // crossings goes first; only a true tie falls back to the id.
     const ordered = [...overlapping].sort(
-      (a, b) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+      (a, b) =>
+        (Math.abs(a.at - b.at) >= 0.5 ? a.at - b.at : 0) ||
+        crossingsIfFirst(a, b, out, gap, moved, obstacles) -
+          crossingsIfFirst(b, a, out, gap, moved, obstacles) ||
+        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     );
 
     // Which lane holds still: a border cannot move, so it anchors the bundle
@@ -267,13 +404,51 @@ function once(routes: Map<string, Point[]>, frames: Rect[], gap: number): Map<st
       // pinned against a group's border meant staying invisible.
       const room = (d: number) =>
         d >= 0 ? Math.min(d, run.room.back) : Math.max(d, -run.room.on);
-      const first = room(want);
-      const offset = Math.abs(first) >= 1 ? first : room(-want);
-      if (Math.abs(offset) < 1) return;
       const route = out.get(run.id);
       if (!route) return;
-      out.set(run.id, moveSegment(route, run.index, run.at + offset));
-      moved.add(run.id);
+      // A whole lane either way before a part of one: cut short by the room
+      // at its ends, a run lands on the lane of the one beside it, and in a
+      // bus of connections into one face they piled up two and three deep.
+      //
+      // And a lane nobody else is on. The bundle is only the runs lying
+      // together *now*; a lane nine units off may already hold a run moved
+      // there by an earlier bundle, and landing on it is the fault this pass
+      // exists to undo. So the lane wanted is tried first, then the same
+      // distance the other way, then further out, each only if it is free.
+      const lanes = corridors(out).filter((c) => c.axis === run.axis && c.id !== run.id);
+      const free = (d: number) =>
+        !lanes.some(
+          (c) =>
+            Math.abs(c.at - (run.at + d)) <= SAME_LINE &&
+            run.lo < c.hi - 1 &&
+            c.lo < run.hi - 1,
+        ) &&
+        !frames.some((f) =>
+          run.axis === "x"
+            ? Math.abs(f.y - (run.at + d)) <= SAME_LINE ||
+              Math.abs(f.y + f.h - (run.at + d)) <= SAME_LINE
+            : Math.abs(f.x - (run.at + d)) <= SAME_LINE ||
+              Math.abs(f.x + f.w - (run.at + d)) <= SAME_LINE,
+        );
+      const step = gap * (Math.sign(want) || 1);
+      const wanted: number[] = [];
+      for (let k = 0; k < 4; k++) wanted.push(want + k * step, -(want + k * step));
+      const full = wanted.filter((d) => Math.abs(room(d) - d) < 0.5 && free(d));
+      for (const offset of [...full, room(want), room(-want)]) {
+        if (Math.abs(offset) < 1) continue;
+        const slid = slide(route, run.index, run.at + offset);
+        // A run whose neighbour lies on the same line — a route that turns
+        // back on itself for a few units — drags that neighbour off square
+        // when its shared corner moves. Two lines lying together is the
+        // lesser fault next to one drawn on the slant.
+        if (!square(slid)) continue;
+        // Nor is a lane taken across a node: fanned out beside a column of
+        // boxes, a run was pushed straight over them.
+        if (hits(slid, obstacles) > hits(route, obstacles)) continue;
+        out.set(run.id, slid);
+        moved.add(run.id);
+        return;
+      }
     });
   }
   return out;
@@ -297,10 +472,11 @@ export function spreadRuns(
   routes: Map<string, Point[]>,
   frames: Rect[] = [],
   gap = GAP,
+  obstacles: Rect[] = [],
 ): Map<string, Point[]> {
   let out = routes;
   for (let pass = 0; pass < PASSES; pass++) {
-    const next = once(out, frames, gap);
+    const next = once(out, frames, gap, obstacles);
     let same = true;
     for (const [id, route] of next) {
       if (route !== out.get(id)) {

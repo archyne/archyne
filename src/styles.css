@@ -835,6 +835,24 @@ body.resizing-side {
   overflow-wrap: break-word;
 }
 
+/* A node too small for the padding above: draw.io's little 40×20 tags. The
+   words get the room, and a single word is never broken into letters —
+   overflowing a pixel or two reads better than "A" for "AV11". */
+.shape-node.compact .shape-label {
+  padding: 0 2px;
+  line-height: 1.15;
+  overflow-wrap: normal;
+}
+
+/* Words with no box round them. Imported captions are sized as tightly as
+   draw.io sized them, and draw.io lets the words run past the box: so these
+   keep almost no padding and are not clipped to the box. */
+.shape-node.text-only .shape-label {
+  padding: 0 2px;
+  max-height: none;
+  overflow: visible;
+}
+
 /* A node drawn with a picture: mermaid's image shape. The label sits above
    or below it, as `pos` says, and the picture is loaded from its URL — which
    is the whole point of the shape, since that URL is what lets another tool
@@ -867,6 +885,20 @@ body.resizing-side {
 .shape-node.bare .shape-label.with-image {
   position: relative;
   inset: auto;
+}
+
+/* While its handles are dragged, an unframed picture is given the box's size
+   and the picture fills it, kept in proportion, so it grows and shrinks under
+   the pointer; on release the picture takes the size and the box lets go. */
+.shape-node.bare.sized .shape-label.with-image {
+  position: absolute;
+  inset: 0;
+}
+
+.shape-node.bare.sized .shape-image {
+  width: 100%;
+  height: auto;
+  flex: 1 1 0;
 }
 
 /* Selection has to be drawn here: with no frame there is no outline to
@@ -932,7 +964,9 @@ body.resizing-side {
   border: 0;
   outline: 1px solid var(--accent);
   border-radius: 2px;
-  background: var(--bg);
+  /* The node's own fill where it has one (`--rename-bg`), so text coloured to
+     read on it still does while it is typed. */
+  background: var(--rename-bg, var(--node-fill));
   color: inherit;
 }
 
@@ -1122,12 +1156,41 @@ body.resizing-side {
   color: var(--accent);
 }
 
+/* React Flow's own stylesheet gives a node of type `group` a padding, a solid
+   border and a grey fill. `.group-node` is the group's frame, so that drew a
+   second frame round it and set the dashed one 11px inside the group's box —
+   where neither the SVG export nor draw.io draws it, and where words placed
+   inside the box as they were in draw.io ran across it. */
+.react-flow__node-group {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+}
+
+.react-flow__node-group.selectable:hover,
+.react-flow__node-group.selected,
+.react-flow__node-group.selectable:focus,
+.react-flow__node-group.selectable:focus-visible {
+  box-shadow: none;
+}
+
+/* `--group-fill`, `--group-stroke` and `--group-text` are the colours the
+   diagram gives a container (`style sg fill:…`), set on the element by
+   `GroupNodeView`. Through properties rather than inline paint so that the
+   rules below — a selected frame, a look — still have their say. */
 .group-node {
   width: 100%;
   height: 100%;
-  border: 1.5px dashed var(--node-stroke);
+  border: 1.5px dashed var(--group-stroke, var(--node-stroke));
   border-radius: var(--r-lg);
-  background: rgba(91, 141, 239, 0.05);
+  background: var(--group-fill, rgba(91, 141, 239, 0.05));
+}
+
+/* Given colours, a container is drawn as mermaid draws it — a solid frame —
+   unless it was given a dash as well. draw.io's panels arrive this way. */
+.group-node.painted {
+  border-style: solid;
 }
 
 .group-node.selected {
@@ -1136,7 +1199,7 @@ body.resizing-side {
 
 .group-title {
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--group-text, var(--text-dim));
   padding: 6px 10px;
 }
 
@@ -4373,7 +4436,7 @@ body.resizing-side {
    not. The header keeps its tint so the name still reads as a caption. */
 .group-node.solid {
   border-style: solid;
-  background: rgba(91, 141, 239, 0.08);
+  background: var(--group-fill, rgba(91, 141, 239, 0.08));
 }
 
 /* And a hairline, for a grouping that is real but should recede: the fill
@@ -4381,8 +4444,8 @@ body.resizing-side {
 .group-node.plain {
   border-style: solid;
   border-width: 1px;
-  border-color: var(--border);
-  background: none;
+  border-color: var(--group-stroke, var(--border));
+  background: var(--group-fill, none);
 }
 
 /* "Close all", at the end of the tab strip. Quiet by default: it is the most
@@ -4836,4 +4899,372 @@ body.resizing-side {
   color: #444;
   background: #eef0f4;
   border-bottom: 1px solid #d8dbe2;
+}
+
+/* Ready-made fill-and-border pairs above the pickers: a click each, where the
+   pickers alone meant choosing two colours that go together by hand. */
+.colour-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 12px 0;
+}
+
+.colour-preset {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.colour-preset:hover,
+.colour-preset:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* The pages to import, one tick each, under the page on show. */
+.import-pages {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.import-pages legend {
+  padding: 0 0 4px;
+}
+
+.export-opts .import-pages label {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+/* A tick 16px across, in a row 24px tall: the least a pointer or a finger
+   can be asked to hit (WCAG 2.5.8), which a browser's 13px box is not. */
+.export-opts .import-pages label {
+  min-height: 24px;
+}
+
+.export-opts .import-pages input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+/* About eight rows, then it scrolls: a file with dozens of pages keeps the
+   summary and the hints below in sight. A long page name wraps rather than
+   pushing the column wider; the padding keeps the focus ring unclipped. */
+.import-page-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px;
+}
+
+.export-opts .import-page-list label {
+  overflow-wrap: anywhere;
+  /* In a box of fixed height a row would otherwise squeeze to 24px and its
+     second line run over the next one. */
+  flex-shrink: 0;
+}
+
+/* Whatever is left over on a short window scrolls with the column rather
+   than spilling out of the dialog. */
+.import-modal .export-opts {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ---------- crop dialog ---------- */
+
+.crop-modal .modal-body {
+  align-items: center;
+}
+
+/* The picture at the size it is cropped at, with the part to keep framed
+   and everything outside the frame dimmed. */
+.crop-stage {
+  position: relative;
+  /* Room for the handles, which stand half outside the picture. */
+  margin: 8px;
+  user-select: none;
+  touch-action: none;
+  background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel) 0% 50%) 0 0 / 16px
+    16px;
+}
+
+.crop-stage img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.crop-shade {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.crop-shade > div {
+  position: absolute;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+}
+
+.crop-frame {
+  position: absolute;
+  outline: 1px dashed #ffffff;
+  cursor: move;
+}
+
+.crop-grip {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  background: var(--accent);
+  border: 1px solid #ffffff;
+  border-radius: 2px;
+}
+
+.crop-grip-nw,
+.crop-grip-w,
+.crop-grip-sw {
+  left: 0;
+}
+.crop-grip-n,
+.crop-grip-s {
+  left: 50%;
+}
+.crop-grip-ne,
+.crop-grip-e,
+.crop-grip-se {
+  left: 100%;
+}
+.crop-grip-nw,
+.crop-grip-n,
+.crop-grip-ne {
+  top: 0;
+}
+.crop-grip-w,
+.crop-grip-e {
+  top: 50%;
+}
+.crop-grip-sw,
+.crop-grip-s,
+.crop-grip-se {
+  top: 100%;
+}
+.crop-grip-nw,
+.crop-grip-se {
+  cursor: nwse-resize;
+}
+.crop-grip-ne,
+.crop-grip-sw {
+  cursor: nesw-resize;
+}
+.crop-grip-n,
+.crop-grip-s {
+  cursor: ns-resize;
+}
+.crop-grip-e,
+.crop-grip-w {
+  cursor: ew-resize;
+}
+
+.crop-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+  max-width: 520px;
+}
+
+.crop-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.crop-fields input {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 6px 8px;
+  font-size: 13px;
+  min-width: 0;
+}
+
+/* ---------- the icon section of the palette ---------- */
+
+.palette-divided {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.icon-search-wrap {
+  position: relative;
+  display: flex;
+  margin: 0 10px 8px;
+}
+
+.icon-search-wrap .icon-search {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding-inline: 25px 6px;
+}
+
+/* Room for the clear button only when there is one, or the placeholder lost
+   its last word to empty space. */
+.icon-search-wrap.has-query .icon-search {
+  padding-inline-end: 26px;
+}
+
+.icon-search-glass {
+  position: absolute;
+  inset-inline-start: 8px;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  transform: translateY(-50%);
+  fill: none;
+  stroke: var(--text-dim);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.icon-search-clear {
+  position: absolute;
+  inset-inline-end: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--r);
+}
+
+.icon-search-clear:hover {
+  color: var(--text);
+}
+
+/* Six categories, two even rows, rather than whatever wrapping made of them. */
+.palette .chip-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.palette .chip {
+  padding: 4px 2px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icon-readout-line {
+  min-height: 15px;
+  padding: 0 12px 4px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Each icon on a light tile: vendor logos are drawn for a white page, and on
+   the dark panel the black ones — Next.js, GitHub, Vercel — were not there. */
+.palette .icon-grid {
+  gap: 6px;
+}
+
+.palette .icon-cell {
+  aspect-ratio: 1;
+  padding: 0;
+  /* Single-colour icons draw in the text colour, which on the tile has to
+     be a dark one. */
+  color: #1f2430;
+  background: #eef0f4;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.palette .icon-cell:hover {
+  background: #ffffff;
+  border-color: var(--accent);
+}
+
+/* `.arch-icon` paints in the text colour, which is the light one in the
+   dark theme: a single-colour logo drawn in it vanished into the tile. */
+.palette .icon-cell .arch-icon {
+  color: #1f2430;
+}
+
+.palette .icon-cell .star {
+  color: #6b7280;
+}
+
+/* Below the grid and quiet: two buttons of their own widths, one above the
+   other, were the first thing the section showed. Here they are the way out
+   for an icon the search did not find. */
+.palette .icon-import {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 10px 12px;
+}
+
+.palette .icon-import .mini {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 6px;
+  font-size: 11.5px;
+  text-align: start;
+  color: var(--text-dim);
+  background: none;
+  border-color: transparent;
+}
+
+.palette .icon-import .mini::before {
+  content: "+";
+  width: 12px;
+  font-size: 13px;
+  line-height: 1;
+  text-align: center;
+  color: var(--accent);
+}
+
+.palette .icon-import .mini:hover {
+  color: var(--text);
+  background: var(--panel-2);
 }
