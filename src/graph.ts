@@ -10,6 +10,9 @@
  */
 import type { AnyNode, DiagramKind, FlowEdge } from "./model/types";
 import type { PositionMap } from "./model/positions";
+import { readNodeStyles } from "./model/nodeStyle";
+import { readWaypoints, waypointKeys } from "./model/waypoints";
+import { readEdgeStyles } from "./model/edgeStyle";
 
 /**
  * Mark edges that share a node pair (and, for architecture, the same
@@ -98,4 +101,49 @@ export function placeNodes(
         : {}),
     };
   });
+}
+
+/**
+ * What a document's own comments say about its drawing, put back onto a
+ * fresh parse: how each node is drawn, and each connection's corners and
+ * style.
+ *
+ * They live in comments keyed by id and by endpoints, because a re-parse
+ * replaces the node and edge objects and nothing on them survives. The
+ * editor matched them back on; the import preview and `archyne-render` did
+ * not, so the same file drew its connections without their corners — routed
+ * from scratch, differently from the canvas it was about to be opened on.
+ * One function now, for all three.
+ */
+export function withStoredLooks(
+  code: string,
+  nodes: AnyNode[],
+  edges: FlowEdge[],
+): { nodes: AnyNode[]; edges: FlowEdge[] } {
+  const looks = readNodeStyles(code);
+  const styled = looks
+    ? nodes.map((n) =>
+        looks[n.id] ? ({ ...n, data: { ...n.data, style: looks[n.id] } } as AnyNode) : n,
+      )
+    : nodes;
+
+  const stored = readWaypoints(code);
+  const styles = readEdgeStyles(code);
+  if (!stored && !styles) return { nodes: styled, edges };
+  const keys = waypointKeys(edges);
+  const routed = edges.map((e) => {
+    const key = keys.get(e.id)!;
+    const points = stored?.[key];
+    const style = styles?.[key];
+    if (!points && !style) return e;
+    return {
+      ...e,
+      data: {
+        ...(e.data ?? { label: "" }),
+        ...(points ? { points } : {}),
+        ...(style ? { style } : {}),
+      },
+    };
+  });
+  return { nodes: styled, edges: routed };
 }

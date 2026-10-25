@@ -251,6 +251,11 @@ export interface GroupNodeData extends Record<string, unknown> {
   boundaryType?: string;
   /** How the container is drawn: dashed by default, solid, or a hairline. */
   style?: NodeStyle;
+  /**
+   * Its colours, as a flowchart's `style` statement gives them to a subgraph:
+   * `fill:#dae8fc`, `stroke:#6c8ebf`, `color:` for its title.
+   */
+  styles?: string[];
 }
 
 /** C4 element node, typed as mermaid's typeC4Shape names them. */

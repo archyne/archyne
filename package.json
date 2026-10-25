@@ -78,6 +78,7 @@
     "test:e2e:panel": "tsx tests/e2e-panel.mts",
     "test:e2e:icons": "tsx tests/e2e-icons.mts",
     "test:e2e:import": "tsx tests/e2e-import.mts",
+    "test:e2e:clipboard": "tsx tests/e2e-clipboard.mts",
     "test:e2e:measure": "tsx tests/e2e-measure.mts",
     "test:e2e:render": "tsx tests/e2e-render.mts",
     "test:e2e:recipes": "tsx tests/e2e-recipes.mts",

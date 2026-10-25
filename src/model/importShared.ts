@@ -31,6 +31,14 @@ const RESERVED = new Set([
 ]);
 
 /**
+ * Words the architecture grammar reads as the start of a statement wherever
+ * they begin a token, not only standing alone: `service title_text(server)`
+ * fails because `title` is taken as the diagram's title and the id after
+ * `service` never arrives. A suffix cannot help here, so the id is prefixed.
+ */
+const SWALLOWED = /^(title|accTitle|accDescr)/;
+
+/**
  * Readable Mermaid ids, derived from the labels.
  *
  * Foreign ids are rarely usable as they stand — draw.io writes
@@ -57,7 +65,7 @@ export function idFactory() {
         .replace(/_+$/, "")
         .replace(/^(?=\d)/, "n") || fallback;
 
-    let candidate = RESERVED.has(base) ? `${base}_` : base;
+    let candidate = RESERVED.has(base) ? `${base}_` : SWALLOWED.test(base) ? `n_${base}` : base;
     for (let n = 2; used.has(candidate); n++) candidate = `${base}_${n}`;
     used.add(candidate);
     return candidate;

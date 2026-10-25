@@ -51,7 +51,12 @@ function loadAi() {
     diagramChanges: changes.diagramChanges,
   }));
 }
-import { isGroup } from "./model/types";
+import { IMG_SIZE, isFrameless, isGroup } from "./model/types";
+
+/** `.shape-label.with-image`'s padding, left plus right. */
+const PICTURE_PAD_X = 16;
+/** The smallest a picture is made by dragging, so it cannot vanish. */
+const MIN_PICTURE = 8;
 import { measureNode } from "./measureNode";
 import {
   defaultEdgeData,
@@ -68,22 +73,14 @@ import {
 } from "./model/positions";
 import {
   patchWaypoints,
-  readWaypoints,
   waypointKeys,
   type Waypoint,
   type WaypointMap,
 } from "./model/waypoints";
-import {
-  isPlain,
-  patchEdgeStyles,
-  readEdgeStyles,
-  type EdgeStyle,
-  type EdgeStyleMap,
-} from "./model/edgeStyle";
+import { isPlain, patchEdgeStyles, type EdgeStyle, type EdgeStyleMap } from "./model/edgeStyle";
 import {
   isPlainNode,
   patchNodeStyles,
-  readNodeStyles,
   type NodeStyle,
   type NodeStyleMap,
 } from "./model/nodeStyle";
@@ -137,9 +134,9 @@ export { absoluteBoxes } from "./boxes";
 // `absoluteBoxes` did: they are pure functions of a parse, and a renderer has
 // to reach them without importing a module that touches `window` on its way
 // past the workspace. Re-exported so the callers here keep working.
-export { annotateParallel, placeNodes } from "./graph";
+export { annotateParallel, placeNodes, withStoredLooks } from "./graph";
 import { absoluteBoxes, boxOf } from "./boxes";
-import { annotateParallel, placeNodes } from "./graph";
+import { annotateParallel, placeNodes, withStoredLooks } from "./graph";
 
 /**
  * The selected nodes, but only when they can be reasoned about together.
@@ -320,6 +317,26 @@ export interface GraphState {
   redo: () => Promise<void>;
   copySelection: () => void;
   pasteClipboard: () => void;
+  /**
+   * What a copy hands to other applications: the selection — a group with
+   * what it holds — or the whole diagram when nothing is selected, and the
+   * Mermaid that draws just that.
+   */
+  copiedPart: () => { nodes: AnyNode[]; edges: FlowEdge[]; code: string };
+  /**
+   * Put a picture on the canvas, centred on `at`. Only a flowchart can hold
+   * one — Mermaid's image shape is a flowchart's — so false elsewhere.
+   */
+  pasteImage: (
+    picture: { src: string; width: number; height: number; label?: string },
+    at: { x: number; y: number },
+  ) => boolean;
+  /**
+   * Swap a node's picture for a cropped one, drawn at `width`×`height`. A
+   * node that was given a size grows or shrinks by what the picture did, so
+   * the room round the picture stays as it was.
+   */
+  cropImage: (id: string, picture: { src: string; width: number; height: number }) => void;
   onNodesChange: (changes: NodeChange<AnyNode>[]) => void;
   onEdgesChange: (changes: EdgeChange<FlowEdge>[]) => void;
   onConnect: (conn: Connection) => void;
@@ -342,6 +359,14 @@ export interface GraphState {
    * to return to.
    */
   resetNodeSize: (id: string) => void;
+  /**
+   * Resize a picture with no frame round it — the box being the picture, it
+   * is the picture that is made bigger or smaller, to fit `w`×`h` with its
+   * proportions kept, and the box goes back to hugging it. Otherwise the box
+   * grew and the picture sat small in the middle of it, and the Mermaid,
+   * whose image shape knows only the picture's size, kept the old one.
+   */
+  fitPictureTo: (id: string, w: number, h: number) => void;
   /**
    * Insert a corner into an edge's route, at `index` among the existing ones.
    *
@@ -400,7 +425,16 @@ export interface GraphState {
    */
   commitWaypoints: () => void;
   addNode: (seed: NodeSeed, position: { x: number; y: number }) => void;
-  updateNodeData: (id: string, patch: Record<string, unknown>) => void;
+  /**
+   * Change what a node holds. `burst` names a gesture that sends many
+   * changes — dragging through a colour picker sends one per pointer move —
+   * so the gesture is one step of undo rather than one per colour passed.
+   */
+  updateNodeData: (
+    id: string,
+    patch: Record<string, unknown>,
+    opts?: { burst?: string },
+  ) => void;
   updateEdgeData: (id: string, patch: Partial<FlowEdgeData>) => void;
   setDirection: (d: Direction) => void;
   setDiagramMeta: (patch: { title?: string; accTitle?: string; accDescr?: string }) => void;
@@ -530,6 +564,8 @@ export const useGraphStore = create<GraphState>((set, get) => {
   let past: string[] = [];
   let future: string[] = [];
   let lastEditorEdit = 0;
+  /** The last change sent as part of a gesture, and when — see `updateNodeData`. */
+  let lastBurst: { key: string; at: number } | null = null;
   const syncHistoryFlags = () => set({ canUndo: past.length > 0, canRedo: future.length > 0 });
 
   /**
@@ -564,9 +600,11 @@ export const useGraphStore = create<GraphState>((set, get) => {
   // the ui that holds them.
   let aiTurnSeq = 0;
 
-  const collectPositions = (): PositionMap => {
+  // The collectors read the canvas unless handed a part of it: a copy writes
+  // the Mermaid of the selection alone, with the same layout comments.
+  const collectPositions = (nodes = get().nodes): PositionMap => {
     const positions: PositionMap = {};
-    for (const n of get().nodes) {
+    for (const n of nodes) {
       positions[n.id] = {
         x: n.position.x,
         y: n.position.y,
@@ -588,10 +626,10 @@ export const useGraphStore = create<GraphState>((set, get) => {
     return positions;
   };
 
-  const collectWaypoints = (): WaypointMap => {
-    const keys = waypointKeys(get().edges);
+  const collectWaypoints = (edges = get().edges): WaypointMap => {
+    const keys = waypointKeys(edges);
     const map: WaypointMap = {};
-    for (const e of get().edges) {
+    for (const e of edges) {
       const points = e.data?.points;
       if (points?.length) map[keys.get(e.id)!] = points;
     }
@@ -599,26 +637,26 @@ export const useGraphStore = create<GraphState>((set, get) => {
   };
 
   /** The icons the document should keep: the ones its nodes still name. */
-  const collectIcons = (): IconLibrary => {
-    const referenced = get()
-      .nodes.map((n) => (n.data as { icon?: string }).icon)
+  const collectIcons = (nodes = get().nodes): IconLibrary => {
+    const referenced = nodes
+      .map((n) => (n.data as { icon?: string }).icon)
       .filter((i): i is string => typeof i === "string");
     return usedIcons(get().iconLibrary, referenced);
   };
 
-  const collectNodeStyles = (): NodeStyleMap => {
+  const collectNodeStyles = (nodes = get().nodes): NodeStyleMap => {
     const map: NodeStyleMap = {};
-    for (const n of get().nodes) {
+    for (const n of nodes) {
       const style = (n.data as { style?: NodeStyle }).style;
       if (!isPlainNode(style)) map[n.id] = style!;
     }
     return map;
   };
 
-  const collectEdgeStyles = (): EdgeStyleMap => {
-    const keys = waypointKeys(get().edges);
+  const collectEdgeStyles = (edges = get().edges): EdgeStyleMap => {
+    const keys = waypointKeys(edges);
     const map: EdgeStyleMap = {};
-    for (const e of get().edges) {
+    for (const e of edges) {
       const style = e.data?.style;
       if (!isPlain(style)) map[keys.get(e.id)!] = style!;
     }
@@ -662,25 +700,21 @@ export const useGraphStore = create<GraphState>((set, get) => {
   };
 
   /** Rebuild the mermaid text from the canvas (structural change). */
-  const regenerate = () => {
+  const regenerate = (opts?: { record?: boolean }) => {
     // A read-only diagram has no parsed graph behind it. Serializing from the
     // empty node list would silently replace the user's gantt (or pie, or
     // mindmap) with a blank diagram of whatever kind was loaded before it.
     // Guarding here covers every edit path at once.
     if (get().unsupported) return;
-    record(get().code);
-    const {
-      kind,
-      nodes,
-      edges,
-      direction,
-      classDefs,
-      c4Flavor,
-      title,
-      accTitle,
-      accDescr,
-      seqItems,
-    } = get();
+    if (opts?.record !== false) record(get().code);
+    const code = codeFor(get().nodes, get().edges);
+    set({ code, parseError: null });
+    persist(code);
+  };
+
+  /** The Mermaid for these nodes and edges, layout comments and all. */
+  const codeFor = (nodes: AnyNode[], edges: FlowEdge[]): string => {
+    const { kind, direction, classDefs, c4Flavor, title, accTitle, accDescr, seqItems } = get();
     const serialized = serializeDiagram({
       kind,
       direction,
@@ -692,17 +726,18 @@ export const useGraphStore = create<GraphState>((set, get) => {
       accTitle,
       accDescr,
       items: seqItems,
-      positions: collectPositions(),
+      positions: collectPositions(nodes),
     });
-    const code = patchIconLibrary(
+    return patchIconLibrary(
       patchNodeStyles(
-        patchEdgeStyles(patchWaypoints(serialized, collectWaypoints()), collectEdgeStyles()),
-        collectNodeStyles(),
+        patchEdgeStyles(
+          patchWaypoints(serialized, collectWaypoints(edges)),
+          collectEdgeStyles(edges),
+        ),
+        collectNodeStyles(nodes),
       ),
-      collectIcons(),
+      collectIcons(nodes),
     );
-    set({ code, parseError: null });
-    persist(code);
   };
 
   /**
@@ -872,36 +907,12 @@ export const useGraphStore = create<GraphState>((set, get) => {
         const carried = { ...useIconPack.getState().icons, ...(readIconLibrary(code) ?? {}) };
         setCarriedIcons(carried);
 
-        const looks = readNodeStyles(code);
-        if (looks) {
-          nodes = nodes.map((n) =>
-            looks[n.id] ? ({ ...n, data: { ...n.data, style: looks[n.id] } } as AnyNode) : n,
-          );
-        }
-
-        // Waypoints live in their own comment and are keyed by endpoints,
-        // so they are matched back onto the freshly parsed edges here rather
-        // than surviving on the edge objects, which do not.
-        const stored = readWaypoints(code);
-        const styles = readEdgeStyles(code);
-        const keys = waypointKeys(parsed.edges);
-        const routed =
-          stored || styles
-            ? parsed.edges.map((e) => {
-                const key = keys.get(e.id)!;
-                const points = stored?.[key];
-                const style = styles?.[key];
-                if (!points && !style) return e;
-                return {
-                  ...e,
-                  data: {
-                    ...(e.data ?? { label: "" }),
-                    ...(points ? { points } : {}),
-                    ...(style ? { style } : {}),
-                  },
-                };
-              })
-            : parsed.edges;
+        // Node looks, corners and connection styles live in comments, matched
+        // back onto the fresh parse — the same way the preview and the
+        // renderer do it.
+        const looked = withStoredLooks(code, nodes, parsed.edges);
+        nodes = looked.nodes;
+        const routed = looked.edges;
 
         set({
           iconLibrary: carried,
@@ -1150,6 +1161,10 @@ export const useGraphStore = create<GraphState>((set, get) => {
     resizeNode: (id, w, h) => {
       const node = get().nodes.find((n) => n.id === id);
       if (!node) return;
+      if (node.type === "shape" && node.data.img && isFrameless(node.data.styles)) {
+        get().fitPictureTo(id, w, h);
+        return;
+      }
       const min = minSize(node);
       get().setNodeSize(
         id,
@@ -1159,6 +1174,43 @@ export const useGraphStore = create<GraphState>((set, get) => {
         node.position.y,
       );
       repatchPositions();
+    },
+
+    fitPictureTo: (id, w, h) => {
+      const node = get().nodes.find((n) => n.id === id);
+      if (!node || node.type !== "shape" || !node.data.img) return;
+      const img = { w: node.data.imgWidth ?? IMG_SIZE, h: node.data.imgHeight ?? IMG_SIZE };
+      // What the node adds round the picture when it hugs it: the label's
+      // padding, and its name under or over it.
+      const hug = measureNode({
+        ...node,
+        style: undefined,
+        width: undefined,
+        height: undefined,
+        measured: undefined,
+      });
+      const across = Math.max(1, w - PICTURE_PAD_X);
+      const down = Math.max(1, h - (hug.height - img.h));
+      const scale = Math.min(across / img.w, down / img.h);
+      const size = {
+        imgWidth: Math.max(MIN_PICTURE, Math.round(img.w * scale)),
+        imgHeight: Math.max(MIN_PICTURE, Math.round(img.h * scale)),
+      };
+      set({
+        nodes: get().nodes.map((n) =>
+          n.id === id && n.type === "shape"
+            ? {
+                ...n,
+                data: { ...n.data, ...size },
+                style: { ...n.style, width: undefined, height: undefined },
+                width: undefined,
+                height: undefined,
+                measured: undefined,
+              }
+            : n,
+        ),
+      });
+      regenerate();
     },
 
     resetNodeSize: (id) => {
@@ -1468,13 +1520,20 @@ export const useGraphStore = create<GraphState>((set, get) => {
       regenerate();
     },
 
-    updateNodeData: (id, patch) => {
+    updateNodeData: (id, patch, opts) => {
+      // A change in the same gesture as the one before it, and soon after,
+      // joins that one's step of undo — the same 900ms the code editor
+      // groups typing by.
+      const now = Date.now();
+      const key = opts?.burst ? `${id}:${opts.burst}` : null;
+      const joins = key !== null && lastBurst?.key === key && now - lastBurst.at < 900;
+      lastBurst = key ? { key, at: now } : null;
       set({
         nodes: get().nodes.map((n) =>
           n.id === id ? ({ ...n, data: { ...n.data, ...patch } } as AnyNode) : n,
         ),
       });
-      regenerate();
+      regenerate({ record: !joins });
     },
 
     updateEdgeData: (id, patch) => {
@@ -1791,6 +1850,107 @@ export const useGraphStore = create<GraphState>((set, get) => {
       set({
         nodes: [...get().nodes.map((n) => ({ ...n, selected: false })), ...newNodes],
         edges: annotateParallel(kind, [...get().edges, ...newEdges]),
+      });
+      regenerate();
+    },
+
+    copiedPart: () => {
+      const { nodes: all, edges: allEdges, kind, code } = get();
+      const chosen = all.filter((n) => n.selected);
+      // A sequence diagram's rows are a stream that names its participants;
+      // a few of them torn out of it is not a diagram. It goes whole.
+      if (chosen.length === 0 || kind === "sequence")
+        return { nodes: all, edges: allEdges, code };
+      const keep = new Set(chosen.map((n) => n.id));
+      // A group brings what it holds, at any depth.
+      for (let grew = true; grew;) {
+        grew = false;
+        for (const n of all) {
+          if (n.parentId && keep.has(n.parentId) && !keep.has(n.id)) {
+            keep.add(n.id);
+            grew = true;
+          }
+        }
+      }
+      const byId = new Map(all.map((n) => [n.id, n]));
+      const absolute = (n: AnyNode) => {
+        let { x, y } = n.position;
+        for (
+          let p = n.parentId && byId.get(n.parentId);
+          p;
+          p = p.parentId && byId.get(p.parentId)
+        ) {
+          x += p.position.x;
+          y += p.position.y;
+        }
+        return { x, y };
+      };
+      // A node taken out of its group stands where it stood, on its own.
+      const nodes = all
+        .filter((n) => keep.has(n.id))
+        .map((n) =>
+          n.parentId && !keep.has(n.parentId)
+            ? ({
+                ...n,
+                parentId: undefined,
+                extent: undefined,
+                position: absolute(n),
+              } as AnyNode)
+            : n,
+        );
+      const edges = allEdges.filter((e) => keep.has(e.source) && keep.has(e.target));
+      return { nodes, edges, code: codeFor(nodes, edges) };
+    },
+
+    pasteImage: (picture, at) => {
+      const { kind, direction } = get();
+      if (kind !== "flowchart") return false;
+      const node: ShapeNode = {
+        id: freshId("img"),
+        type: "shape",
+        position: { x: at.x - picture.width / 2, y: at.y - picture.height / 2 },
+        selected: true,
+        // Drawn as draw.io pictures are: the picture, with no box round it.
+        data: {
+          label: picture.label ?? "",
+          shape: "square",
+          direction,
+          img: picture.src,
+          imgWidth: picture.width,
+          imgHeight: picture.height,
+          styles: ["fill:none", "stroke:none"],
+        },
+      };
+      set({ nodes: [...get().nodes.map((n) => ({ ...n, selected: false })), node] });
+      regenerate();
+      return true;
+    },
+
+    cropImage: (id, picture) => {
+      set({
+        nodes: get().nodes.map((n) => {
+          if (n.id !== id || n.type !== "shape" || !n.data.img) return n;
+          const was = { w: n.data.imgWidth ?? IMG_SIZE, h: n.data.imgHeight ?? IMG_SIZE };
+          const sized = n.style?.width != null && n.style?.height != null;
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              img: picture.src,
+              imgWidth: picture.width,
+              imgHeight: picture.height,
+            },
+            ...(sized
+              ? {
+                  style: {
+                    ...n.style,
+                    width: Math.max(1, Number(n.style!.width) - was.w + picture.width),
+                    height: Math.max(1, Number(n.style!.height) - was.h + picture.height),
+                  },
+                }
+              : {}),
+          };
+        }),
       });
       regenerate();
     },

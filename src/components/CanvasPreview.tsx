@@ -16,11 +16,10 @@ import { MessageEdge, ParticipantNodeView } from "./SequenceView";
 import { C4NodeView, JunctionNodeView, ServiceNodeView } from "./ArchView";
 import { NoteNodeView } from "./NoteNode";
 import { RoutedEdge } from "./RoutedEdge";
-import { ParallelEdge } from "./ParallelEdge";
 import { parseDiagram } from "../model/diagram";
 import { readPositions } from "../model/positions";
 import { autoLayout } from "../layout/autoLayout";
-import { annotateParallel, placeNodes } from "../store";
+import { annotateParallel, placeNodes, withStoredLooks } from "../store";
 import { StaticGraphProvider } from "./GraphSource";
 import { useT } from "../i18n";
 import type { AnyNode, DiagramKind, FlowEdge } from "../model/types";
@@ -44,7 +43,12 @@ const nodeTypes: NodeTypes = {
 
 const edgeTypes: EdgeTypes = {
   message: MessageEdge,
-  parallel: ParallelEdge,
+  // Drawn by the router like any other connection: it gives each its own
+  // berth on the face and its own lane, as the exported SVG does. The arc
+  // this used to be hung from React Flow's first handle, which is the left
+  // face — so a connection to a node on the right left from behind its own
+  // box and crossed it.
+  parallel: RoutedEdge,
   routed: RoutedEdge,
 };
 
@@ -146,8 +150,12 @@ export function CanvasPreview({ code }: { code: string }) {
           const laid = (await autoLayout(nodes, parsed.edges, parsed.direction)).positions;
           nodes = placeNodes(parsed.nodes, laid, parsed.kind);
         }
-        const edges = annotateParallel(parsed.kind, parsed.edges);
-        if (alive) setGraph({ code, kind: parsed.kind, nodes, edges });
+        // Its node looks, corners and connection styles too, or an imported
+        // drawing's connections are routed from scratch here and look
+        // nothing like they will on the canvas.
+        const looked = withStoredLooks(code, nodes, parsed.edges);
+        const edges = annotateParallel(parsed.kind, looked.edges);
+        if (alive) setGraph({ code, kind: parsed.kind, nodes: looked.nodes, edges });
       } catch (err) {
         if (alive)
           setError({ code, message: err instanceof Error ? err.message : String(err) });

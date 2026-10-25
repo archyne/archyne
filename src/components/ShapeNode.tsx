@@ -9,6 +9,7 @@ import { NodeResize } from "./NodeResize";
 import { IconView } from "./ArchView";
 import { SideHandles } from "./SideHandles";
 import { pointsAttr, shapeGeometry } from "../render/shapes";
+import { COMPACT_SHAPE } from "../render/boxModel";
 
 /**
  * The canvas's adapter over `render/shapes.ts`.
@@ -79,6 +80,12 @@ export function ShapeNodeView({ id, data, selected }: NodeProps<ShapeNodeType>) 
   // outline and the arriving edges would otherwise stop. A size actually
   // chosen for the node still wins; dragging a handle chooses one.
   const bare = Boolean(data.img) && custom.fill === "none" && custom.stroke === "none";
+  // Words with no box: no fill and no stroke. draw.io lets these run past
+  // the box they were given, and imported ones are sized that tightly — so
+  // with the usual padding, and clipped to the box, a caption read "Gateway
+  // (to On-". They keep the words whole instead.
+  const unboxed = (v?: string) => v === "none" || v === "transparent";
+  const textOnly = !data.img && unboxed(custom.fill) && unboxed(custom.stroke);
   const fitted = bare && style?.width == null;
   // What the label is drawn with — and the rename field too, since it stands
   // in for the label and a field two sizes off the text it replaces is a
@@ -87,18 +94,37 @@ export function ShapeNodeView({ id, data, selected }: NodeProps<ShapeNodeType>) 
 
   // Renaming, shared with every other family. A flowchart label may hold a
   // second line, and mermaid spells one `<br>`.
-  const rename = useRename(id, data.label, { multiline: true, style: labelStyle });
+  // The field is painted with the node's own fill, so a label coloured to
+  // read on that fill still reads while it is typed. On the canvas's
+  // background instead, the dark text an imported pale box carries was black
+  // on black.
+  const fieldFill =
+    custom.fill && custom.fill !== "none" && custom.fill !== "transparent"
+      ? ({ "--rename-bg": custom.fill } as React.CSSProperties)
+      : {};
+  const rename = useRename(id, data.label, {
+    multiline: true,
+    style: { ...labelStyle, ...fieldFill },
+  });
+
+  // A node made smaller than the label's padding allows — draw.io's 40×20
+  // tags, `AV11` and `TO01`, are everywhere in imported diagrams — had a few
+  // pixels left for its text, broke the one word into a letter a line, and
+  // showed the first letter. `.compact` gives the words the room instead.
+  const compact = style?.width != null && (w < COMPACT_SHAPE.width || h < COMPACT_SHAPE.height);
 
   return (
     <div
       className={
         `shape-node${selected ? " selected" : ""}${bare ? " bare" : ""}` +
-        (style?.width == null ? "" : " sized")
+        (style?.width == null ? "" : " sized") +
+        (compact ? " compact" : "") +
+        (textOnly ? " text-only" : "")
       }
       style={fitted ? undefined : { width: w, height: h }}
       onDoubleClick={rename.begin}
     >
-      <NodeResize id={id} visible={selected} />
+      <NodeResize id={id} visible={selected} picture={bare} />
       {/* Nothing to draw when the frame is off — and drawing it anyway would
           put a shape back on selection, since `.shape-node.selected` colours
           the outline the fill and stroke had blanked. */}
@@ -122,39 +148,37 @@ export function ShapeNodeView({ id, data, selected }: NodeProps<ShapeNodeType>) 
           used to blank the picture and, with no frame to hold the shape open,
           leave a lone text box where the icon had been.
 
-          A node without a picture keeps the field as it was, a sibling of the
-          label rather than inside it — there is nothing to hold in place, and
-          the label's own padding would only narrow the field. */}
-      {rename.editing && !data.img ? (
-        rename.field
-      ) : (
-        <div
-          className={`shape-label${data.img ? ` with-image pos-${data.imgPos ?? "b"}` : ""}`}
-          style={labelStyle}
-        >
-          {/* Mermaid's image shape, drawn the way mermaid draws it: the
+          The field is inside the label in every case. Outside it, it lost
+          the label's type size and came up in the browser's own sixteen
+          pixels — the words grew the moment they were double-clicked, and
+          there was no telling what they would look like once done. */}
+
+      <div
+        className={`shape-label${data.img ? ` with-image pos-${data.imgPos ?? "b"}` : ""}`}
+        style={labelStyle}
+      >
+        {/* Mermaid's image shape, drawn the way mermaid draws it: the
               picture from its URL, the label above or below. Loaded from the
               network on purpose — that URL is the whole point of the shape,
               since it is what makes the icon appear in other tools too. */}
-          {data.img && (
-            <img
-              className="shape-image"
-              src={data.img}
-              alt=""
-              width={data.imgWidth ?? IMG_SIZE}
-              height={data.imgHeight ?? IMG_SIZE}
-              draggable={false}
-            />
-          )}
-          {rename.editing ? (
-            rename.field
-          ) : (
-            <span>
-              <Label text={data.label} />
-            </span>
-          )}
-        </div>
-      )}
+        {data.img && (
+          <img
+            className="shape-image"
+            src={data.img}
+            alt=""
+            width={data.imgWidth ?? IMG_SIZE}
+            height={data.imgHeight ?? IMG_SIZE}
+            draggable={false}
+          />
+        )}
+        {rename.editing ? (
+          rename.field
+        ) : (
+          <span>
+            <Label text={data.label} />
+          </span>
+        )}
+      </div>
       <SideHandles />
     </div>
   );
@@ -170,12 +194,26 @@ export function GroupNodeView({
   // A container's name is a flowchart subgraph title, which mermaid lets
   // hold a `<br>` like any other flowchart label.
   const rename = useRename(id, data.label, { multiline: true });
+  // The colours the diagram gives it — a `style` on the subgraph, a draw.io
+  // panel's own. Without them, every imported panel was the same faint
+  // tint, and a card stacked on another showed the one behind through it.
+  const custom = styleProps(data.styles ?? []);
+  const paint = {
+    ...(custom.fill ? { "--group-fill": custom.fill } : {}),
+    ...(custom.stroke
+      ? { "--group-stroke": custom.stroke === "none" ? "transparent" : custom.stroke }
+      : {}),
+    ...(custom.color ? { "--group-text": custom.color } : {}),
+  } as React.CSSProperties;
+  const painted = Boolean(custom.fill || custom.stroke) && !custom.strokeDasharray;
   return (
     <div
       className={
         `group-node${selected ? " selected" : ""}` +
+        (painted ? " painted" : "") +
         (data.style?.look && data.style.look !== "boxed" ? ` ${data.style.look}` : "")
       }
+      style={paint}
     >
       <NodeResizer
         isVisible={selected}

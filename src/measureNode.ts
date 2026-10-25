@@ -70,6 +70,7 @@ import {
   TABLE_TITLE,
   face,
 } from "./render/boxModel";
+import { labelLines } from "./model/label";
 import {
   measureBlock,
   textMetrics,
@@ -161,10 +162,19 @@ function measureShape(
     // from its length; now it is measured.
     const w = data.imgWidth ?? IMG_SIZE;
     const h = data.imgHeight ?? IMG_SIZE;
-    const label = metrics.measure(data.label, font);
+    // Line by line: a caption under an icon is very often two lines
+    // ("Azure<br>Key Vault"), and measured as one it came out the width of
+    // both and the height of neither.
+    let labelWidth = 0;
+    let labelHeight = 0;
+    for (const line of labelLines(data.label)) {
+      const size = metrics.measure(line, font);
+      labelWidth = Math.max(labelWidth, size.width);
+      labelHeight += size.height;
+    }
     return {
-      width: Math.ceil(Math.max(w, label.width) + 16),
-      height: Math.ceil(h + label.height + 4 + 12),
+      width: Math.ceil(Math.max(w, labelWidth) + 16),
+      height: Math.ceil(h + labelHeight + 4 + 12),
     };
   }
 

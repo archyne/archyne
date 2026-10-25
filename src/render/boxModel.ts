@@ -38,6 +38,15 @@ export function face(size: number, weight?: number): FontSpec {
  * `padX`/`padY` are the totals — left plus right, top plus bottom — because
  * that is the only form the arithmetic ever wants.
  */
+/**
+ * Below this size a shape's label gives up its usual padding — `.compact` on
+ * the canvas — or draw.io's 40×20 tags had a letter's width to wrap in.
+ */
+export const COMPACT_SHAPE = { width: 64, height: 32 };
+
+/** The padding a label keeps, left plus right, in a box that has given it up. */
+export const SLIM_LABEL_PAD_X = 4;
+
 export const BOXES = {
   /** `.shape-label`, inside a `.shape-node` with no border of its own. */
   shape: {

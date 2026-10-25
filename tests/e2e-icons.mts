@@ -423,6 +423,49 @@ check(
   JSON.stringify(await styles()),
 );
 
+/* ---------- vendor icons in a flowchart ---------- */
+
+// The palette's icons, which used to be architecture's alone, put into a
+// flowchart as pictures with their names under them.
+await page.goto(codeUrl('flowchart TD\n  s["Start"] --> w["Next step"]\n'));
+await page.waitForSelector(".react-flow__node");
+await page.waitForTimeout(1000);
+const nodesBefore = (await nodes()).length;
+await page.locator(".palette .icon-search").fill("kubernetes");
+// One the search found, not one of the suggestions shown before it answers.
+const iconCell = page.locator(`.palette .icon-grid .icon-add[title*="kubernetes" i]`).first();
+await iconCell.waitFor({ timeout: 10000 });
+await iconCell.click();
+await page.waitForFunction(
+  (n) =>
+    (
+      window as unknown as { __graphTest: { store: { getState(): { nodes: unknown[] } } } }
+    ).__graphTest.store.getState().nodes.length ===
+    n + 1,
+  nodesBefore,
+  { timeout: 10000 },
+);
+const added = (await nodes()).at(-1) as unknown as {
+  type: string;
+  data: { img?: string; label?: string; imgWidth?: number };
+};
+check(
+  "a flowchart takes an icon from the palette, as a picture",
+  added.type === "shape" && (added.data.img ?? "").startsWith("data:image/svg+xml;base64,"),
+  JSON.stringify({ type: added.type, img: added.data.img?.slice(0, 40) }),
+);
+check(
+  "with its name under it",
+  /kubernetes/i.test(added.data.label ?? ""),
+  `label "${added.data.label}"`,
+);
+const drawn = await page.evaluate(() => {
+  const imgs = [...document.querySelectorAll<HTMLImageElement>(".react-flow__node img")];
+  const last = imgs.at(-1);
+  return last ? { w: last.naturalWidth, complete: last.complete } : null;
+});
+check("and the picture draws", !!drawn && drawn.complete && drawn.w > 0, JSON.stringify(drawn));
+
 check("nothing threw", errors.length === 0, errors.join(" | "));
 
 await browser.close();

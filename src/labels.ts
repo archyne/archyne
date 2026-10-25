@@ -34,6 +34,7 @@
  * A label the user has dragged is never moved. It is where it was put, and it
  * takes part only as something for the others to avoid.
  */
+import { labelLines } from "./model/label";
 import type { Rect } from "./avoid";
 import { absoluteBoxes } from "./boxes";
 import { isGroup, type AnyNode, type DiagramKind, type FlowEdge } from "./model/types";
@@ -226,10 +227,21 @@ export function labelTextOf(edge: FlowEdge): string {
   return edge.data?.label ?? "";
 }
 
-/** The plate a label is drawn on, given the text. */
+/**
+ * The plate a label is drawn on, given the text: its widest line, all its
+ * lines tall. An imported label breaks often — `6443<br/>HTTPS<br/>TLS1.2` —
+ * and measured as one line it claimed a plate three times too wide and a
+ * third of the height it is drawn at.
+ */
 export function plateSize(text: string): { w: number; h: number } {
-  const size = textMetrics().measure(text, LABEL_FONT);
-  return { w: size.width + LABEL_PAD.x * 2, h: size.height + LABEL_PAD.y * 2 };
+  let width = 0;
+  let height = 0;
+  for (const line of labelLines(text)) {
+    const size = textMetrics().measure(line, LABEL_FONT);
+    width = Math.max(width, size.width);
+    height += size.height;
+  }
+  return { w: width + LABEL_PAD.x * 2, h: height + LABEL_PAD.y * 2 };
 }
 
 /** The plate, as a rectangle, centred on a point. */

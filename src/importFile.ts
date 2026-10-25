@@ -108,7 +108,7 @@ export interface ImportSummary {
   format: "drawio" | "dot" | "sql" | "excalidraw" | "plantuml" | "vsdx" | "lucid";
   nodes: number;
   edges: number;
-  /** Every page in the source. Only the first is converted. */
+  /** Every page in the source. `page` says which was converted. */
   pages: string[];
   /** Cells that had no Mermaid equivalent and were left out. */
   dropped: number;
@@ -127,8 +127,9 @@ export interface ImportSummary {
    */
   choices: DiagramKind[];
   /**
-   * Which page of a multi-page file came across, as an index. Only a Lucid
-   * file has pages worth choosing between; other formats leave it unset.
+   * Which page of a multi-page file came across, as an index. Set by the
+   * formats whose pages can be chosen between — draw.io, Visio and Lucid —
+   * and left unset by the rest, which convert the first.
    */
   page?: number;
 }
@@ -201,7 +202,7 @@ async function convertBinary(
   }
 
   const { vsdxToMermaid } = await import("./model/fromVsdx");
-  const result = vsdxToMermaid(bytes);
+  const result = vsdxToMermaid(bytes, page);
   return {
     code: result.code,
     summary: {
@@ -210,6 +211,7 @@ async function convertBinary(
       nodes: result.nodes,
       edges: result.edges,
       pages: result.pages,
+      page: result.page,
       dropped: result.dropped,
     },
   };
@@ -226,6 +228,7 @@ async function convert(
     const result = drawioToMermaid(
       content,
       as === "architecture" || as === "flowchart" ? as : undefined,
+      page,
     );
     return {
       code: result.code,
@@ -235,6 +238,7 @@ async function convert(
         nodes: result.nodes,
         edges: result.edges,
         pages: result.pages,
+        page: result.page,
         dropped: result.dropped,
         ...(result.looksLike ? { looksLike: result.looksLike } : {}),
       },

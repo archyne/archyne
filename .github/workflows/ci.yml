@@ -273,6 +273,11 @@ jobs:
         env:
           ARCHYNE_URL: http://localhost:5173
 
+      - name: Copy and paste with other applications
+        run: npm run test:e2e:clipboard
+        env:
+          ARCHYNE_URL: http://localhost:5173
+
       - name: Accessibility (WCAG 2.2 AA)
         run: npm run test:e2e:a11y
         env:

@@ -38,6 +38,16 @@ function parse(svg: string): Document {
 const twoNodes = () => [shape("a", "Start", 0, 0), shape("b", "Finish", 0, 200)];
 
 describe("the document it produces", () => {
+  it("breaks a connection's label where it says <br>", () => {
+    const doc = parse(renderSvg(twoNodes(), [edge("a", "b", "6443<br/>HTTPS")], "flowchart"));
+    const text = doc.querySelector("text.el")!;
+    expect([...text.querySelectorAll("tspan")].map((t) => t.textContent)).toEqual([
+      "6443",
+      "HTTPS",
+    ]);
+    expect(text.textContent).not.toContain("<br");
+  });
+
   it("is well-formed SVG", () => {
     const doc = parse(renderSvg(twoNodes(), [edge("a", "b")], "flowchart"));
     expect(doc.documentElement.tagName).toBe("svg");
@@ -65,6 +75,20 @@ describe("the document it produces", () => {
     const svg = renderSvg([child, group], [], "flowchart");
     // Whatever order they arrived in, the frame is emitted first.
     expect(svg.indexOf('class="gf"')).toBeLessThan(svg.indexOf('class="sf"'));
+  });
+
+  it("paints a group with its own colours, as the canvas does", () => {
+    const group = {
+      id: "g",
+      type: "group",
+      position: { x: 0, y: 0 },
+      style: { width: 400, height: 300 },
+      data: { label: "VNet", subgraphId: "g", styles: ["fill:#dae8fc", "stroke:#6c8ebf"] },
+    } as unknown as AnyNode;
+    const frame = parse(renderSvg([group], [], "flowchart")).querySelector("rect.gf")!;
+    expect(frame.getAttribute("style")).toBe(
+      "fill:#dae8fc;stroke:#6c8ebf;stroke-dasharray:none",
+    );
   });
 
   it("refuses a family it cannot draw, rather than drawing half of one", () => {
@@ -450,5 +474,56 @@ describe("a label cannot climb out", () => {
     const spans = [...doc.querySelectorAll("text.t tspan")].map((t) => t.textContent);
     expect(spans).toEqual(["one", "two"]);
     expect(svg).not.toContain("<br");
+  });
+});
+
+describe("pictures", () => {
+  const PNG = "data:image/png;base64,iVBORw0KGgo=";
+  const picture = (extra = {}) =>
+    shape("p", "Key Vault", 0, 0, {
+      img: PNG,
+      imgWidth: 40,
+      imgHeight: 40,
+      styles: ["fill:none", "stroke:none"],
+      ...extra,
+    });
+
+  it("draws a node's picture, which it used to leave out", () => {
+    const doc = parse(renderSvg([picture()], [], "flowchart"));
+    const image = doc.querySelector("image")!;
+    expect(image.getAttribute("href")).toBe(PNG);
+    expect(image.getAttribute("width")).toBe("40");
+    expect(image.getAttribute("height")).toBe("40");
+  });
+
+  it("puts the name under the picture, or over it", () => {
+    const below = parse(renderSvg([picture()], [], "flowchart"));
+    const imageY = Number(below.querySelector("image")!.getAttribute("y"));
+    const textY = Number(below.querySelector("tspan")!.getAttribute("y"));
+    expect(textY).toBeGreaterThan(imageY + 40);
+
+    const above = parse(renderSvg([picture({ imgPos: "t" })], [], "flowchart"));
+    const imageTop = Number(above.querySelector("image")!.getAttribute("y"));
+    const textTop = Number(above.querySelector("tspan")!.getAttribute("y"));
+    expect(textTop).toBeLessThan(imageTop);
+  });
+
+  it("escapes a picture's address", () => {
+    const svg = renderSvg([picture({ img: 'x" onload="alert(1)' })], [], "flowchart");
+    expect(svg).not.toContain('onload="alert(1)"');
+    parse(svg);
+  });
+});
+
+describe("words with no box", () => {
+  it("keep the slim padding the canvas gives them, and do not break early", () => {
+    // An imported caption, in a box drawn just wide enough for its longest
+    // line. With a box's full padding it broke onto a third line.
+    const caption = shape("c", "Azure Firewall<br>(Outbound)", 0, 0, {
+      styles: ["fill:transparent", "stroke:none"],
+    });
+    const boxed = { ...caption, style: { width: 100, height: 40 } } as AnyNode;
+    const doc = parse(renderSvg([boxed], [], "flowchart"));
+    expect(doc.querySelectorAll("tspan").length).toBe(2);
   });
 });

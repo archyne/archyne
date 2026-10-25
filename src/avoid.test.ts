@@ -88,6 +88,36 @@ describe("routing around what is in the way", () => {
     expect(route[n - 1].y).toBe(route[n - 2].y);
   });
 
+  it("does not fold back towards the face it set off from", () => {
+    // A stub out from a node at y=0, the node's own clearance just above it,
+    // and the goal off to the side and above. Stepping back up to the
+    // clearance line costs nothing on the axis it is travelling, and drew a
+    // spike: down, back up a few units, and only then across.
+    const node = box(-50, -80, 100, 60);
+    const route = routeAround(p(0, 0), p(300, -200), "y", "y", [node], 14, p(0, 1))!;
+    expect(route[1].y).toBeGreaterThanOrEqual(route[0].y);
+  });
+
+  it("arrives travelling the way it is told to", () => {
+    const route = routeAround(p(0, 0), p(300, 200), "x", "y", [], 14, undefined, p(0, -1));
+    // Nothing in the way means nothing to search; the caller falls back.
+    expect(route).toBeNull();
+    const withBox = routeAround(
+      p(0, 0),
+      p(300, 200),
+      "x",
+      "y",
+      [box(100, 100)],
+      14,
+      undefined,
+      p(0, -1),
+    )!;
+    const n = withBox.length;
+    // Arriving upwards: the last run ends above where it began.
+    expect(withBox[n - 1].x).toBe(withBox[n - 2].x);
+    expect(withBox[n - 1].y).toBeLessThan(withBox[n - 2].y);
+  });
+
   it("prefers the path with fewer corners", () => {
     // One box, off to the side of a clear straight run: going round it would
     // cost corners for nothing, so the straight line survives.
@@ -102,7 +132,19 @@ describe("routing around what is in the way", () => {
   });
 
   it("declines a crowd instead of searching it", () => {
-    const many = Array.from({ length: 61 }, (_, i) => box(i * 20, 100, 10, 10));
+    const many = Array.from({ length: 61 }, (_, i) =>
+      box((i % 31) * 10, 100 + (i > 30 ? 40 : 0), 5, 5),
+    );
     expect(routeAround(p(0, 130), p(300, 130), "x", "x", many)).toBeNull();
+  });
+
+  it("still goes round what is in the way when the crowd is elsewhere", () => {
+    // Sixty boxes a long way off used to switch the search off for the whole
+    // drawing, and every connection in a busy diagram went straight through.
+    const far = Array.from({ length: 60 }, (_, i) => box(2000 + i * 20, 2000, 10, 10));
+    const wall = box(100, 100);
+    const route = routeAround(p(0, 130), p(300, 130), "x", "x", [...far, wall])!;
+    expect(route).not.toBeNull();
+    expect(clearOf(route, wall)).toBe(true);
   });
 });

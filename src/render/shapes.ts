@@ -232,3 +232,88 @@ export function shapeGeometry(shape: Shape, w: number, h: number): Primitive[] {
 export function pointsAttr(points: [number, number][]): string {
   return points.map(([x, y]) => `${x},${y}`).join(" ");
 }
+
+/** A face of the box a shape is drawn in. */
+type Face = "left" | "right" | "top" | "bottom";
+
+/**
+ * How far in from a face of its box a shape's outline lies, at `at` along it.
+ *
+ * A connection meets a node on a face of its box, and for a rectangle that is
+ * the outline. For anything else it is not: off the middle of a diamond's
+ * face there is nothing there but the box, and a connection ending on it
+ * stops short in the air. This is the distance a line square to the face has
+ * still to travel to reach what is drawn.
+ *
+ * `at` is in the node's own frame — a y for a left or right face, an x for a
+ * top or bottom one. Measured from the 1px stroke inset every shape shares, so
+ * an ordinary box answers 0.
+ */
+export function outlineDepth(
+  shape: Shape,
+  w: number,
+  h: number,
+  face: Face,
+  at: number,
+): number {
+  const fill = shapeGeometry(shape, w, h).find((p) => p.paint === "fill");
+  if (!fill) return 0;
+  // The ray in from the face: where it starts, and which way is inwards.
+  const across = face === "left" || face === "right";
+  const origin: [number, number] =
+    face === "left" ? [0, at] : face === "right" ? [w, at] : face === "top" ? [at, 0] : [at, h];
+  const inward: [number, number] =
+    face === "left" ? [1, 0] : face === "right" ? [-1, 0] : face === "top" ? [0, 1] : [0, -1];
+  const deepest = across ? w / 2 : h / 2;
+  const settle = (t: number) => Math.max(0, Math.min(deepest, t) - 1);
+
+  if (shape === "cylinder") {
+    // A barrel between two elliptical caps; only the caps are curved.
+    if (across) return 0;
+    const rx = (w - 2) / 2;
+    const u = Math.min(1, Math.abs(at - w / 2) / rx);
+    return settle(1 + 8 * (1 - Math.sqrt(1 - u * u)));
+  }
+
+  switch (fill.kind) {
+    case "ellipse": {
+      const [ra, rb] = across ? [fill.rx, fill.ry] : [fill.ry, fill.rx];
+      const centre = across ? fill.cy : fill.cx;
+      const u = Math.abs(at - centre) / rb;
+      if (u >= 1) return settle(deepest);
+      return settle((across ? w / 2 : h / 2) - ra * Math.sqrt(1 - u * u));
+    }
+    case "rect": {
+      const r = Math.min(fill.rx ?? 0, fill.width / 2, fill.height / 2);
+      if (r <= 0) return 0;
+      // Only the rounded corners are set back from the face.
+      const lo = (across ? fill.y : fill.x) + r;
+      const hi = (across ? fill.y + fill.height : fill.x + fill.width) - r;
+      const off = at < lo ? lo - at : at > hi ? at - hi : 0;
+      if (off === 0) return 0;
+      if (off >= r) return settle(deepest);
+      return settle(1 + r - Math.sqrt(r * r - off * off));
+    }
+    case "polygon": {
+      // The nearest edge the ray crosses.
+      let best = Infinity;
+      const pts = fill.points;
+      for (let i = 0; i < pts.length; i++) {
+        const [ax, ay] = pts[i];
+        const [bx, by] = pts[(i + 1) % pts.length];
+        const ex = bx - ax;
+        const ey = by - ay;
+        const den = inward[0] * ey - inward[1] * ex;
+        if (Math.abs(den) < 1e-9) continue;
+        const qx = ax - origin[0];
+        const qy = ay - origin[1];
+        const t = (qx * ey - qy * ex) / den;
+        const s = (qx * inward[1] - qy * inward[0]) / den;
+        if (t >= 0 && s >= -1e-9 && s <= 1 + 1e-9) best = Math.min(best, t);
+      }
+      return Number.isFinite(best) ? settle(best) : settle(deepest);
+    }
+    default:
+      return 0;
+  }
+}

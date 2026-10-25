@@ -28,8 +28,10 @@ export interface VsdxImport {
   code: string;
   nodes: number;
   edges: number;
-  /** Every page in the file. Only the first is converted. */
+  /** Every page in the file, by name. */
   pages: string[];
+  /** Which of them was converted, as an index. */
+  page: number;
   /** Connectors with an end glued to nothing. */
   dropped: number;
 }
@@ -147,14 +149,19 @@ function masterNames(parts: Map<string, Part>): Map<string, string> {
 }
 
 /**
- * The first page's shapes, and how tall its sheet is.
+ * One page's shapes — the first unless another is asked for — and how tall
+ * its sheet is.
  *
  * The page list names the pages and points at their parts through the
  * relationship file beside it, so both have to be read to get from "Page-1"
  * to `page1.xml`.
  */
-function firstPage(parts: Map<string, Part>): {
+function pageAt(
+  parts: Map<string, Part>,
+  which: number,
+): {
   pages: string[];
+  page: number;
   contents: Document;
   height: number;
 } {
@@ -177,11 +184,12 @@ function firstPage(parts: Map<string, Part>): {
     }
   }
 
-  const first = pageElements[0];
+  const page = which >= 0 && which < pageElements.length ? which : 0;
+  const first = pageElements[page];
   const relId = first.querySelector("Rel")?.getAttribute("r\\:id") ?? firstRelId(first);
   const file = (relId && target.get(relId)) || "page1.xml";
   const part = parts.get(`visio/pages/${file.toLowerCase()}`);
-  if (!part) throw new Error("the first page of this drawing is missing");
+  if (!part) throw new Error("that page of this drawing is missing");
 
   // The page height is on the page's own sheet, and everything vertical is
   // measured from the bottom of it.
@@ -190,7 +198,7 @@ function firstPage(parts: Map<string, Part>): {
     ? (cellNumber(sheet, "PageHeight") ?? DEFAULT_PAGE_HEIGHT)
     : DEFAULT_PAGE_HEIGHT;
 
-  return { pages, contents: parseXml(part.text, "the first page"), height };
+  return { pages, page, contents: parseXml(part.text, "the page"), height };
 }
 
 /** `r:id` is namespaced, which `querySelector` cannot always reach. */
@@ -204,10 +212,10 @@ function firstRelId(page: Element): string | null {
 }
 
 /** Read a Visio `.vsdx`. Throws when it is not one. */
-export function vsdxToMermaid(bytes: Uint8Array): VsdxImport {
+export function vsdxToMermaid(bytes: Uint8Array, which = 0): VsdxImport {
   const parts = open(bytes);
   const masters = masterNames(parts);
-  const { pages, contents, height: pageHeight } = firstPage(parts);
+  const { pages, page, contents, height: pageHeight } = pageAt(parts, which);
 
   // Only the top level: the sub-shapes of a group belong to one composite
   // stencil far more often than they are a container of their own.
@@ -332,6 +340,7 @@ export function vsdxToMermaid(bytes: Uint8Array): VsdxImport {
     nodes: nodes.length,
     edges: edges.length,
     pages,
+    page,
     dropped,
   };
 }

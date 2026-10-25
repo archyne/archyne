@@ -173,6 +173,15 @@ describe("the plate a label is drawn on", () => {
     expect(h).toBeGreaterThan(6);
   });
 
+  it("is as tall as its lines and as wide as the widest", () => {
+    // An imported port label: `6443<br/>HTTPS<br/>TLS1.2`. Measured as one
+    // line, its plate was three times too wide and a third of the height.
+    const one = plateSize("HTTPS");
+    const three = plateSize("6443<br/>HTTPS<br/>TLS1.2");
+    expect(three.h).toBeGreaterThan(one.h * 2);
+    expect(three.w).toBeLessThan(plateSize("6443 HTTPS TLS1.2").w);
+  });
+
   it("is centred on the point the label was placed at", () => {
     const box = plateBox("hello", p(100, 50));
     expect(box.x + box.w / 2).toBeCloseTo(100);

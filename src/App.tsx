@@ -29,6 +29,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { useT } from "./i18n";
 import { singleKeyShortcutsEnabled } from "./prefs";
 import { watchDisk } from "./diskWatch";
+import { copyNow } from "./clipboard";
 
 export default function App() {
   const applyCode = useGraphStore((s) => s.applyCode);
@@ -188,9 +189,10 @@ export default function App() {
         e.preventDefault();
         void s.redo();
       } else if (key === "c") {
-        s.copySelection();
-      } else if (key === "v") {
-        s.pasteClipboard();
+        // Words selected on the page are the browser's to copy.
+        if (window.getSelection()?.toString()) return;
+        e.preventDefault();
+        copyNow();
       } else if (key === "d") {
         e.preventDefault();
         s.copySelection();

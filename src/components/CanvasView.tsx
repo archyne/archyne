@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ContextMenu, type MenuState } from "./ContextMenu";
+import { CropDialog } from "./CropDialog";
 import {
   Background,
   ConnectionMode,
@@ -17,7 +18,6 @@ import { GroupNodeView, ShapeNodeView } from "./ShapeNode";
 import { ClassNodeView, EntityNodeView, MarkerDefs, StateNodeView } from "./KindNodes";
 import { MessageEdge, ParticipantNodeView } from "./SequenceView";
 import { C4NodeView, JunctionNodeView, ServiceNodeView } from "./ArchView";
-import { ParallelEdge } from "./ParallelEdge";
 import { RoutedEdge } from "./RoutedEdge";
 import { NoteNodeView } from "./NoteNode";
 import { SequenceOverlay } from "./SequenceOverlay";
@@ -30,6 +30,8 @@ import { MermaidPreview } from "./MermaidPreview";
 import { useT } from "../i18n";
 import type { EdgeTypes } from "@xyflow/react";
 import { isGroup } from "../model/types";
+import { pasteFrom } from "../clipboard";
+import { addSeed } from "../iconPicture";
 
 const nodeTypes: NodeTypes = {
   shape: ShapeNodeView,
@@ -46,7 +48,12 @@ const nodeTypes: NodeTypes = {
 
 const edgeTypes: EdgeTypes = {
   message: MessageEdge,
-  parallel: ParallelEdge,
+  // Drawn by the router like any other connection: it gives each its own
+  // berth on the face and its own lane, as the exported SVG does. The arc
+  // this used to be hung from React Flow's first handle, which is the left
+  // face — so a connection to a node on the right left from behind its own
+  // box and crossed it.
+  parallel: RoutedEdge,
   routed: RoutedEdge,
 };
 
@@ -104,6 +111,8 @@ export function CanvasView() {
   const { screenToFlowPosition, fitView } = useReactFlow();
   const fitSeq = useGraphStore((s) => s.fitSeq);
   const [menu, setMenu] = useState<MenuState | null>(null);
+  /** The node whose picture is being cropped, if any. */
+  const [cropping, setCropping] = useState<string | null>(null);
 
   /**
    * Fit the drawing into view when the store asks.
@@ -121,6 +130,28 @@ export function CanvasView() {
     const id = requestAnimationFrame(() => void fitView({ duration: 200 }));
     return () => cancelAnimationFrame(id);
   }, [fitSeq, fitView]);
+
+  /**
+   * Paste onto the canvas: a picture from anywhere becomes an image node in
+   * the middle of the view, the app's own copy its nodes again. Heard on the
+   * document, since nothing on the canvas takes focus the way a field does.
+   */
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable) return;
+      if (el.closest?.(".modal") || useGraphStore.getState().unsupported) return;
+      const view = document.querySelector(".canvas-wrap")?.getBoundingClientRect();
+      if (!view) return;
+      e.preventDefault();
+      pasteFrom(
+        e.clipboardData,
+        screenToFlowPosition({ x: view.left + view.width / 2, y: view.top + view.height / 2 }),
+      );
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [screenToFlowPosition]);
   const connect = useKeyboardConnect();
   /**
    * Whether a connection is being dragged, so the canvas can show every
@@ -148,12 +179,12 @@ export function CanvasView() {
       const raw = e.dataTransfer.getData("application/x-graph-node");
       if (!raw) return;
       e.preventDefault();
-      addNode(
+      addSeed(
         JSON.parse(raw) as NodeSeed,
         screenToFlowPosition({ x: e.clientX, y: e.clientY }),
       );
     },
-    [addNode, screenToFlowPosition],
+    [screenToFlowPosition],
   );
 
   // Mark the pending connection source so it is visible, not just announced,
@@ -326,7 +357,10 @@ export function CanvasView() {
         <Controls />
         <MiniMap pannable zoomable style={MINIMAP_SIZE} />
       </ReactFlow>
-      {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+      {menu && (
+        <ContextMenu menu={menu} onClose={() => setMenu(null)} onCropImage={setCropping} />
+      )}
+      {cropping && <CropDialog nodeId={cropping} onClose={() => setCropping(null)} />}
 
       {/* Arranging runs the layout engine, which takes its time on a large
           drawing. Laid over the canvas and inert, so the drawing underneath

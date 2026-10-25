@@ -27,7 +27,7 @@
 import { parseDiagram } from "../model/diagram";
 import { readPositions } from "../model/positions";
 import { autoLayout } from "../layout/autoLayout";
-import { annotateParallel, placeNodes } from "../graph";
+import { annotateParallel, placeNodes, withStoredLooks } from "../graph";
 import { renderSvg, type RenderOptions } from "./renderSvg";
 
 export interface RenderResult {
@@ -82,7 +82,12 @@ export async function render(
     const laid = (await autoLayout(nodes, parsed.edges, parsed.direction)).positions;
     nodes = placeNodes(parsed.nodes, laid, parsed.kind);
   }
-  const edges = annotateParallel(parsed.kind, parsed.edges);
+  // The document's own node looks, corners and connection styles: without
+  // them a drawing arranged in Archyne came out with its connections routed
+  // afresh, not as they were drawn.
+  const looked = withStoredLooks(code, nodes, parsed.edges);
+  nodes = looked.nodes;
+  const edges = annotateParallel(parsed.kind, looked.edges);
 
   // The parse knows the `classDef` table; without passing it on, every
   // `class a,b hot` in the document is silently ignored and the picture comes

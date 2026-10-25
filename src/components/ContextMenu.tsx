@@ -5,6 +5,8 @@ import { nearestSegment, type Point } from "../routing";
 import type { AnyNode, FlowEdge } from "../model/types";
 import { isGroup, type DiagramKind, type NodeSeed } from "../model/types";
 import { useT } from "../i18n";
+import { copyNow, pasteFromMenu } from "../clipboard";
+import { canCopyImage } from "../export";
 
 export interface MenuState {
   x: number;
@@ -49,7 +51,16 @@ function focusInspectorLabel() {
   requestAnimationFrame(() => document.getElementById("inspector-label")?.focus());
 }
 
-export function ContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => void }) {
+export function ContextMenu({
+  menu,
+  onClose,
+  onCropImage,
+}: {
+  menu: MenuState;
+  onClose: () => void;
+  /** Open the crop dialog for this node's picture. */
+  onCropImage?: (id: string) => void;
+}) {
   const { screenToFlowPosition } = useReactFlow();
   const ref = useRef<HTMLDivElement>(null);
   const firstItemRef = useRef<HTMLButtonElement>(null);
@@ -93,11 +104,22 @@ export function ContextMenu({ menu, onClose }: { menu: MenuState; onClose: () =>
 
   const items: Array<{ label: string; danger?: boolean; action: () => void }> = [];
 
+  // Copy leaves a picture and the Mermaid both, and each application takes
+  // the one it prefers; these force one, for when that is not the one wanted.
+  const copyItems = [
+    { label: t("menu.copy"), action: run(() => copyNow()) },
+    ...(canCopyImage()
+      ? [{ label: t("menu.copyAsImage"), action: run(() => copyNow("image")) }]
+      : []),
+    { label: t("menu.copyAsText"), action: run(() => copyNow("text")) },
+  ];
+
   if (menu.target === "node" && node) {
     if (isGroup(node)) {
       items.push(
         { label: t("menu.rename"), action: run(() => focusInspectorLabel()) },
         { label: t("menu.ungroup"), action: run(() => s.ungroupSelection()) },
+        ...copyItems,
         {
           label: t("menu.deleteGroup"),
           danger: true,
@@ -108,11 +130,11 @@ export function ContextMenu({ menu, onClose }: { menu: MenuState; onClose: () =>
       items.push(
         { label: t("menu.rename"), action: run(() => focusInspectorLabel()) },
         { label: t("menu.duplicate"), action: run(() => s.duplicateNode(node.id)) },
-        {
-          label: t("menu.copy"),
-          action: run(() => s.copySelection()),
-        },
+        ...copyItems,
       );
+      if (node.type === "shape" && node.data.img && onCropImage) {
+        items.push({ label: t("menu.cropImage"), action: run(() => onCropImage(node.id)) });
+      }
       if (node.parentId) {
         items.push({
           label: t("menu.removeFromGroup"),
@@ -139,7 +161,7 @@ export function ContextMenu({ menu, onClose }: { menu: MenuState; onClose: () =>
       });
     }
     items.push(
-      { label: t("menu.copy"), action: run(() => s.copySelection()) },
+      ...copyItems,
       {
         label: t("menu.duplicate"),
         action: run(() => {
@@ -204,7 +226,11 @@ export function ContextMenu({ menu, onClose }: { menu: MenuState; onClose: () =>
           s.addNode(DEFAULT_SEED[s.kind], screenToFlowPosition({ x: menu.x, y: menu.y })),
         ),
       },
-      { label: t("menu.paste"), action: run(() => s.pasteClipboard()) },
+      {
+        label: t("menu.paste"),
+        action: run(() => void pasteFromMenu(screenToFlowPosition({ x: menu.x, y: menu.y }))),
+      },
+      ...copyItems,
       { label: t("menu.autoLayout"), action: run(() => void s.runAutoLayout()) },
     );
   }
