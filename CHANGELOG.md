@@ -24,10 +24,55 @@ itself ships, the following count as the public API for semver purposes:
 Breaking any of those requires a major version. The React component structure,
 CSS class names and internal store shape are _not_ public API.
 
-## [Unreleased]
+## [1.2.0-alpha.1] — 2026-10-25
+
+### Added
+
+- **Copy from the canvas, paste anywhere.** Ctrl+C (or Copy in the menu)
+  puts the selection on the system clipboard as a picture and as its Mermaid
+  at once: PowerPoint and Word paste the picture, a text editor pastes the
+  code. The picture has no background, so it sits on the slide or page as
+  drawn shapes do, and is drawn in the light theme's colours so its words
+  read on a white page whatever theme the app is in. With nothing selected
+  the whole diagram goes. The right-click menu adds "Copy as image" and
+  "Copy as text", for when the form an application prefers is not the one
+  wanted. Before, a copy never left the app.
+- **Crop a picture.** "Crop image…" in a picture's right-click menu opens
+  it with a frame to drag, or numbers to type. The crop is cut into the
+  picture itself, so the Live Editor and every export show it cropped too;
+  the part kept stays the size it was on the canvas, and undo brings the
+  rest back.
+- **Paste a picture onto the canvas.** An image copied from a web page or
+  any other application, pasted onto a flowchart, becomes an image node in
+  the middle of the view — scaled down if it is large, since it travels
+  inside the Mermaid. Pasting the app's own copy still brings back the
+  nodes, not a picture of them.
+- **Any page of a draw.io or Visio file can be imported — or several.** The
+  import dialog lists the pages and previews the one picked; only the first
+  was reachable before, and a file of an overview and its details lost the
+  details. Ticking more than one, or "All pages", imports each into a tab of
+  its own, named after its page. A file of dozens of pages keeps the list
+  in a box that scrolls, so the dialog still fits the window.
+- **A flowchart group's colours can be set in the inspector** — fill, border
+  and title — as a node's can.
+- **Ready-made colours in the inspector.** A row of fill-and-border pairs —
+  draw.io's palette, and a dark one — sets a node's or a group's colours in a
+  click, with a text colour that reads on the fill; the pickers offer the
+  same colours among their suggestions.
+- **Vendor icons in a flowchart.** The palette's 13,000-icon search, its
+  categories and favourites — architecture's alone until now — are offered in
+  a flowchart too, where an icon arrives as a picture with its name under it:
+  the shape a cloud diagram drawn as a flowchart, or imported from draw.io, is
+  made of. The icon's SVG is carried in the file, so it draws offline and in
+  every Mermaid viewer.
 
 ### Fixed
 
+- **The palette's icon section is tidier**: a search field with a clear
+  button, the categories in an even grid, the icons on light tiles — black
+  logos were invisible on the dark panel — with the name of the one pointed at
+  read out under the search, and the import buttons below the grid. The Azure
+  category shows Microsoft's icons; it showed every brand logo there is.
 - **Connections go round the nodes in their way.** A connection whose two
   ends faced each other — the commonest kind — went straight through any
   node between them: the search for a way round started on the node's own
@@ -46,42 +91,17 @@ CSS class names and internal store shape are _not_ public API.
 - **Connections reach the outline of a diamond, circle or other shaped
   node**, not the box around it. Off a diamond's point, where several
   connections sharing a side are placed, a line stopped short in the air.
-- **Copy from the canvas, paste anywhere.** Ctrl+C (or Copy in the menu)
-  puts the selection on the system clipboard as a picture and as its
-  Mermaid at once: PowerPoint and Word paste the picture, a text editor
-  pastes the code. The picture has no background, so it sits on the slide
-  or page as drawn shapes do, and is drawn in the light theme's colours
-  so its words read on a white page whatever theme the app is in. With nothing selected the whole diagram goes. The right-click menu adds
-  "Copy as image" and "Copy as text", for when the form an application
-  prefers is not the one wanted. Before, a
-  copy never left the app.
 - **Resizing a picture resizes the picture.** Dragging the handles of a
   picture with no frame round it made the box bigger and left the picture
   small in the middle of it, and the Mermaid kept the old size. Now the
   picture grows and shrinks with the handles, in proportion, and the box
   hugs it when let go; the size fields do the same.
-- **Crop a picture.** "Crop image…" in a picture's right-click menu opens
-  it with a frame to drag, or numbers to type. The crop is cut into the
-  picture itself, so the Live Editor and every export show it cropped too;
-  the part kept stays the size it was on the canvas, and undo brings the
-  rest back.
 - **Pictures in the SVG export and in a copy.** A node's picture — every
   icon of an imported Azure or AWS diagram — was missing from the SVG
   export and from a copy pasted into a slide, which kept only the captions.
   Pictures linked from the web are fetched and carried inside the copy.
   Captions with no box round them keep the slim padding they have on the
   canvas, rather than breaking onto an extra line over the icon above.
-- **Paste a picture onto the canvas.** An image copied from a web page or
-  any other application, pasted onto a flowchart, becomes an image node in
-  the middle of the view — scaled down if it is large, since it travels
-  inside the Mermaid. Pasting the app's own copy still brings back the
-  nodes, not a picture of them.
-- **Any page of a draw.io or Visio file can be imported — or several.** The
-  import dialog lists the pages and previews the one picked; only the first
-  was reachable before, and a file of an overview and its details lost the
-  details. Ticking more than one, or "All pages", imports each into a tab of
-  its own, named after its page. A file of dozens of pages keeps the list
-  in a box that scrolls, so the dialog still fits the window.
 - **draw.io pictures come across as pictures.** Icons pasted into a drawing —
   most Azure, AWS and GCP diagrams — and ones from draw.io's own library are
   drawn with their caption above or below and no box round them, instead of
@@ -107,12 +127,6 @@ CSS class names and internal store shape are _not_ public API.
   arrive with their own fill, frame and dash, white where draw.io leaves the
   fill to its default, and words lying on a panel are written in a colour
   that reads on it rather than in the theme's.
-- **A flowchart group's colours can be set in the inspector** — fill, border
-  and title — as a node's can.
-- **Ready-made colours in the inspector.** A row of fill-and-border pairs —
-  draw.io's palette, and a dark one — sets a node's or a group's colours in a
-  click, with a text colour that reads on the fill; the pickers offer the
-  same colours among their suggestions.
 - **Undo takes back a colour picked by dragging in one step.** The picker
   sends a change for every colour the pointer crosses, and each was a step
   of its own, so undo walked back through all of them.
