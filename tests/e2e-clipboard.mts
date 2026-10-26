@@ -44,17 +44,25 @@ function check(what: string, ok: boolean) {
  * The picture is drawn after the key press, so the clipboard fills a moment
  * later. Not `waitForFunction`, which takes an async predicate's promise for
  * a truthy answer and returns at once.
+ *
+ * A copy can land between reading what the clipboard holds and reading its
+ * text, and Chromium then refuses the second read ("Clipboard data has
+ * changed"). That is the clipboard filling, not a failure, so it is read again.
  */
 function copied(page: Page, needle: string): Promise<boolean> {
   return page.evaluate(async (needle) => {
     for (let i = 0; i < 150; i++) {
-      const [item] = await navigator.clipboard.read();
-      if (
-        item?.types.includes("image/png") &&
-        item.types.includes("text/plain") &&
-        (await (await item.getType("text/plain")).text()).includes(needle)
-      ) {
-        return true;
+      try {
+        const [item] = await navigator.clipboard.read();
+        if (
+          item?.types.includes("image/png") &&
+          item.types.includes("text/plain") &&
+          (await (await item.getType("text/plain")).text()).includes(needle)
+        ) {
+          return true;
+        }
+      } catch {
+        // Changed under the read: try again.
       }
       await new Promise((r) => setTimeout(r, 100));
     }
@@ -72,12 +80,17 @@ async function holds(
 ): Promise<{ types: string; text: string }> {
   for (let i = 0; i < 150; i++) {
     const now = await page.evaluate(async () => {
-      const [item] = await navigator.clipboard.read();
-      const types = item ? [...item.types].sort().join("+") : "";
-      const text = item?.types.includes("text/plain")
-        ? await (await item.getType("text/plain")).text()
-        : "";
-      return { types, text };
+      try {
+        const [item] = await navigator.clipboard.read();
+        const types = item ? [...item.types].sort().join("+") : "";
+        const text = item?.types.includes("text/plain")
+          ? await (await item.getType("text/plain")).text()
+          : "";
+        return { types, text };
+      } catch {
+        // Changed under the read, as `copied` explains: try again.
+        return { types: "", text: "" };
+      }
     });
     if (test(now.types)) return now;
     await page.waitForTimeout(100);
