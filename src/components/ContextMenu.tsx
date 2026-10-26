@@ -1,6 +1,6 @@
 import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useReactFlow } from "@xyflow/react";
-import { absoluteBoxes, useGraphStore } from "../store";
+import { absoluteBoxes, canGroup, useGraphStore } from "../store";
 import { nearestSegment, type Point } from "../routing";
 import type { AnyNode, FlowEdge } from "../model/types";
 import { isGroup, type DiagramKind, type NodeSeed } from "../model/types";
@@ -149,12 +149,7 @@ export function ContextMenu({
     }
   } else if (menu.target === "selection") {
     const count = s.nodes.filter((n) => n.selected).length;
-    const groupable =
-      s.kind === "flowchart" ||
-      s.kind === "state" ||
-      s.kind === "architecture" ||
-      s.kind === "c4";
-    if (groupable) {
+    if (canGroup(s.kind)) {
       items.push({
         label: t("menu.groupNodes", { count }),
         action: run(() => s.groupSelection()),

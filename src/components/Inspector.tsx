@@ -1,12 +1,15 @@
 import {
   alignableSelection,
+  canGroup,
+  groupableSelection,
   hasCustomSize,
+  sizableSelection,
   minSize,
   useGraphStore,
   type AlignEdge,
 } from "../store";
 import { fitToContent } from "../contentSize";
-import { useT } from "../i18n";
+import { useT, type MessageKey } from "../i18n";
 import { ImportIcon } from "./ImportIcon";
 import { IconField } from "./IconPicker";
 import type { RouteStyle } from "../model/edgeStyle";
@@ -14,7 +17,7 @@ import type { NodeLook } from "../model/nodeStyle";
 import { useIconPrefs } from "../iconPrefs";
 import { labelToText, textToLabel } from "../model/label";
 import { readableOn } from "../model/importShared";
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import {
   C4_SHAPES,
   CLASS_MARKERS,
@@ -31,6 +34,7 @@ import {
   type ArchDir,
   type ArrowType,
   type ClassMarker,
+  type DiagramKind,
   type EdgeStroke,
   type EntityAttr,
   type ErCard,
@@ -102,6 +106,26 @@ const SWATCHES = [
   ...new Set([...COLOUR_PRESETS.flatMap((p) => [p.fill, p.stroke]), "#ffffff", "#000000"]),
 ];
 
+/** A node mermaid's `style <id> …` statement reaches. */
+type Styled = AnyNode & { data: { styles?: string[] } };
+
+/**
+ * Whether the inspector offers this node colours: the families StyleRow is
+ * shown for one node at a time, so a selection is offered exactly what each
+ * of its nodes would be.
+ */
+function isStyled(n: AnyNode, kind: DiagramKind): n is Styled {
+  return (
+    n.type === "shape" ||
+    n.type === "state" ||
+    n.type === "entity" ||
+    n.type === "class" ||
+    // A flowchart subgraph takes a `style` statement as a node does; the
+    // other families' containers have none to write.
+    (n.type === "group" && kind === "flowchart")
+  );
+}
+
 /**
  * Fill, border, text colour and type size — the `style <id> …` statement,
  * as controls.
@@ -111,23 +135,60 @@ const SWATCHES = [
  * colour picker that means the same thing in four places should be the same
  * colour picker. `architecture-beta` has no `style` statement at all, so a
  * service is simply not offered one.
+ *
+ * It takes several nodes as readily as one, so that colouring a selection
+ * is these same controls rather than a second set to drift from them. Where
+ * the nodes disagree the swatch is striped and says so, rather than showing
+ * the first node's colour as though it were everyone's.
  */
 function StyleRow({
-  node,
+  nodes,
   sized = true,
 }: {
-  node: AnyNode & { data: { styles?: string[] } };
+  nodes: Styled[];
   /** Whether its type size is offered: a container's title has none to set. */
   sized?: boolean;
 }) {
   const t = useT();
-  const updateNodeData = useGraphStore((s) => s.updateNodeData);
-  const styles = node.data.styles;
+  const updateNodesData = useGraphStore((s) => s.updateNodesData);
   // Dragging through a picker sends a change per pointer move; sent as one
   // gesture they are one step of undo, not a step for every colour crossed.
+  const restyle = (change: (styles: string[] | undefined) => string[], burst?: string) =>
+    updateNodesData(
+      nodes.map((n) => [n.id, { styles: change(n.data.styles) }]),
+      burst ? { burst } : undefined,
+    );
   const set = (key: string, value: string) =>
-    updateNodeData(node.id, { styles: withStyle(styles, key, value) }, { burst: key });
+    restyle((styles) => withStyle(styles, key, value), key);
   const swatches = useId();
+
+  const shared = (key: string, fallback: string) => {
+    const values = nodes.map((n) => styleValue(n.data.styles, key, fallback));
+    return { value: values[0], mixed: values.some((v) => v !== values[0]) };
+  };
+  const colour = (key: string, label: string, fallback: string) => {
+    const { value, mixed } = shared(key, fallback);
+    return (
+      <label>
+        {label}
+        {/* Read with the name, so a screen reader hears it as the stripes
+            are seen: before the value, not instead of it. */}
+        {mixed && <span className="visually-hidden">{t("insp.mixed")}</span>}
+        <input
+          type="color"
+          list={swatches}
+          className={mixed ? "mixed" : undefined}
+          title={mixed ? t("insp.mixed") : undefined}
+          value={value}
+          onChange={(e) => set(key, e.target.value)}
+        />
+      </label>
+    );
+  };
+  // A group's title has no type size of its own, so only the rest are asked.
+  const lettered = nodes.filter((n) => n.type !== "group");
+  const sizes = lettered.map((n) => labelSize(n.data.styles));
+  const size = sizes.every((v) => v === sizes[0]) ? sizes[0] : undefined;
 
   return (
     <>
@@ -142,13 +203,13 @@ function StyleRow({
             title={`${fill} / ${stroke}`}
             onClick={() => {
               const color = readableOn(fill);
-              updateNodeData(node.id, {
-                styles: withStyle(
+              restyle((styles) =>
+                withStyle(
                   withStyle(withStyle(styles, "fill", fill), "stroke", stroke),
                   "color",
                   color ?? "#111111",
                 ),
-              });
+              );
             }}
           />
         ))}
@@ -159,38 +220,14 @@ function StyleRow({
         ))}
       </datalist>
       <div className="color-row">
-        <label>
-          {t("insp.fill")}
-          <input
-            type="color"
-            list={swatches}
-            value={styleValue(styles, "fill", "#232a3a")}
-            onChange={(e) => set("fill", e.target.value)}
-          />
-        </label>
-        <label>
-          {t("insp.border")}
-          <input
-            type="color"
-            list={swatches}
-            value={styleValue(styles, "stroke", "#5b8def")}
-            onChange={(e) => set("stroke", e.target.value)}
-          />
-        </label>
-        <label>
-          {t("insp.text")}
-          <input
-            type="color"
-            list={swatches}
-            value={styleValue(styles, "color", "#e6e9f0")}
-            onChange={(e) => set("color", e.target.value)}
-          />
-        </label>
+        {colour("fill", t("insp.fill"), "#232a3a")}
+        {colour("stroke", t("insp.border"), "#5b8def")}
+        {colour("color", t("insp.text"), "#e6e9f0")}
         {/* `font-size` is a label style in mermaid's own reckoning, so a
           number here is a number every reader of the file draws with.
           Back at the default it is removed rather than written out:
           12px spelled explicitly on every node is 12px nobody chose. */}
-        {sized && (
+        {sized && lettered.length > 0 && (
           <label className="type-size">
             {t("insp.fontSize")}
             <input
@@ -198,22 +235,30 @@ function StyleRow({
               min={6}
               max={96}
               step={1}
-              value={labelSize(styles)}
+              // Empty when the nodes disagree: any one number would be a lie.
+              value={size ?? ""}
+              placeholder={size === undefined ? "–" : undefined}
+              title={size === undefined ? t("insp.mixed") : undefined}
               onChange={(e) => {
                 const px = Number(e.target.value);
-                if (!Number.isFinite(px) || px <= 0) return;
-                updateNodeData(node.id, {
-                  styles:
-                    px === LABEL_SIZE
-                      ? withoutStyles(styles, ["font-size"])
-                      : withStyle(styles, "font-size", `${px}px`),
-                });
+                if (!e.target.value || !Number.isFinite(px) || px <= 0) return;
+                updateNodesData(
+                  lettered.map((n) => [
+                    n.id,
+                    {
+                      styles:
+                        px === LABEL_SIZE
+                          ? withoutStyles(n.data.styles, ["font-size"])
+                          : withStyle(n.data.styles, "font-size", `${px}px`),
+                    },
+                  ]),
+                );
               }}
             />
           </label>
         )}
-        {(styles?.length ?? 0) > 0 && (
-          <button className="mini" onClick={() => updateNodeData(node.id, { styles: [] })}>
+        {nodes.some((n) => (n.data.styles?.length ?? 0) > 0) && (
+          <button className="mini" onClick={() => restyle(() => [])}>
             {t("insp.reset")}
           </button>
         )}
@@ -260,7 +305,7 @@ function NodeFields({ node }: { node: AnyNode }) {
               ))}
             </select>
           </label>
-          <StyleRow node={node} />
+          <StyleRow nodes={[node]} />
           <label>
             CSS classes (classDef names, space-separated)
             <input
@@ -286,7 +331,7 @@ function NodeFields({ node }: { node: AnyNode }) {
               onChange={(e) => updateNodeData(node.id, { label: e.target.value })}
             />
           </label>
-          <StyleRow node={node} />
+          <StyleRow nodes={[node]} />
           <NodeSize node={node} />
         </>
       ) : (
@@ -320,7 +365,7 @@ function NodeFields({ node }: { node: AnyNode }) {
               }
             />
           </label>
-          <StyleRow node={node} />
+          <StyleRow nodes={[node]} />
           <NodeSize node={node} />
         </>
       );
@@ -517,7 +562,7 @@ function NodeFields({ node }: { node: AnyNode }) {
               }
             />
           </label>
-          <StyleRow node={node} />
+          <StyleRow nodes={[node]} />
           <NodeSize node={node} />
         </>
       );
@@ -565,9 +610,7 @@ function NodeFields({ node }: { node: AnyNode }) {
               <option value="plain">{t("insp.lookPlain")}</option>
             </select>
           </label>
-          {/* A flowchart subgraph takes a `style` statement as a node does;
-              the other families' containers have none to write. */}
-          {kind === "flowchart" && <StyleRow node={node} sized={false} />}
+          {isStyled(node, kind) && <StyleRow nodes={[node]} sized={false} />}
           <NodeSize node={node} />
         </>
       );
@@ -1161,6 +1204,98 @@ function DiagramMeta() {
   );
 }
 
+/** The align commands, in the two sets of three the panel shows them in. */
+const ALIGN: Array<[AlignEdge, MessageKey]> = [
+  ["left", "insp.alignLeft"],
+  ["centerX", "insp.alignCenterX"],
+  ["right", "insp.alignRight"],
+  ["top", "insp.alignTop"],
+  ["middleY", "insp.alignMiddleY"],
+  ["bottom", "insp.alignBottom"],
+];
+
+/**
+ * A picture of each command: the line the edges meet on, and two bars of
+ * different lengths meeting it. A word on the button said "Left" and left
+ * open which left — the edges lining up on one vertical line, or the row
+ * sliding over — and the first reading stacks a row of icons into one box.
+ */
+const ARRANGE_ICON: Record<AlignEdge | "x" | "y", ReactNode> = {
+  left: (
+    <>
+      <path d="M4 3v18" />
+      <rect x="7" y="6" width="12" height="4" rx="1" />
+      <rect x="7" y="14" width="7" height="4" rx="1" />
+    </>
+  ),
+  centerX: (
+    <>
+      <path d="M12 3v18" />
+      <rect x="5" y="6" width="14" height="4" rx="1" />
+      <rect x="8" y="14" width="8" height="4" rx="1" />
+    </>
+  ),
+  right: (
+    <>
+      <path d="M20 3v18" />
+      <rect x="5" y="6" width="12" height="4" rx="1" />
+      <rect x="10" y="14" width="7" height="4" rx="1" />
+    </>
+  ),
+  top: (
+    <>
+      <path d="M3 4h18" />
+      <rect x="6" y="7" width="4" height="12" rx="1" />
+      <rect x="14" y="7" width="4" height="7" rx="1" />
+    </>
+  ),
+  middleY: (
+    <>
+      <path d="M3 12h18" />
+      <rect x="6" y="5" width="4" height="14" rx="1" />
+      <rect x="14" y="8" width="4" height="8" rx="1" />
+    </>
+  ),
+  bottom: (
+    <>
+      <path d="M3 20h18" />
+      <rect x="6" y="5" width="4" height="12" rx="1" />
+      <rect x="14" y="10" width="4" height="7" rx="1" />
+    </>
+  ),
+  // Equal gaps: the outer two stay put and the middle one sits between.
+  x: (
+    <>
+      <path d="M3 4v16M21 4v16" />
+      <rect x="9.5" y="7" width="5" height="10" rx="1" />
+    </>
+  ),
+  y: (
+    <>
+      <path d="M4 3h16M4 21h16" />
+      <rect x="7" y="9.5" width="10" height="5" rx="1" />
+    </>
+  ),
+};
+
+/** Two bars made one length, with the measure they now share beside them. */
+const SIZE_ICON: Record<"width" | "height", ReactNode> = {
+  width: (
+    <>
+      <rect x="4" y="4" width="16" height="5" rx="1" />
+      <rect x="4" y="11" width="16" height="5" rx="1" />
+      <path d="M4 20h16M4 18v4M20 18v4" />
+    </>
+  ),
+  height: (
+    <>
+      <rect x="4" y="4" width="5" height="16" rx="1" />
+      <rect x="11" y="4" width="5" height="16" rx="1" />
+      <path d="M20 4v16M18 4h4M18 20h4" />
+    </>
+  ),
+};
+
 /**
  * Arranging a multi-selection: align on an edge, or even out the gaps.
  *
@@ -1170,55 +1305,107 @@ function DiagramMeta() {
  */
 function SelectionFields({ nodes }: { nodes: AnyNode[] }) {
   const t = useT();
+  const kind = useGraphStore((s) => s.kind);
   const alignSelection = useGraphStore((s) => s.alignSelection);
   const distributeSelection = useGraphStore((s) => s.distributeSelection);
+  const matchSelectionSize = useGraphStore((s) => s.matchSelectionSize);
+  const groupSelection = useGraphStore((s) => s.groupSelection);
 
   const targets = alignableSelection(nodes);
   const canAlign = targets.length >= 2;
   const canDistribute = targets.length >= 3;
+  const canSize = kind !== "sequence" && sizableSelection(nodes).length >= 2;
+  // Grouping lived only in the right-click menu, where nobody who did not
+  // already know it was there would look.
+  const members = canGroup(kind) ? groupableSelection(nodes) : [];
+  const selected = nodes.filter((n) => n.selected);
+  const styled = selected.filter((n) => isStyled(n, kind));
 
-  const ALIGN: Array<[AlignEdge, string]> = [
-    ["left", "insp.alignLeft"],
-    ["centerX", "insp.alignCenterX"],
-    ["right", "insp.alignRight"],
-    ["top", "insp.alignTop"],
-    ["middleY", "insp.alignMiddleY"],
-    ["bottom", "insp.alignBottom"],
-  ];
+  // The name goes in the tooltip as well as to a screen reader: with only a
+  // picture on the button, hovering is how a sighted user reads it.
+  const tool = (
+    id: string,
+    label: string,
+    icon: ReactNode,
+    disabled: boolean,
+    run: () => void,
+  ) => (
+    <button
+      key={id}
+      type="button"
+      className="arrange-tool"
+      title={label}
+      aria-label={label}
+      disabled={disabled}
+      onClick={run}
+    >
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+        {icon}
+      </svg>
+    </button>
+  );
+  const alignTool = ([edge, key]: [AlignEdge, MessageKey]) =>
+    tool(edge, `${t("insp.align")}: ${t(key)}`, ARRANGE_ICON[edge], !canAlign, () =>
+      alignSelection(edge),
+    );
+  const distributeTool = (axis: "x" | "y", key: MessageKey) =>
+    tool(axis, `${t("insp.distribute")}: ${t(key)}`, ARRANGE_ICON[axis], !canDistribute, () =>
+      distributeSelection(axis),
+    );
+  const sizeTool = (dim: "width" | "height", key: MessageKey) =>
+    tool(dim, t(key), SIZE_ICON[dim], !canSize, () => matchSelectionSize(dim));
 
   return (
     <>
-      <div className="field-label">{t("insp.align")}</div>
-      <div className="align-grid">
-        {ALIGN.map(([edge, key]) => (
-          <button
-            key={edge}
-            type="button"
-            disabled={!canAlign}
-            onClick={() => alignSelection(edge)}
-          >
-            {t(key as Parameters<typeof t>[0])}
-          </button>
-        ))}
+      <div className="arrange">
+        <div className="arrange-block" role="group" aria-label={t("insp.align")}>
+          <div className="arrange-label">{t("insp.align")}</div>
+          <div className="arrange-sets">
+            <div className="arrange-set">{ALIGN.slice(0, 3).map(alignTool)}</div>
+            <div className="arrange-set">{ALIGN.slice(3).map(alignTool)}</div>
+          </div>
+        </div>
+        <div className="arrange-block" role="group" aria-label={t("insp.distribute")}>
+          <div className="arrange-label">{t("insp.distribute")}</div>
+          <div className="arrange-set">
+            {distributeTool("x", "insp.distributeX")}
+            {distributeTool("y", "insp.distributeY")}
+          </div>
+        </div>
+        <div className="arrange-block" role="group" aria-label={t("insp.size")}>
+          <div className="arrange-label">{t("insp.size")}</div>
+          <div className="arrange-set">
+            {sizeTool("width", "insp.matchWidth")}
+            {sizeTool("height", "insp.matchHeight")}
+          </div>
+        </div>
       </div>
 
-      <div className="field-label">{t("insp.distribute")}</div>
-      <div className="align-grid two">
-        <button
-          type="button"
-          disabled={!canDistribute}
-          onClick={() => distributeSelection("x")}
-        >
-          {t("insp.distributeX")}
-        </button>
-        <button
-          type="button"
-          disabled={!canDistribute}
-          onClick={() => distributeSelection("y")}
-        >
-          {t("insp.distributeY")}
-        </button>
-      </div>
+      {members.length > 0 && (
+        <div className="arrange-actions">
+          <button type="button" className="mini" onClick={groupSelection}>
+            {t("menu.groupNodes", { count: members.length })}
+          </button>
+        </div>
+      )}
+
+      {styled.length > 0 && (
+        <>
+          <div className="field-hint arrange-heading">{t("insp.presets")}</div>
+          <StyleRow nodes={styled} />
+          {/* A note or a start state takes no style; say so rather than
+              letting a colour apply to four of five and leave the fifth
+              looking forgotten. */}
+          {styled.length < selected.length && (
+            <p className="field-hint">
+              {t("insp.styleSome", {
+                count: String(styled.length),
+                total: String(selected.length),
+              })}
+            </p>
+          )}
+        </>
+      )}
 
       {/* Say why, rather than leaving dead buttons to be puzzled over. */}
       {!canAlign && <p className="field-hint">{t("insp.alignSameParent")}</p>}

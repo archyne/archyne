@@ -24,6 +24,51 @@ itself ships, the following count as the public API for semver purposes:
 Breaking any of those requires a major version. The React component structure,
 CSS class names and internal store shape are _not_ public API.
 
+## [Unreleased]
+
+### Changed
+
+- **Aligning a selection no longer piles it into one box.** "Left" on a row
+  of icons lined up every left edge on one vertical line, so the whole row
+  landed on the same spot. Whatever aligning would overlap now moves along
+  the other axis instead, in the order it stood, 40px apart: a row aligned
+  left becomes a column, and a column aligned on its tops becomes a row.
+  The group the selection sits in grows to keep it. What was never going to
+  overlap does not move.
+- **Align and distribute are a toolbar of pictures.** The panel for a
+  multi-selection was two rows of the browser's own grey buttons, each with
+  one word on it — and "Left" left open which left. Each command now shows
+  the line the edges meet on, and its tooltip says which edges ("Align: Left
+  edges").
+
+### Added
+
+- **Same width, same height.** Beside align and distribute, two buttons make
+  the selection as wide, or as tall, as the largest of it — aligning centres
+  of boxes of different widths still looked untidy. A frameless picture is
+  scaled rather than given a frame. Boxes are never sized to a group selected
+  beside them, and a size, unlike an alignment, works across groups.
+- **Group from the panel.** "Group N nodes" sits under the strip when the
+  selection can be grouped. It was only in the right-click menu, where only
+  someone who already knew it was there would look. The menu now offers it
+  for class diagrams too, which the store could always group into a
+  namespace.
+- **Colour a selection.** With several nodes selected the panel offers the
+  same colours, presets and type size as for one, applied to all of them in
+  one step of undo. A colour the nodes do not share is striped rather than
+  shown as the first node's, and a type size they disagree on is left empty.
+  Nodes that take no style (an architecture service, a note) are left alone,
+  and the panel says how many the colours reached.
+- **The palette arranges as the panel does.** Ctrl+K lists "Same width as
+  the widest", "Same height as the tallest" and "Group N nodes" beside
+  align and distribute, whenever they can act, so none of the selection's
+  commands is reachable only by pointer.
+- **Select several nodes in the outline.** Ctrl+click (⌘ on a Mac) adds a
+  row or takes it away and Shift+click takes the run from the last row
+  clicked, as on the canvas; Ctrl+Shift adds the run. A run follows the
+  rows as filtered, so a selection can be gathered by name and then
+  arranged or coloured in the panel.
+
 ## [1.2.0-alpha.1] — 2026-10-25
 
 ### Added
