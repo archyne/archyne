@@ -338,6 +338,11 @@ try {
   console.log("\nthe menu forces one form");
   {
     const node = page.locator('.react-flow__node[data-id="c"]');
+    // The copy above left a picture on the clipboard too, so waiting for one
+    // could end on that copy before this one had landed — and that copy has
+    // its text with it. A text-only marker first means only this copy's
+    // picture can end the wait.
+    await page.evaluate(() => navigator.clipboard.writeText("(cleared)"));
     await node.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Copy as image", exact: true }).click();
     const image = await holds(page, (types) => types.includes("image/png"));
