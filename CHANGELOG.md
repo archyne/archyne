@@ -24,7 +24,7 @@ itself ships, the following count as the public API for semver purposes:
 Breaking any of those requires a major version. The React component structure,
 CSS class names and internal store shape are _not_ public API.
 
-## [Unreleased]
+## [1.3.0-alpha.1] — 2026-10-26
 
 ### Changed
 
