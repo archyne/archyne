@@ -443,6 +443,7 @@ names the five hosts that makes possible and nothing else — never
 | [Security policy](SECURITY.md)                   | The threat model, what is in scope for a report, and how to report privately |
 | [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) | Dependency licences; `npm run sbom` emits a CycloneDX SBOM                   |
 | [NOTICE](NOTICE)                                 | The one bundled thing that is not MIT: Microsoft's Azure icons               |
+| [Code signing policy](CODE_SIGNING.md)           | What is signed, who approves it, and what the app sends over the network     |
 | [CHANGELOG.md](CHANGELOG.md)                     | What shipped, and what is deliberately unfinished                            |
 
 Untrusted diagram text is held by two independent layers — Mermaid's
@@ -451,10 +452,19 @@ pull request. Accessibility is checked the same way: `axe` reports no WCAG
 2.2 AA violations across seventeen interface surfaces, in both themes.
 
 Two things stated up front rather than discovered later: the desktop
-installers are **not yet code-signed**, and the accessibility work is a
+installers are **not yet code-signed** (see the
+[code signing policy](CODE_SIGNING.md)), and the accessibility work is a
 self-assessment rather than a signed VPAT. A fuller security architecture
 note and a criterion-by-criterion conformance report exist and can be shared
 on request.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io),
+certificate by [SignPath Foundation](https://signpath.org). The application
+is pending, so the Windows installer is still unsigned;
+[CODE_SIGNING.md](CODE_SIGNING.md) has the status, what gets signed, who
+approves it, and the privacy policy.
 
 ## License
 

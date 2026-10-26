@@ -24,6 +24,19 @@ itself ships, the following count as the public API for semver purposes:
 Breaking any of those requires a major version. The React component structure,
 CSS class names and internal store shape are _not_ public API.
 
+## [Unreleased]
+
+### Added
+
+- **A code signing policy.** [CODE_SIGNING.md](CODE_SIGNING.md) says what
+  will be signed (the Windows installer, built by the release workflow and
+  nothing else), who approves each signing, and what Archyne sends over the
+  network. Archyne has applied to SignPath Foundation for a free certificate,
+  which asks for the policy on the home page and the download page: the
+  README, the About dialog and every release page now link to it. The
+  installers stay unsigned until the application is accepted, and the
+  policy says so.
+
 ## [1.3.0-alpha.1] — 2026-10-26
 
 ### Changed
