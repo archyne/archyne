@@ -55,6 +55,20 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
           The MIT licence above does not extend to them. <em>NOTICE</em>, beside the source,
           states those terms in full — read it before redistributing a build.
         </p>
+        <p>
+          {/* SignPath Foundation asks for the policy to be reachable, under
+              this name, from the project's home page — which is this app. */}
+          How the desktop installers are signed, who approves each release, and what Archyne
+          sends over the network are set out in its{" "}
+          <a
+            href="https://github.com/archyne/archyne/blob/main/CODE_SIGNING.md"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Code signing policy
+          </a>
+          .
+        </p>
         <p className="about-trademark">{t("about.trademark")}</p>
         <p className="about-version">{t("about.version", { version: __APP_VERSION__ })}</p>
       </div>
