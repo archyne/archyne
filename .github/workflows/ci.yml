@@ -96,9 +96,18 @@ jobs:
   # remembered to look; nothing here is covered by the jsdom unit tests —
   # export rasterization, WCAG contrast and target size, RTL geometry, and
   # the sanitizer/CSP checks all need real layout and a real browser.
+  #
+  # Split three ways and run side by side: one after another they took fifteen
+  # minutes, three quarters of it in three suites. Every shard sets up the
+  # same way — the same fonts above all, since the legibility and layout
+  # suites measure text — and runs its own share of the suites.
   e2e:
-    name: Browser end-to-end
+    name: Browser end-to-end (${{ matrix.shard }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [drag, import, rest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -109,15 +118,26 @@ jobs:
 
       - run: npm ci
 
+      # Without `--with-deps`: the runner image already carries Chrome and the
+      # libraries it links against, and the dependency step's `apt-get update`
+      # is what once took nine minutes on a slow mirror. If the browser does
+      # not start, the dependencies are installed after all.
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        run: |
+          npx playwright install chromium
+          if ! node -e "require('playwright').chromium.launch().then((b) => b.close())"; then
+            npx playwright install-deps chromium
+          fi
 
       # tests/e2e-i18n-export.mts measures rendered ink for Japanese, Korean,
       # Arabic and Cyrillic labels. Without these fonts the glyphs are missing
       # on the runner rather than in the app, and the test would report a
       # regression that does not exist.
       - name: Install fonts for the non-Latin export check
-        run: sudo apt-get install -y --no-install-recommends fonts-noto-core fonts-noto-cjk
+        run: |
+          fonts="fonts-noto-core fonts-noto-cjk"
+          sudo apt-get install -y --no-install-recommends $fonts \
+            || { sudo apt-get update && sudo apt-get install -y --no-install-recommends $fonts; }
 
       - name: Start dev server
         run: |
@@ -129,41 +149,49 @@ jobs:
       # export internals are not reachable from the shipped bundle. That is
       # why these run against the dev server.
       - name: Export pipeline
+        if: matrix.shard == 'rest'
         run: npm run test:e2e:export
         env:
           ARCHYNE_URL: http://localhost:5173
 
       - name: Non-Latin label export
+        if: matrix.shard == 'rest'
         run: npm run test:e2e:i18n
         env:
           ARCHYNE_URL: http://localhost:5173
 
       - name: Right-to-left chrome
+        if: matrix.shard == 'rest'
         run: npm run test:e2e:rtl
         env:
           ARCHYNE_URL: http://localhost:5173
 
       - name: Alignment guides
+        if: matrix.shard == 'drag'
         run: npm run test:e2e:drag
         env:
           ARCHYNE_URL: http://localhost:5173
 
       - name: Edge routing
+        if: matrix.shard == 'drag'
         run: npm run test:e2e:waypoints
         env:
           ARCHYNE_URL: http://localhost:5173
 
       - name: Sequence message order
+        if: matrix.shard == 'rest'
         run: npm run test:e2e:sequence
         env:
           ARCHYNE_URL: http://localhost:5173
 
       - name: Architecture layout
+        if: matrix.shard == 'rest'
         run: npm run test:e2e:architecture
         env:
           ARCHYNE_URL: http://localhost:5173
 
       - name: Node resizing
+        if: matrix.shard == 'drag'
         run: npm run test:e2e:resize
         env:
           ARCHYNE_URL: http://localhost:5173
@@ -174,6 +202,7 @@ jobs:
       # the editor re-measures every node a frame later and papers over it.
       # This compares the two where both answers exist.
       - name: Node measurement matches the browser
+        if: matrix.shard == 'rest'
         run: npm run test:e2e:measure
         env:
           ARCHYNE_URL: http://localhost:5173
@@ -183,6 +212,7 @@ jobs:
       # to open that file cold — which is the whole claim behind the renderer,
       # and would be untested by anything that went through the dev server.
       - name: A rendered SVG stands on its own
+        if: matrix.shard == 'rest'
         run: npm run test:e2e:render
 
       # `src/widthTable.generated.ts` is a measurement of fonts, committed, and
@@ -193,6 +223,7 @@ jobs:
       # would paint and compares, which is a question any machine can answer
       # about itself. It knows which regime it is in and says so.
       - name: The browser-free measurement holds up
+        if: matrix.shard == 'rest'
         run: npm run test:e2e:metrics
 
       # The package README tells a reader how to plug the renderer into their
@@ -203,6 +234,7 @@ jobs:
       # tarball installed by name, outside the tree. It has already earned its
       # keep: the webview recipe could not be bundled as written.
       - name: Every recipe in the README runs
+        if: matrix.shard == 'rest'
         run: npm run test:e2e:recipes
 
       # `test:e2e:measure` pins the geometry the canvas and the emitter agree
@@ -213,6 +245,7 @@ jobs:
       # invisible to an assertion about a string, so both pictures are read
       # here with `getComputedStyle` instead, in the same browser.
       - name: The canvas and the emitter paint the same colours
+        if: matrix.shard == 'rest'
         run: npm run test:e2e:paint
         env:
           ARCHYNE_URL: http://localhost:5173
@@ -223,6 +256,7 @@ jobs:
       # reader needs — an arrowhead, a box's words, a label, a whole
       # connection — ends up underneath something else.
       - name: Nothing important is hidden under anything else
+        if: matrix.shard == 'import'
         run: npm run test:e2e:legibility
         env:
           ARCHYNE_URL: http://localhost:5173
@@ -232,11 +266,13 @@ jobs:
       # that gesture come back as a line folded over itself, and none of them
       # showed on a diagram small enough to write out by hand.
       - name: Dragging a connection moves it and nothing else
+        if: matrix.shard == 'drag'
         run: npm run test:e2e:slide
         env:
           ARCHYNE_URL: http://localhost:5173
 
       - name: Side panel and editor
+        if: matrix.shard == 'rest'
         run: npm run test:e2e:panel
         env:
           ARCHYNE_URL: http://localhost:5173
@@ -246,6 +282,7 @@ jobs:
       # moments pinned here have to hold for the real engine as much as the
       # stub, which is why they are checked at all.
       - name: Generate (AI) panel
+        if: matrix.shard == 'rest'
         run: npm run test:e2e:ai
         env:
           ARCHYNE_URL: http://localhost:5173
@@ -254,31 +291,37 @@ jobs:
       # pins is the page's connect-src, the CORS diagnosis and the round trip,
       # none of which needs a model.
       - name: Generate (AI) panel, local server
+        if: matrix.shard == 'rest'
         run: npm run test:e2e:ai-server
         env:
           ARCHYNE_URL: http://localhost:5173
 
       - name: Icon picking
+        if: matrix.shard == 'rest'
         run: npm run test:e2e:icons
         env:
           ARCHYNE_URL: http://localhost:5173
 
       - name: Disk watching
+        if: matrix.shard == 'rest'
         run: npm run test:e2e:watch
         env:
           ARCHYNE_URL: http://localhost:5173
 
       - name: Diagram import (draw.io, Graphviz)
+        if: matrix.shard == 'import'
         run: npm run test:e2e:import
         env:
           ARCHYNE_URL: http://localhost:5173
 
       - name: Copy and paste with other applications
+        if: matrix.shard == 'rest'
         run: npm run test:e2e:clipboard
         env:
           ARCHYNE_URL: http://localhost:5173
 
       - name: Accessibility (WCAG 2.2 AA)
+        if: matrix.shard == 'rest'
         run: npm run test:e2e:a11y
         env:
           ARCHYNE_URL: http://localhost:5173
@@ -287,12 +330,14 @@ jobs:
       # dev-only hooks, so it can check that the artifact users actually get
       # boots, renders, and enforces its own policy.
       - name: Build and serve the production bundle
+        if: matrix.shard == 'rest'
         run: |
           npm run build
           nohup npm run preview -- --port 4173 --strictPort > preview-server.log 2>&1 &
           timeout 90 bash -c 'until curl -sfo /dev/null http://localhost:4173; do sleep 1; done'
 
       - name: Sanitizer and CSP
+        if: matrix.shard == 'rest'
         run: npm run test:e2e:csp
         env:
           ARCHYNE_URL: http://localhost:4173
@@ -302,7 +347,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: e2e-output
+          name: e2e-output-${{ matrix.shard }}
           path: |
             export-e2e.png
             export-e2e-*.pdf

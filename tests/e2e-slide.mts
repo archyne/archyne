@@ -71,15 +71,46 @@ const ready = (p: Page) =>
     { timeout: 30000 },
   );
 
+/**
+ * Wait until the drawing has stopped changing: every connection the store
+ * holds is drawn, and neither the paths nor the viewport moved between two
+ * looks a few frames apart. This used to be a flat three seconds per import,
+ * fifty imports a run — most of the suite's six minutes spent waiting on a
+ * drawing that had settled long before.
+ */
+const settled = async () => {
+  await page.evaluate(() => {
+    (window as unknown as { __lastDrawn?: string }).__lastDrawn = "";
+  });
+  await page.waitForFunction(
+    () => {
+      const w = window as unknown as {
+        __lastDrawn?: string;
+        __graphTest: { store: { getState(): { edges: unknown[] } } };
+      };
+      const paths = [...document.querySelectorAll(".react-flow__edge-path")];
+      if (paths.length < w.__graphTest.store.getState().edges.length) return false;
+      const viewport = document.querySelector<HTMLElement>(".react-flow__viewport");
+      const now = paths.map((p) => p.getAttribute("d")).join("|") + viewport?.style.transform;
+      const same = now === w.__lastDrawn;
+      w.__lastDrawn = now;
+      return same;
+    },
+    undefined,
+    { polling: 250, timeout: 30000 },
+  );
+};
+
 const open = async (name: string) => {
   await page.goto(BASE);
   await ready(page);
   await page.setInputFiles('input[type="file"]', fixture(name));
   await page.locator(".modal").waitFor({ timeout: 30000 });
   await page.getByRole("button", { name: "Import", exact: true }).click();
-  await page.waitForTimeout(2500);
+  await page.locator(".modal").waitFor({ state: "detached", timeout: 30000 });
+  await settled();
   await page.locator(".react-flow__controls-fitview").click();
-  await page.waitForTimeout(700);
+  await settled();
 };
 
 /**
