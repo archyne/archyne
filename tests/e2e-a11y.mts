@@ -128,7 +128,7 @@ const SURFACES: Array<{
   {
     label: "selection panel",
     key: "Control+a",
-    appears: ".align-grid",
+    appears: ".arrange",
     // Escape does not clear a selection; clicking empty canvas does.
     dismiss: ".react-flow__pane",
   },

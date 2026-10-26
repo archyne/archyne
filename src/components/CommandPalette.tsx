@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { alignableSelection, useGraphStore, type AlignEdge } from "../store";
+import {
+  alignableSelection,
+  canGroup,
+  groupableSelection,
+  sizableSelection,
+  useGraphStore,
+  type AlignEdge,
+} from "../store";
 import { useFileStore } from "../files";
 import { createDoc, documentList, openFileHere, switchTo } from "../documents";
 import { useThemeStore } from "../theme";
@@ -184,6 +191,31 @@ function buildCommands(t: Translate, nodes: AnyNode[], close: () => void): Comma
         run: wrap(() => graph().distributeSelection(axis)),
       });
     }
+  }
+  // The rest of what the selection panel offers, on the same terms, so that
+  // nothing it does is reachable only by pointer.
+  const { kind } = graph();
+  if (kind !== "sequence" && sizableSelection(nodes).length >= 2) {
+    for (const [dim, key] of [
+      ["width", "insp.matchWidth"],
+      ["height", "insp.matchHeight"],
+    ] as Array<["width" | "height", MessageKey]>) {
+      commands.push({
+        id: `match-${dim}`,
+        group: "palette.groupArrange",
+        label: t(key),
+        run: wrap(() => graph().matchSelectionSize(dim)),
+      });
+    }
+  }
+  const members = canGroup(kind) ? groupableSelection(nodes).length : 0;
+  if (members > 0) {
+    commands.push({
+      id: "group",
+      group: "palette.groupArrange",
+      label: t("menu.groupNodes", { count: members }),
+      run: wrap(() => graph().groupSelection()),
+    });
   }
 
   // Documents before nodes: with several open, "which diagram" is the

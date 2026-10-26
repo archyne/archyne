@@ -4328,40 +4328,108 @@ body.resizing-side {
   border-color: var(--accent);
 }
 
-/* Align and distribute, for a multi-selection. Three across matches the
-   three edges on each axis: left/centre/right, then top/middle/bottom. */
-.align-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
-  margin-bottom: 8px;
+/* Align and distribute, for a multi-selection: a strip of pictured buttons
+   rather than a grid of words. The words were the browser's own grey
+   buttons, the only ones in the panel, and two rows of them for what is a
+   toolbar's worth of commands. Each set of three is one axis — left, centre,
+   right; then top, middle, bottom — joined so the axis reads as a unit. */
+.arrange {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  padding: 8px 12px 0;
 }
-.align-grid.two {
-  grid-template-columns: repeat(2, 1fr);
-}
-.align-grid button {
-  font-size: 11.5px;
-  padding: 6px 4px;
-}
-.field-label {
+.arrange-label {
   font-size: 11px;
   color: var(--text-dim);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+}
+.arrange-sets {
+  display: flex;
+  gap: 6px;
+}
+.arrange-set {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+.arrange-tool {
+  width: 30px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r);
+  cursor: pointer;
+}
+.arrange-tool svg path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+}
+.arrange-tool svg rect {
+  fill: currentColor;
+}
+.arrange-tool:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--panel);
+  border-color: var(--accent);
+}
+.arrange-tool:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.arrange-tool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* The colours for a selection come after the strip under a heading of
+   their own, set apart from the arranging above. */
+.inspector .arrange-heading {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
 }
 
+/* A colour the selected nodes do not share: striped, as no single colour
+   could honestly be shown. The swatch is the browser's own element, so it is
+   reached through each engine's pseudo-element. */
+.inspector input[type="color"].mixed::-webkit-color-swatch {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--panel-2) 0 4px,
+    var(--text-dim) 4px 5px
+  ) !important;
+}
+.inspector input[type="color"].mixed::-moz-color-swatch {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--panel-2) 0 4px,
+    var(--text-dim) 4px 5px
+  ) !important;
+}
+
+/* Grouping is an action rather than an arrangement, so it is a word on its
+   own line under the strip, not another picture in it. */
+.arrange-actions {
+  padding: 10px 12px 0;
+}
 /* The inspector has no inset of its own: every row carries one, so that a
    colour swatch and a text field line up down a single edge. Three blocks
    were written for the dialogs, where the modal body supplies that inset,
    and put in the panel without it — so the hint under a field, and the whole
    align-and-distribute pane, sat 12px to the left of everything they belong
    to, hard against the edge of the panel. */
-.inspector .field-hint,
-.inspector .field-label {
+.inspector .field-hint {
   padding: 6px 12px 0;
-}
-
-.inspector .align-grid {
-  padding-inline: 12px;
 }
 
 /* The patch that takes a drag on an edge's label. Invisible: the label under

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { useGraphStore, alignableSelection } from "./store";
+import { useGraphStore, alignableSelection, canGroup, groupableSelection } from "./store";
 import type { AnyNode } from "./model/types";
 
 /**
@@ -111,6 +111,57 @@ describe("aligning", () => {
     expect([p.a.y + 40, p.b.y + 80]).toEqual([180, 180]);
   });
 
+  it("turns a row aligned on its left edges into a column, not a stack", () => {
+    // Every left edge on one line puts a row of boxes on top of each other.
+    // They move down instead, in the order they stood, 40px apart.
+    seed([node("a", 0, 0, 100, 40), node("b", 200, 0, 60, 40), node("c", 400, 0, 80, 40)]);
+    useGraphStore.getState().alignSelection("left");
+    const p = boxes();
+    expect([p.a.x, p.b.x, p.c.x]).toEqual([0, 0, 0]);
+    expect([p.a.y, p.b.y, p.c.y]).toEqual([0, 80, 160]);
+  });
+
+  it("turns a column aligned on its tops into a row, not a stack", () => {
+    seed([node("a", 0, 0, 100, 40), node("b", 0, 100, 60, 40)]);
+    useGraphStore.getState().alignSelection("top");
+    const p = boxes();
+    expect([p.a.y, p.b.y]).toEqual([0, 0]);
+    expect([p.a.x, p.b.x]).toEqual([0, 140]);
+  });
+
+  it("keeps a slightly ragged row in reading order", () => {
+    // c stands 15px higher than the rest, but it is the last of a row: it
+    // goes at the bottom of the column, not the top.
+    seed([node("a", 0, 15, 90, 87), node("b", 110, 15, 90, 87), node("c", 220, 0, 90, 87)]);
+    useGraphStore.getState().alignSelection("centerX");
+    const p = boxes();
+    expect(p.a.y).toBeLessThan(p.b.y);
+    expect(p.b.y).toBeLessThan(p.c.y);
+  });
+
+  it("grows the group the selection sits in, so nothing hangs out of it", () => {
+    const group = {
+      id: "g",
+      type: "group",
+      position: { x: 0, y: 0 },
+      style: { width: 400, height: 120 },
+      data: { label: "g" },
+    } as unknown as AnyNode;
+    seed([group, node("a", 16, 40, 100, 40, "g"), node("b", 200, 40, 100, 40, "g")]);
+    useGraphStore.getState().alignSelection("left");
+    const g = useGraphStore.getState().nodes.find((n) => n.id === "g")!;
+    // b drops to 40 + 40 + 40 = 120, ending at 160, plus the 16px inset.
+    expect(boxes().b.y).toBe(120);
+    expect(g.style).toMatchObject({ width: 400, height: 176 });
+  });
+
+  it("does not respace what was never going to overlap", () => {
+    // A column 10px apart stays 10px apart: only an overlap is resolved.
+    seed([node("a", 0, 0, 100, 40), node("b", 30, 50, 100, 40)]);
+    useGraphStore.getState().alignSelection("left");
+    expect(boxes().b).toEqual({ x: 0, y: 50 });
+  });
+
   it("does nothing when there is nothing to align against", () => {
     seed([node("a", 7, 9, 100, 40)]);
     useGraphStore.getState().alignSelection("left");
@@ -156,5 +207,68 @@ describe("distributing", () => {
     useGraphStore.getState().distributeSelection("x");
     const p = boxes();
     expect([p.a.x, p.b.x]).toEqual([0, 300]);
+  });
+});
+
+describe("matching sizes", () => {
+  const sizes = () =>
+    Object.fromEntries(
+      useGraphStore
+        .getState()
+        .nodes.map((n) => [n.id, { w: Number(n.style?.width), h: Number(n.style?.height) }]),
+    );
+
+  it("widens everything to the widest, and leaves heights alone", () => {
+    seed([node("a", 0, 0, 100, 40), node("b", 0, 100, 180, 60), node("c", 0, 200, 60, 30)]);
+    useGraphStore.getState().matchSelectionSize("width");
+    expect(sizes()).toEqual({
+      a: { w: 180, h: 40 },
+      b: { w: 180, h: 60 },
+      c: { w: 180, h: 30 },
+    });
+  });
+
+  it("raises everything to the tallest", () => {
+    seed([node("a", 0, 0, 100, 40), node("b", 200, 0, 180, 60)]);
+    useGraphStore.getState().matchSelectionSize("height");
+    expect(sizes()).toEqual({ a: { w: 100, h: 60 }, b: { w: 180, h: 60 } });
+  });
+
+  it("works across groups, since a size has no coordinate system", () => {
+    seed([node("a", 0, 0, 100, 40), node("b", 10, 10, 150, 40, "g1")]);
+    useGraphStore.getState().matchSelectionSize("width");
+    expect(sizes().a.w).toBe(150);
+  });
+
+  it("does not size a box to the group beside it", () => {
+    const group = {
+      id: "g",
+      type: "group",
+      position: { x: 300, y: 0 },
+      selected: true,
+      style: { width: 600, height: 400 },
+      data: { label: "g" },
+    } as unknown as AnyNode;
+    seed([group, node("a", 0, 0, 100, 40), node("b", 0, 100, 120, 40)]);
+    useGraphStore.getState().matchSelectionSize("width");
+    const s = sizes();
+    expect([s.a.w, s.b.w, s.g.w]).toEqual([120, 120, 600]);
+  });
+});
+
+describe("grouping from the panel", () => {
+  it("offers what the store will actually group", () => {
+    seed([node("a", 0, 0, 100, 40, "g1"), node("b", 10, 10, 100, 40)]);
+    expect(groupableSelection(useGraphStore.getState().nodes)).toHaveLength(0);
+    seed([node("a", 0, 0, 100, 40), node("b", 10, 10, 100, 40)]);
+    expect(groupableSelection(useGraphStore.getState().nodes)).toHaveLength(2);
+  });
+
+  it("agrees with the store on which families can group", () => {
+    expect(
+      (["flowchart", "state", "architecture", "c4", "class"] as const).every(canGroup),
+    ).toBe(true);
+    expect(canGroup("sequence")).toBe(false);
+    expect(canGroup("er")).toBe(false);
   });
 });

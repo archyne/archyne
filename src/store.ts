@@ -57,6 +57,40 @@ import { IMG_SIZE, isFrameless, isGroup } from "./model/types";
 const PICTURE_PAD_X = 16;
 /** The smallest a picture is made by dragging, so it cannot vanish. */
 const MIN_PICTURE = 8;
+
+/**
+ * A frameless picture made to fill a w×h box. It has no frame to size, so
+ * the picture itself is scaled — keeping its proportions, which is why the
+ * tighter of the two directions decides — and the node hugs it again.
+ */
+function pictureAt(node: AnyNode, w: number, h: number): AnyNode {
+  if (node.type !== "shape" || !node.data.img) return node;
+  const img = { w: node.data.imgWidth ?? IMG_SIZE, h: node.data.imgHeight ?? IMG_SIZE };
+  // What the node adds round the picture when it hugs it: the label's
+  // padding, and its name under or over it.
+  const hug = measureNode({
+    ...node,
+    style: undefined,
+    width: undefined,
+    height: undefined,
+    measured: undefined,
+  });
+  const across = Math.max(1, w - PICTURE_PAD_X);
+  const down = Math.max(1, h - (hug.height - img.h));
+  const scale = Math.min(across / img.w, down / img.h);
+  return {
+    ...node,
+    data: {
+      ...node.data,
+      imgWidth: Math.max(MIN_PICTURE, Math.round(img.w * scale)),
+      imgHeight: Math.max(MIN_PICTURE, Math.round(img.h * scale)),
+    },
+    style: { ...node.style, width: undefined, height: undefined },
+    width: undefined,
+    height: undefined,
+    measured: undefined,
+  } as AnyNode;
+}
 import { measureNode } from "./measureNode";
 import {
   defaultEdgeData,
@@ -135,8 +169,18 @@ export { absoluteBoxes } from "./boxes";
 // to reach them without importing a module that touches `window` on its way
 // past the workspace. Re-exported so the callers here keep working.
 export { annotateParallel, placeNodes, withStoredLooks } from "./graph";
-import { absoluteBoxes, boxOf } from "./boxes";
+import { absoluteBoxes, boxOf, type Box } from "./boxes";
 import { annotateParallel, placeNodes, withStoredLooks } from "./graph";
+
+/**
+ * The space left between two nodes that aligning would otherwise overlap —
+ * the same 40px auto-layout leaves between neighbours (`elk.spacing.nodeNode`
+ * in `layout/autoLayout.ts`), so a row turned into a column looks laid out.
+ */
+const ARRANGE_GAP = 40;
+
+/** The room auto-layout leaves inside a group's right and bottom edges. */
+const GROUP_INSET = 16;
 
 /**
  * The selected nodes, but only when they can be reasoned about together.
@@ -152,6 +196,62 @@ export function alignableSelection(nodes: AnyNode[]): AnyNode[] {
   if (selected.length < 2) return [];
   const parent = selected[0].parentId;
   return selected.every((n) => n.parentId === parent) ? selected : [];
+}
+
+/**
+ * The families with a container to put nodes in: a subgraph, a composite
+ * state, an architecture group, a C4 boundary, a class namespace. Asked by
+ * the store, the right-click menu and the selection panel alike, so the
+ * three cannot disagree — the menu once left class diagrams out while the
+ * store grouped them happily.
+ */
+export function canGroup(kind: DiagramKind): boolean {
+  return (
+    kind === "flowchart" ||
+    kind === "state" ||
+    kind === "architecture" ||
+    kind === "c4" ||
+    kind === "class"
+  );
+}
+
+/**
+ * What grouping the selection would put in the new group, or nothing when
+ * it cannot: the members must share a parent, as aligned nodes must.
+ */
+export function groupableSelection(nodes: AnyNode[]): AnyNode[] {
+  // Groups may be grouped. A VNet holding a Subnet holding its machines
+  // is the ordinary shape of a cloud diagram, and excluding groups here
+  // meant the only way to nest one was to write it in the source by hand.
+  const chosen = nodes.filter((n) => n.selected);
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const inside = (n: AnyNode, ancestor: string): boolean => {
+    for (let p = n.parentId; p; p = byId.get(p)?.parentId) {
+      if (p === ancestor) return true;
+    }
+    return false;
+  };
+  // A selected group brings its contents with it; taking those in as
+  // members of their own accord would move them twice.
+  const selected = chosen.filter(
+    (n) => !chosen.some((other) => other.id !== n.id && inside(n, other.id)),
+  );
+  if (selected.length === 0) return [];
+  const parent = selected[0].parentId;
+  return selected.every((n) => n.parentId === parent) ? selected : [];
+}
+
+/**
+ * The selected nodes that can be made one size: the leaves, or the groups
+ * when nothing but groups is selected. A box matched to the group it sits
+ * beside would swallow its neighbours, so the two never set each other's
+ * size.
+ */
+export function sizableSelection(nodes: AnyNode[]): AnyNode[] {
+  const selected = nodes.filter((n) => n.selected);
+  const leaves = selected.filter((n) => !isGroup(n));
+  const pick = leaves.length === 0 ? selected : leaves;
+  return pick.length >= 2 ? pick : [];
 }
 
 export const SAMPLE = `flowchart TD
@@ -435,6 +535,14 @@ export interface GraphState {
     patch: Record<string, unknown>,
     opts?: { burst?: string },
   ) => void;
+  /**
+   * The same for several nodes at once, each with its own patch: colouring
+   * a selection is one change, and one step of undo, not one per node.
+   */
+  updateNodesData: (
+    patches: Array<[id: string, patch: Record<string, unknown>]>,
+    opts?: { burst?: string },
+  ) => void;
   updateEdgeData: (id: string, patch: Partial<FlowEdgeData>) => void;
   setDirection: (d: Direction) => void;
   setDiagramMeta: (patch: { title?: string; accTitle?: string; accDescr?: string }) => void;
@@ -466,6 +574,11 @@ export interface GraphState {
   updateSeqItem: (index: number, item: SeqItem) => void;
   removeSeqItem: (index: number) => void;
   selectOnly: (id: string, target: "node" | "edge") => void;
+  /**
+   * Select exactly these nodes, as a Ctrl or Shift click in a list does.
+   * Edges are left as they were, as a Ctrl-click on the canvas leaves them.
+   */
+  selectNodes: (ids: string[]) => void;
   selectAll: () => void;
   /** Move every selected node by a pixel delta (keyboard nudging). */
   nudgeSelection: (dx: number, dy: number) => void;
@@ -479,6 +592,8 @@ export interface GraphState {
   alignSelection: (edge: AlignEdge) => void;
   /** Even the gaps between the selected nodes along one axis. */
   distributeSelection: (axis: "x" | "y") => void;
+  /** Make the selection as wide, or as tall, as the largest of it. */
+  matchSelectionSize: (dim: "width" | "height") => void;
   deleteSelection: () => void;
   /** Re-derive edge presentation (colors) — used on theme change. */
   refreshEdges: () => void;
@@ -1179,37 +1294,7 @@ export const useGraphStore = create<GraphState>((set, get) => {
     fitPictureTo: (id, w, h) => {
       const node = get().nodes.find((n) => n.id === id);
       if (!node || node.type !== "shape" || !node.data.img) return;
-      const img = { w: node.data.imgWidth ?? IMG_SIZE, h: node.data.imgHeight ?? IMG_SIZE };
-      // What the node adds round the picture when it hugs it: the label's
-      // padding, and its name under or over it.
-      const hug = measureNode({
-        ...node,
-        style: undefined,
-        width: undefined,
-        height: undefined,
-        measured: undefined,
-      });
-      const across = Math.max(1, w - PICTURE_PAD_X);
-      const down = Math.max(1, h - (hug.height - img.h));
-      const scale = Math.min(across / img.w, down / img.h);
-      const size = {
-        imgWidth: Math.max(MIN_PICTURE, Math.round(img.w * scale)),
-        imgHeight: Math.max(MIN_PICTURE, Math.round(img.h * scale)),
-      };
-      set({
-        nodes: get().nodes.map((n) =>
-          n.id === id && n.type === "shape"
-            ? {
-                ...n,
-                data: { ...n.data, ...size },
-                style: { ...n.style, width: undefined, height: undefined },
-                width: undefined,
-                height: undefined,
-                measured: undefined,
-              }
-            : n,
-        ),
-      });
+      set({ nodes: get().nodes.map((n) => (n.id === id ? pictureAt(n, w, h) : n)) });
       regenerate();
     },
 
@@ -1520,18 +1605,23 @@ export const useGraphStore = create<GraphState>((set, get) => {
       regenerate();
     },
 
-    updateNodeData: (id, patch, opts) => {
+    updateNodeData: (id, patch, opts) => get().updateNodesData([[id, patch]], opts),
+
+    updateNodesData: (patches, opts) => {
+      if (patches.length === 0) return;
+      const byId = new Map(patches);
       // A change in the same gesture as the one before it, and soon after,
       // joins that one's step of undo — the same 900ms the code editor
       // groups typing by.
       const now = Date.now();
-      const key = opts?.burst ? `${id}:${opts.burst}` : null;
+      const key = opts?.burst ? `${[...byId.keys()].join(",")}:${opts.burst}` : null;
       const joins = key !== null && lastBurst?.key === key && now - lastBurst.at < 900;
       lastBurst = key ? { key, at: now } : null;
       set({
-        nodes: get().nodes.map((n) =>
-          n.id === id ? ({ ...n, data: { ...n.data, ...patch } } as AnyNode) : n,
-        ),
+        nodes: get().nodes.map((n) => {
+          const patch = byId.get(n.id);
+          return patch ? ({ ...n, data: { ...n.data, ...patch } } as AnyNode) : n;
+        }),
       });
       regenerate({ record: !joins });
     },
@@ -1957,33 +2047,10 @@ export const useGraphStore = create<GraphState>((set, get) => {
 
     groupSelection: () => {
       const { kind, nodes } = get();
-      if (
-        kind !== "flowchart" &&
-        kind !== "state" &&
-        kind !== "architecture" &&
-        kind !== "c4" &&
-        kind !== "class"
-      )
-        return;
-      // Groups may be grouped. A VNet holding a Subnet holding its machines
-      // is the ordinary shape of a cloud diagram, and excluding groups here
-      // meant the only way to nest one was to write it in the source by hand.
-      const chosen = nodes.filter((n) => n.selected);
-      const byId = new Map(nodes.map((n) => [n.id, n]));
-      const inside = (n: AnyNode, ancestor: string): boolean => {
-        for (let p = n.parentId; p; p = byId.get(p)?.parentId) {
-          if (p === ancestor) return true;
-        }
-        return false;
-      };
-      // A selected group brings its contents with it; taking those in as
-      // members of their own accord would move them twice.
-      const selected = chosen.filter(
-        (n) => !chosen.some((other) => other.id !== n.id && inside(n, other.id)),
-      );
+      if (!canGroup(kind)) return;
+      const selected = groupableSelection(nodes);
       if (selected.length === 0) return;
       const parent = selected[0].parentId;
-      if (!selected.every((n) => n.parentId === parent)) return;
 
       const PAD = 28;
       const TITLE = 34;
@@ -2062,6 +2129,17 @@ export const useGraphStore = create<GraphState>((set, get) => {
       });
     },
 
+    selectNodes: (ids) => {
+      const chosen = new Set(ids);
+      set({
+        // Only what changes gets a new object, for the reason the arranging
+        // commands give: replacing every node makes React Flow re-sync.
+        nodes: get().nodes.map((n) =>
+          !!n.selected === chosen.has(n.id) ? n : { ...n, selected: chosen.has(n.id) },
+        ),
+      });
+    },
+
     selectAll: () => {
       set({
         nodes: get().nodes.map((n) => ({ ...n, selected: true })),
@@ -2108,12 +2186,78 @@ export const useGraphStore = create<GraphState>((set, get) => {
         moved.set(n.id, { x: Math.round(pos.x), y: Math.round(pos.y) });
       });
 
+      // Lining up one axis puts whatever shared a line on the other axis on
+      // top of each other: "Left" on a row of icons stacked the whole row
+      // into one box, which is never what anyone arranging a diagram meant.
+      // So whatever would now overlap is moved along the other axis, in the
+      // order it stood, until it clears the one before. A column aligned
+      // left never overlapped and does not move.
+      const across = edge === "left" || edge === "centerX" || edge === "right" ? "y" : "x";
+      const along = across === "y" ? "x" : "y";
+      const span = (b: Box) => (across === "y" ? [b.y, b.y + b.h] : [b.x, b.x + b.w]);
+      // Boxes that already overlapped on that axis stood side by side — a
+      // row, give or take a few pixels — and go in the order they stood in
+      // along it. Sorting the row by its own few pixels of drift put
+      // "Postgres" ahead of "CDN" for standing 15px higher.
+      const order: Array<{ id: string; b: Box }> = [];
+      let run: typeof order = [];
+      let reach = -Infinity;
+      const flush = () => order.push(...run.sort((p, q) => p.b[along] - q.b[along]));
+      for (const item of targets
+        .map((n, i) => ({ id: n.id, b: boxes[i] }))
+        .sort((p, q) => span(p.b)[0] - span(q.b)[0])) {
+        const [lo, hi] = span(item.b);
+        if (lo >= reach) {
+          flush();
+          run = [];
+        }
+        run.push(item);
+        reach = Math.max(reach, hi);
+      }
+      flush();
+      let end = -Infinity;
+      for (const { id, b } of order) {
+        const pos = moved.get(id)!;
+        const start = pos[across];
+        const next = start < end ? Math.round(end + ARRANGE_GAP) : start;
+        moved.set(id, { ...pos, [across]: next });
+        end = Math.max(end, next + (across === "y" ? b.h : b.w));
+      }
+
+      // A row turned into a column is taller than the group drawn round the
+      // row, and a node hanging out of its own group reads as having left
+      // it. So the group grows to keep what it holds, by the inset layout
+      // gives it (`elk.padding`); it never shrinks, since that room was
+      // somebody's choice.
+      const group = get().nodes.find((n) => n.id === targets[0].parentId);
+      let size: { width: number; height: number } | undefined;
+      if (group && isGroup(group)) {
+        const g = boxOf(group);
+        const width = Math.max(
+          g.w,
+          ...targets.map((n, i) => moved.get(n.id)!.x + boxes[i].w + GROUP_INSET),
+        );
+        const height = Math.max(
+          g.h,
+          ...targets.map((n, i) => moved.get(n.id)!.y + boxes[i].h + GROUP_INSET),
+        );
+        if (width > g.w || height > g.h) size = { width, height };
+      }
+
       set({
         // Only what moves gets a new object. Replacing every node makes
         // React Flow re-sync its list and drop the selection, so the panel
         // vanished after one click and nothing could be chained — which is
         // why `nudgeSelection` touches only what it moves too.
         nodes: get().nodes.map((n) => {
+          if (size && n.id === group?.id) {
+            return {
+              ...n,
+              style: { ...n.style, ...size },
+              width: size.width,
+              height: size.height,
+            };
+          }
           const next = moved.get(n.id);
           return next ? { ...n, position: next } : n;
         }),
@@ -2160,6 +2304,45 @@ export const useGraphStore = create<GraphState>((set, get) => {
         }),
       });
       repatchPositions();
+    },
+
+    matchSelectionSize: (dim) => {
+      if (get().kind === "sequence") return;
+      const targets = sizableSelection(get().nodes);
+      if (targets.length === 0) return;
+
+      const boxes = new Map(targets.map((n) => [n.id, boxOf(n)]));
+      // The largest, not the first selected: growing never cuts into what a
+      // node holds, where shrinking could, and which node was clicked first
+      // is not something anyone can see.
+      const size = Math.round(
+        Math.max(...[...boxes.values()].map((b) => (dim === "width" ? b.w : b.h))),
+      );
+      let pictures = false;
+
+      set({
+        nodes: get().nodes.map((n) => {
+          const b = boxes.get(n.id);
+          if (!b) return n;
+          const w = dim === "width" ? size : b.w;
+          const h = dim === "height" ? size : b.h;
+          if (n.type === "shape" && n.data.img && isFrameless(n.data.styles)) {
+            // Only the direction asked about binds: a picture held to its
+            // own height would not widen at all.
+            pictures = true;
+            return pictureAt(
+              n,
+              dim === "width" ? w : Infinity,
+              dim === "height" ? h : Infinity,
+            );
+          }
+          return { ...n, style: { ...n.style, width: w, height: h }, width: w, height: h };
+        }),
+      });
+      // A picture's size lives in its data, which only a full rewrite
+      // reaches; a box's lives in the positions comment, which a patch does.
+      if (pictures) regenerate();
+      else repatchPositions();
     },
 
     refreshEdges: () => {

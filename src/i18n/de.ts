@@ -244,12 +244,12 @@ export const messages: Messages = {
 
   "insp.selection": "{count} Knoten ausgewählt",
   "insp.align": "Ausrichten",
-  "insp.alignLeft": "Links",
-  "insp.alignCenterX": "Mitte",
-  "insp.alignRight": "Rechts",
-  "insp.alignTop": "Oben",
-  "insp.alignMiddleY": "Zentriert",
-  "insp.alignBottom": "Unten",
+  "insp.alignLeft": "Linke Kanten",
+  "insp.alignCenterX": "Horizontal zentriert",
+  "insp.alignRight": "Rechte Kanten",
+  "insp.alignTop": "Obere Kanten",
+  "insp.alignMiddleY": "Vertikal zentriert",
+  "insp.alignBottom": "Untere Kanten",
   "insp.distribute": "Verteilen",
   "insp.distributeX": "Waagerecht",
   "insp.distributeY": "Senkrecht",
@@ -257,6 +257,12 @@ export const messages: Messages = {
     "Wählen Sie zwei oder mehr Knoten in derselben Gruppe, um sie anzuordnen.",
   "insp.distributeNeedsThree":
     "Verteilen braucht drei oder mehr: es ordnet, was zwischen den äußeren beiden liegt.",
+  "insp.size": "Größe",
+  "insp.matchWidth": "Gleiche Breite wie der breiteste",
+  "insp.matchHeight": "Gleiche Höhe wie der höchste",
+  "insp.mixed": "gemischt",
+  "insp.styleSome":
+    "Farben gelten für {count} der {total} ausgewählten; die anderen haben keinen Stil.",
   "insp.label": "Beschriftung",
   "edge.addCorner": "Ziehen, um einen Knick hinzuzufügen",
   "edge.moveSegment": "Ziehen, um diesen Abschnitt zu verschieben",
@@ -466,6 +472,8 @@ export const messages: Messages = {
   "outline.connections": "{count} ausgehend",
   "outline.select": "{name} auswählen",
   "outline.summary": "{nodes} Knoten, {edges} Verbindungen",
+  "outline.multiHint":
+    "Strg+Klick fügt einen Knoten hinzu oder entfernt ihn, Umschalt+Klick wählt einen Bereich.",
 
   "palette.commandTitle": "Befehlspalette",
   "palette.commandFilter": "Befehl oder Knotennamen eingeben",

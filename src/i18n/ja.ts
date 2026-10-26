@@ -252,6 +252,12 @@ export const messages: Messages = {
   "insp.distributeY": "上下に",
   "insp.alignSameParent": "同じグループ内のノードを2つ以上選択すると配置できます。",
   "insp.distributeNeedsThree": "均等配置には3つ以上必要です。両端の間にあるものを並べます。",
+  "insp.size": "サイズ",
+  "insp.matchWidth": "最も幅の広いものに幅を揃える",
+  "insp.matchHeight": "最も高いものに高さを揃える",
+  "insp.mixed": "混在",
+  "insp.styleSome":
+    "色は選択した{total}個のうち{count}個に適用されます。残りにはスタイルを設定できません。",
   "insp.label": "ラベル",
   "edge.addCorner": "ドラッグして折れ点を追加",
   "edge.moveSegment": "ドラッグしてこの区間を移動",
@@ -456,6 +462,7 @@ export const messages: Messages = {
   "outline.connections": "出力 {count} 件",
   "outline.select": "{name} を選択",
   "outline.summary": "ノード {nodes} 個、接続 {edges} 本",
+  "outline.multiHint": "Ctrl+クリックでノードを追加・解除、Shift+クリックで範囲を選択します。",
 
   "palette.commandTitle": "コマンドパレット",
   "palette.commandFilter": "コマンドまたはノード名を入力",
