@@ -125,7 +125,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
-    "@peculiar/x509": "^2.2.0",
+    "@peculiar/x509": "^3.1.0",
     "@smithy/core": "^3.36.0",
     "@smithy/hash-node": "^4.5.2",
     "@smithy/signature-v4": "^5.7.4",
