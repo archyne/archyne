@@ -49,14 +49,18 @@ export function labelLines(text: string): string[] {
  * Deliberately not `labelLines`: that also decodes `&amp;` and the rest, and
  * a field that decodes without re-encoding would quietly rewrite the label
  * every time it was opened and closed.
+ *
+ * `textToLabel` is deliberately lossless: it only trades line breaks for
+ * `<br>`. The inspector's label field is controlled and re-renders from the
+ * store on every keystroke, so a conversion that trimmed would strip the
+ * trailing space between two words before the next character arrived —
+ * "I went home" came out as "Iwenthome". Trimming belongs at the commit
+ * boundary, where `useRename` and the inspector's own blur handler do it.
  */
 export function labelToText(label: string): string {
   return label.split(/<br\s*\/?>/i).join("\n");
 }
 
 export function textToLabel(text: string): string {
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .join("<br>");
+  return text.split(/\r?\n/).join("<br>");
 }
