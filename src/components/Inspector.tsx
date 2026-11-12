@@ -290,6 +290,14 @@ function NodeFields({ node }: { node: AnyNode }) {
               rows={labelToText(node.data.label).split("\n").length}
               value={labelToText(node.data.label)}
               onChange={(e) => updateNodeData(node.id, { label: textToLabel(e.target.value) })}
+              // The field is controlled and re-renders from the store on every
+              // keystroke, so the per-line trim `textToLabel` used to do would
+              // take a space between two words before the next character was
+              // typed. Trimming waits for the blur instead.
+              onBlur={(e) => {
+                const next = textToLabel(e.target.value.trim());
+                if (next !== node.data.label) updateNodeData(node.id, { label: next });
+              }}
             />
           </label>
           <label>
