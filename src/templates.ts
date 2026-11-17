@@ -288,9 +288,9 @@ export const TEMPLATES: Template[] = [
   Standby --> Flying : arm and launch
   state Flying {
     [*] --> TakingOff
-    TakingOff --> Hovering : altitude reached
-    Hovering --> Cruising : waypoint set
+    TakingOff --> Cruising : altitude reached
     Cruising --> Hovering : waypoint reached
+    Hovering --> [*] : survey done
   }
   Flying --> Landing : low battery
   Landing --> Standby : touched down
@@ -301,7 +301,7 @@ export const TEMPLATES: Template[] = [
     kind: "flowchart",
     nameKey: "tpl.sysmlActivity",
     descriptionKey: "tpl.sysmlActivityDesc",
-    code: `flowchart TD
+    code: `flowchart LR
   initial(("Start"))
   plan("Receive mission plan")
   charged{"Battery above 30%?"}
