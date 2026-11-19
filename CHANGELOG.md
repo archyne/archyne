@@ -24,13 +24,22 @@ itself ships, the following count as the public API for semver purposes:
 Breaking any of those requires a major version. The React component structure,
 CSS class names and internal store shape are _not_ public API.
 
-## [Unreleased]
+## [1.4.1-alpha.1] — 2026-11-19
 
 ### Fixed
 
+- **A node's label keeps the spaces between its words.** Typing into the
+  Label field of a flowchart node in the inspector dropped every space before
+  the next character arrived, so "I went home" came out as "Iwenthome".
+  Renaming on the canvas and the edge label field were never affected.
+  Thanks to [@a-rastin](https://github.com/a-rastin).
 - **The links in the About dialog are underlined.** They were told apart
   from the text around them by colour alone, and the accent is too close to
   the body text for that (2.4:1, where WCAG asks for 3:1).
+
+### Security
+
+- Electron 45.3.3, and current versions of hono and @hono/node-server.
 
 ## [1.4.0-alpha.1] — 2026-11-19
 
