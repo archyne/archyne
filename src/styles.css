@@ -400,9 +400,14 @@ body,
   line-height: 1.55;
 }
 
+/* Underlined, because colour alone does not set a link apart from the
+   sentence it sits in: the accent is 2.4:1 against the body text, short of
+   the 3:1 WCAG asks of a link marked by colour only (axe's
+   link-in-text-block). */
 .about-body a {
   color: var(--accent);
-  text-decoration: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .about-lead {
