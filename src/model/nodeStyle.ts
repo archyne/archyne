@@ -13,6 +13,7 @@
  * Visio and draw.io more often show the icon alone, standing on the canvas
  * with its name beneath, and there is no mermaid syntax for the difference.
  */
+import { readableOn } from "./importShared";
 
 /**
  * How a node is drawn.
@@ -116,6 +117,12 @@ export interface DrawnStyle {
   fontSize?: string;
   fontWeight?: string;
   fontStyle?: string;
+  /** Where the words sit across their box: `left`, `center` or `right`. */
+  textAlign?: string;
+  /** And up and down it: `top`, `middle` or `bottom`. */
+  verticalAlign?: string;
+  /** `nowrap` for words kept to their lines. */
+  whiteSpace?: string;
 }
 
 const DRAWN: Record<string, keyof DrawnStyle> = {
@@ -127,6 +134,9 @@ const DRAWN: Record<string, keyof DrawnStyle> = {
   "font-size": "fontSize",
   "font-weight": "fontWeight",
   "font-style": "fontStyle",
+  "text-align": "textAlign",
+  "vertical-align": "verticalAlign",
+  "white-space": "whiteSpace",
 };
 
 export function styleProps(decls: string[]): DrawnStyle {
@@ -140,6 +150,22 @@ export function styleProps(decls: string[]): DrawnStyle {
   return out;
 }
 
+/**
+ * The style, with a text colour that reads on its fill when it has a fill and
+ * says nothing about its text.
+ *
+ * `classDef process fill:#bbf` is how a Mermaid file colours its boxes, and
+ * almost every palette written for one is pale: Mermaid's own default theme
+ * draws dark words, so the author never had to say. On the dark canvas the
+ * words stayed the theme's light grey, on lavender and on yellow, and could
+ * not be read. A colour the file does state is kept, whatever it is.
+ */
+export function readableLabel(s: DrawnStyle): DrawnStyle {
+  if (s.color || !s.fill) return s;
+  const color = readableOn(s.fill);
+  return color ? { ...s, color } : s;
+}
+
 /** What a label is drawn with, as inline style for the element holding it. */
 export function labelStyleOf(s: DrawnStyle): React.CSSProperties {
   return {
@@ -147,6 +173,26 @@ export function labelStyleOf(s: DrawnStyle): React.CSSProperties {
     ...(s.fontSize ? { fontSize: s.fontSize } : {}),
     ...(s.fontWeight ? { fontWeight: s.fontWeight } : {}),
     ...(s.fontStyle ? { fontStyle: s.fontStyle } : {}),
+    ...(s.whiteSpace === "nowrap" ? { whiteSpace: "nowrap" as const } : {}),
+    ...(s.textAlign === "left" || s.textAlign === "right" || s.textAlign === "center"
+      ? { textAlign: s.textAlign }
+      : {}),
+  };
+}
+
+/**
+ * Where a label sits in its box, as the flex placement of the box holding it:
+ * a draw.io wireframe's words run from the left edge, a class's name sits at
+ * the top. Centred both ways says nothing, and gets nothing.
+ */
+export function labelPlaceOf(s: DrawnStyle): React.CSSProperties {
+  const end = (v: string | undefined, start: string, finish: string) =>
+    v === start ? "flex-start" : v === finish ? "flex-end" : undefined;
+  const across = end(s.textAlign, "left", "right");
+  const down = end(s.verticalAlign, "top", "bottom");
+  return {
+    ...(across ? { justifyContent: across } : {}),
+    ...(down ? { alignItems: down } : {}),
   };
 }
 

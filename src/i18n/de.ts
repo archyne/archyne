@@ -66,6 +66,8 @@ export const messages: Messages = {
   "import.looksLike":
     "Das sieht nach einem {family}-Diagramm aus; konvertiert wird ein Flussdiagramm",
   "import.dropped": "Einige Elemente haben keine Mermaid-Entsprechung und fehlen ({count})",
+  "import.imagesEmbedded": "{count} Bilder aus dem Web sind jetzt im Diagramm enthalten",
+  "import.imagesFailed": "{count} Bilder konnten nicht geladen werden und bleiben Web-Links",
   "import.unbound": "Kommt als {name} an, ungespeichert. Die gewählte Datei bleibt unberührt.",
   "import.cancel": "Abbrechen",
   "import.confirm": "Importieren",
@@ -149,6 +151,8 @@ export const messages: Messages = {
   "item.subgraph": "Teilgraph",
 
   "canvas.label": "Diagrammfläche",
+  "canvas.toolSelect": "Auswahl — klicken für die Hand (V / H)",
+  "canvas.toolPan": "Hand — klicken für die Auswahl (V / H, oder Leertaste halten)",
   "canvas.arranging": "Das Diagramm wird angeordnet…",
   "canvas.brokenTitle": "Dieses Diagramm lässt sich nicht zeichnen",
   "canvas.brokenBody":
@@ -235,6 +239,8 @@ export const messages: Messages = {
   "palette.sectionBase": "Basis",
   "palette.sectionPinned": "Zuletzt & Favoriten",
   "palette.sectionCarried": "Symbole dieses Diagramms",
+  "palette.sectionImported": "Importierte Symbole",
+  "palette.removeImported": "{name} aus den in diesem Browser gespeicherten Symbolen entfernen",
   "palette.sectionVendor": "Hersteller-Symbole",
   "palette.searchIcons": "Über 13000 Symbole durchsuchen…",
   "item.compositeState": "Zusammengesetzter Zustand",
@@ -268,6 +274,8 @@ export const messages: Messages = {
   "edge.moveSegment": "Ziehen, um diesen Abschnitt zu verschieben",
   "edge.moveLabel": "Ziehen, um die Beschriftung zu verschieben; Doppelklick setzt sie zurück",
   "edge.removeCorner": "Ziehen zum Verschieben, Doppelklick zum Entfernen",
+  "edge.moveEnd":
+    "Auf einen anderen Knoten oder Verbindungspunkt ziehen, um dieses Ende zu verschieben",
   "edge.cornerNamed":
     "Knick {index} von {total}. Pfeiltasten verschieben ihn, mit Umschalt weiter, Entf entfernt ihn.",
   "insp.corners": "Knicke",
@@ -463,6 +471,10 @@ export const messages: Messages = {
   "shortcuts.cancel": "Abbrechen",
   "shortcuts.nudge": "Auswahl verschieben",
   "shortcuts.nudgeFar": "Weiter verschieben",
+  "shortcuts.toolSelect": "Auswahlwerkzeug",
+  "shortcuts.toolPan": "Handwerkzeug",
+  "shortcuts.panHold": "Fläche verschieben, solange gedrückt",
+  "shortcuts.toolToggle": "Zwischen Auswahl und Hand wechseln",
   "shortcuts.commandPalette": "Befehlspalette",
 
   "panel.tabOutline": "Übersicht",

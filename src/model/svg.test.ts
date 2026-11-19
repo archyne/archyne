@@ -5,6 +5,37 @@ const wrap = (inner: string, attrs = 'viewBox="0 0 24 24"') =>
   `<svg xmlns="http://www.w3.org/2000/svg" ${attrs}>${inner}</svg>`;
 
 describe("making an imported icon safe to draw", () => {
+  it("keeps the colours an icon writes in its style, as attributes", () => {
+    // Inkscape, and Microsoft's Azure icons with it, paint every shape from
+    // its `style`. Dropped whole, each icon came out a black silhouette.
+    const out = sanitiseSvg(
+      wrap(
+        '<path d="M0 0" style="fill:url(#a);stroke:none;fill-opacity:0.5"/>' +
+          '<path d="M1 1" fill="#000" style="fill:#50e6ff"/>',
+      ),
+    )!;
+    expect(out).toContain('fill="url(#a)"');
+    expect(out).toContain('stroke="none"');
+    expect(out).toContain('fill-opacity="0.5"');
+    // The style wins over the attribute, as it does in a browser.
+    expect(out).toContain('fill="#50e6ff"');
+    expect(out).not.toContain("style=");
+  });
+
+  it("takes nothing from a style that an attribute could not say", () => {
+    const out = sanitiseSvg(
+      wrap(
+        '<path d="M0 0" style="fill:url(http://x/a.svg#a);background:url(javascript:alert(1));' +
+          'behavior:url(x.htc);href:#a"/>',
+      ),
+    )!;
+    expect(out).not.toContain("http://x");
+    expect(out).not.toContain("javascript");
+    expect(out).not.toContain("behavior");
+    expect(out).not.toContain("href");
+    expect(out).not.toContain("style=");
+  });
+
   it("keeps the shapes an icon is made of", () => {
     const out = sanitiseSvg(
       wrap('<path d="M1 1L9 9" fill="#0078d4"/><circle cx="5" cy="5" r="2"/>'),

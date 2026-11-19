@@ -60,6 +60,12 @@ interface DesktopBridge {
     icons: Array<{ name: string; svg: string }>;
     failed: string[];
   }>;
+  /**
+   * Download the pictures an imported drawing points at, as data URLs — see
+   * `embedImages.ts`. Optional: a browser cannot, and an older desktop build
+   * does not, so the pictures then stay links.
+   */
+  fetchImages?(urls: string[]): Promise<{ images: Record<string, string>; failed: string[] }>;
   /** Generate through the shell, which keeps the secrets (desktop/ai.cjs). */
   ai?: HostAi;
 }

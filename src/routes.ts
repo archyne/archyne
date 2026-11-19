@@ -26,18 +26,20 @@ import {
   tidy,
   withStubs,
   type Axis,
+  type FaceReach,
   type Side,
 } from "./orthogonal";
-import { blocked, CLEARANCE, routeAround, type Rect } from "./avoid";
+import { blocked, CLEARANCE, crosses, routeAround, type Rect } from "./avoid";
 import {
   alignWithCorners,
+  berthRange,
   HEAD_ROOM,
   separateHeads,
   spreadBerths,
   straightenNearlyLevel,
   type QuayOf,
 } from "./berths";
-import { SAME_LINE, spreadRuns } from "./spread";
+import { holds, SAME_LINE, spreadRuns } from "./spread";
 import type { Point } from "./routing";
 import { outlineDepth } from "./render/shapes";
 import type { Shape } from "./model/types";
@@ -76,8 +78,28 @@ function aroundObstacles(
   from: Axis,
   to: Axis,
   obstacles: Rect[],
-  opts: { leave?: Point; arrive?: Point; clearance?: number; strict?: boolean } = {},
+  opts: {
+    leave?: Point;
+    arrive?: Point;
+    clearance?: number;
+    strict?: boolean;
+    soft?: Rect[];
+  } = {},
 ): Point[] | null {
+  // A corner standing where a stub ends is no leg at all — and that is where
+  // the corner pinning an end to its face stands, a stub out from it. Searched
+  // as a leg, it had nowhere to go and a direction to arrive in, and went
+  // round the block to come back to where it started; and the leg before it,
+  // no longer the last, was free to arrive from any side, so the line reached
+  // its pin and turned straight back. Taken out first, the leg into the pin
+  // is the last one and arrives the way the face needs.
+  anchors = anchors.filter(
+    (p, i) =>
+      i === 0 ||
+      Math.abs(p.x - anchors[i - 1].x) >= 0.5 ||
+      Math.abs(p.y - anchors[i - 1].y) >= 0.5,
+  );
+  if (anchors.length < 2) return anchors;
   const out: Point[] = [];
   for (let i = 0; i < anchors.length - 1; i++) {
     const a = anchors[i];
@@ -94,6 +116,7 @@ function aroundObstacles(
       opts.clearance,
       i === 0 ? opts.leave : undefined,
       i === anchors.length - 2 ? opts.arrive : undefined,
+      opts.soft,
     );
     if (!found && opts.strict) return null;
     const leg = found ?? orthogonalRoute([a, b], first, last);
@@ -253,6 +276,14 @@ function turnsInto(corners: Point[], ends: Ends): Point[] {
   return out;
 }
 
+/** The corners that lie inside neither of two boxes. */
+function clearOf(points: Point[], a?: Rect, b?: Rect): Point[] {
+  const within = (p: Point, r?: Rect) =>
+    !!r && p.x > r.x + 0.5 && p.x < r.x + r.w - 0.5 && p.y > r.y + 0.5 && p.y < r.y + r.h - 0.5;
+  const out = points.filter((p) => !within(p, a) && !within(p, b));
+  return out.length === points.length ? points : out;
+}
+
 /**
  * The faces a connection with corners of its own should use.
  *
@@ -270,7 +301,7 @@ function turnsInto(corners: Point[], ends: Ends): Point[] {
  */
 function facesFor(edge: FlowEdge, fromBox: Rect, toBox: Rect): { from: Side; to: Side } {
   const sides = bestSides(fromBox, toBox);
-  const corners = edge.data?.points ?? [];
+  const corners = clearOf(edge.data?.points ?? [], fromBox, toBox);
   if (corners.length === 0) return sides;
   const at = (p: Point): Rect => ({ x: p.x, y: p.y, w: 0, h: 0 });
   const ahead = (box: Rect, side: Side, p: Point) => {
@@ -343,7 +374,13 @@ function dressArrival(
 }
 
 /** One connection's route: squared off, and around whatever is in the way. */
-function routeOf(edge: FlowEdge, solid: Array<[string, Rect]>, ends: Ends | null): Point[] {
+function routeOf(
+  edge: FlowEdge,
+  solid: Array<[string, Rect]>,
+  ends: Ends | null,
+  boxes?: Map<string, Rect>,
+  foreign: Rect[] = [],
+): Point[] {
   if (!ends) return [];
 
   // A loop back to the same node: out of one face, round the corner it shares
@@ -364,6 +401,18 @@ function routeOf(edge: FlowEdge, solid: Array<[string, Rect]>, ends: Ends | null
     return tidy([ends.start, out, ...user, ...(user.length ? [] : [corner]), into, ends.end]);
   }
 
+  // The corners the line is drawn through: not one lying inside either of
+  // its own boxes. Such a corner still says where along the faces the line
+  // should meet them — the berths are lined up with it — but the line cannot
+  // go to it: a drop from an icon to the bus under it, held by a corner
+  // midway, had that corner under the icon's own caption, went up to it out
+  // of the icon's foot and came back down.
+  const corners = clearOf(
+    edge.data?.points ?? [],
+    boxes?.get(edge.source),
+    boxes?.get(edge.target),
+  );
+
   // A connector leaves a face perpendicular to it before it turns; without
   // that, two nodes joined side to side down a column produced a line flat
   // against both of them, arrowhead included.
@@ -372,18 +421,19 @@ function routeOf(edge: FlowEdge, solid: Array<[string, Rect]>, ends: Ends | null
   // face, back, and in — a spike in a line that wanted to be straight.
   const out = outward(ends.fromSide);
   const facing =
-    (edge.data?.points ?? []).length === 0 &&
+    corners.length === 0 &&
     out.x === -outward(ends.toSide).x &&
     out.y === -outward(ends.toSide).y
       ? (ends.end.x - ends.start.x) * out.x + (ends.end.y - ends.start.y) * out.y
       : Infinity;
-  // Only for faces that more or less look at each other: two far apart across
-  // and close only in depth have room to go round, and the full stubs take it.
-  const aside =
-    out.x !== 0 ? Math.abs(ends.end.y - ends.start.y) : Math.abs(ends.end.x - ends.start.x);
-  const stub = facing > 0 && facing < 2 * STUB && aside <= 2 * STUB ? facing / 2 : STUB;
+  // However far apart across: this was once only for faces more or less
+  // looking at each other, on the reasoning that two a long way aside have
+  // room to go round. They have not — the faces are fixed by then — and two
+  // icons in neighbouring rows, a box-width apart, were joined by a line
+  // that went down past the lower one's head and came back up to it.
+  const stub = facing > 0 && facing < 2 * STUB ? facing / 2 : STUB;
   const anchors = withStubs(
-    [ends.start, ...turnsInto(edge.data?.points ?? [], ends), ends.end],
+    [ends.start, ...turnsInto(corners, ends), ends.end],
     ends.fromSide,
     ends.toSide,
     stub,
@@ -393,8 +443,41 @@ function routeOf(edge: FlowEdge, solid: Array<[string, Rect]>, ends: Ends | null
   // drawing differs, and that is the edge's business, not the router's. They
   // also skip the obstacle search, since a line the user asked to be direct
   // is not one to send round the houses.
+  //
+  // And with no step out of the face first: a direct line leaves its node
+  // towards where it is going, as draw.io draws one. Stepped out square, a
+  // line from a router down to a device set off with a hook, and a curve
+  // through those hooks became an S. A corner lying on the face the line
+  // leaves by — the point draw.io pinned the end to — is where it starts.
   if (edge.data?.style?.route === "straight" || edge.data?.style?.route === "curved") {
-    return tidy(anchors);
+    // On any face of its own node, not only the one the router would have
+    // chosen: a mesh router's lines are pinned to its foot, and taken only
+    // when the router happened to choose the foot, half of them set off
+    // from its side instead.
+    const points = [...(edge.data?.points ?? [])];
+    const onBorder = (p: Point | undefined, id: string, at: Point, side: Side) => {
+      if (!p) return false;
+      const b = boxes?.get(id);
+      if (!b)
+        return (outward(side).x !== 0 ? Math.abs(p.x - at.x) : Math.abs(p.y - at.y)) < 1.5;
+      const inside =
+        p.x >= b.x - 1.5 &&
+        p.x <= b.x + b.w + 1.5 &&
+        p.y >= b.y - 1.5 &&
+        p.y <= b.y + b.h + 1.5;
+      // On the border, or a little inside it: a picture's node is its
+      // picture with a few units of padding round it, so the point draw.io
+      // pinned to the picture's foot lies just inside the node, and missed
+      // by a strict test the line set off from a side instead, in a hook.
+      return inside;
+    };
+    const start = onBorder(points[0], edge.source, ends.start, ends.fromSide)
+      ? points.shift()!
+      : ends.start;
+    const end = onBorder(points[points.length - 1], edge.target, ends.end, ends.toSide)
+      ? points.pop()!
+      : ends.end;
+    return tidy([start, ...points, end]);
   }
 
   const squared = orthogonalRoute(anchors, ends.from, ends.to);
@@ -407,8 +490,19 @@ function routeOf(edge: FlowEdge, solid: Array<[string, Rect]>, ends: Ends | null
   // comes straight back out, leaving the arrowhead on a spike.
   const obstacles = solid.map(([, b]) => b);
 
-  // Cheap, and it decides whether the expensive thing runs at all.
-  const obstructed = squared.some((q, i) => i > 0 && blocked(squared[i - 1], q, obstacles));
+  // Cheap, and it decides whether the expensive thing runs at all. Passing
+  // through a subgraph the connection has nothing to do with counts: the
+  // search may still go that way, but only when going round costs more.
+  //
+  // Not a frame one of its ends lies in, though — a box straddling two lanes
+  // without belonging to either. There is no keeping out of that one.
+  const within = (p: Point, r: Rect) =>
+    p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h;
+  const avoidable = foreign.filter((r) => !within(ends.start, r) && !within(ends.end, r));
+  const obstructed = squared.some(
+    (q, i) =>
+      i > 0 && (blocked(squared[i - 1], q, obstacles) || blocked(squared[i - 1], q, avoidable)),
+  );
   if (!obstructed) return squared;
 
   // The search starts a stub out from each face, not on it. A point on the
@@ -423,25 +517,31 @@ function routeOf(edge: FlowEdge, solid: Array<[string, Rect]>, ends: Ends | null
   // then a shorter stub as well, are tried before falling back to the legs as
   // they were.
   const inward = outward(ends.toSide);
+  const placed = corners.length > 0;
   for (const [clearance, stub] of TRIES) {
     const away = (p: Point, side: Side): Point => {
       const d = outward(side);
       return { x: p.x + d.x * stub, y: p.y + d.y * stub };
     };
-    const stubbed = [
-      away(ends.start, ends.fromSide),
-      ...(edge.data?.points ?? []),
-      away(ends.end, ends.toSide),
-    ];
+    const stubbed = [away(ends.start, ends.fromSide), ...corners, away(ends.end, ends.toSide)];
     const legs = aroundObstacles(stubbed, ends.from, ends.to, obstacles, {
       leave: outward(ends.fromSide),
       arrive: { x: -inward.x, y: -inward.y },
       clearance,
       strict: true,
+      soft: avoidable,
     });
-    if (legs) return tidy([ends.start, ...legs, ends.end]);
+    if (!legs) continue;
+    const found = tidy([ends.start, ...legs, ends.end]);
+    if (!placed || !reverses(found)) return found;
   }
-  return aroundObstacles(anchors, ends.from, ends.to, obstacles)!;
+  const last = aroundObstacles(anchors, ends.from, ends.to, obstacles, { soft: avoidable })!;
+  // The corners someone placed are gone through, leg by leg, and a leg that
+  // has to go round a box can only set off the way the last one arrived or
+  // turn — so with a box in an awkward place the line went up to its corner
+  // and straight back down past it. A line across a box is poor; one that
+  // doubles back on itself reads as two. Then it is drawn as it was placed.
+  return placed && reverses(last) ? squared : last;
 }
 
 /**
@@ -458,10 +558,25 @@ function routeOf(edge: FlowEdge, solid: Array<[string, Rect]>, ends: Ends | null
  *     search gave up and drew straight through.
  *   - **Words with no box.** No fill and no stroke: a note, a caption, often
  *     a "Yes" laid on the very line it names. Going round it took the line
- *     away from its own label.
+ *     away from its own label. A picture is drawn the same way — no fill, no
+ *     stroke — but it is a thing, not words, and a line through an imported
+ *     icon ran across the service it stood for.
+ *   - **A marker.** Something small that nothing is joined to: the numbered
+ *     badge a drawing lays on each of its lines to say which step it is. It
+ *     is on the line on purpose, and going round it put a hump in every line
+ *     that had been drawn straight through its own number.
  */
-function obstaclesOf(nodes: AnyNode[], boxes: Map<string, Rect>): Array<[string, Rect]> {
-  const candidates = nodes.filter((n) => !isGroup(n) && boxes.has(n.id));
+function obstaclesOf(
+  nodes: AnyNode[],
+  boxes: Map<string, Rect>,
+  edges: FlowEdge[],
+): Array<[string, Rect]> {
+  const joined = new Set(edges.flatMap((e) => [e.source, e.target]));
+  const marker = (n: AnyNode) => {
+    const box = boxes.get(n.id)!;
+    return !joined.has(n.id) && box.w <= MARKER && box.h <= MARKER;
+  };
+  const candidates = nodes.filter((n) => !isGroup(n) && boxes.has(n.id) && !marker(n));
   const encloses = (a: Rect, b: Rect) =>
     a.w * a.h > b.w * b.h &&
     b.x >= a.x - 0.5 &&
@@ -469,7 +584,7 @@ function obstaclesOf(nodes: AnyNode[], boxes: Map<string, Rect>): Array<[string,
     b.x + b.w <= a.x + a.w + 0.5 &&
     b.y + b.h <= a.y + a.h + 0.5;
   const bare = (n: AnyNode) => {
-    if (n.type !== "shape") return false;
+    if (n.type !== "shape" || (n.data as { img?: string }).img) return false;
     const drawn = styleProps((n.data as { styles?: string[] }).styles ?? []);
     const none = (v?: string) => v === "none" || v === "transparent";
     return none(drawn.fill) && none(drawn.stroke);
@@ -481,6 +596,34 @@ function obstaclesOf(nodes: AnyNode[], boxes: Map<string, Rect>): Array<[string,
       return !candidates.some((o) => o !== n && encloses(box, boxes.get(o.id)!));
     })
     .map((n) => [n.id, boxes.get(n.id)!]);
+}
+
+/** The most a node nothing is joined to can measure, each way, and be a marker. */
+const MARKER = 40;
+
+/**
+ * Where a picture node's picture is, within its box.
+ *
+ * The box holds the picture, its caption and the padding round both, and is
+ * wider than the picture whenever the caption is. A line drawn in draw.io
+ * hard beside an icon — "VNet peering" running down past its own glyph —
+ * met the padding, and went round the box in a loop. The picture is the
+ * thing in the way; the padding beside it is not.
+ */
+function pictureOnly(n: AnyNode, box: Rect): Rect {
+  const data = n.data as {
+    img?: string;
+    imgWidth?: number;
+    imgHeight?: number;
+    imgPos?: string;
+  };
+  if (n.type !== "shape" || !data.img || !data.imgWidth || !data.imgHeight) return box;
+  const w = Math.min(box.w, data.imgWidth);
+  const h = Math.min(box.h, data.imgHeight);
+  // `.shape-label.with-image`: the picture is centred across, and stands
+  // 6px from the top, or from the bottom when its caption is above it.
+  const y = data.imgPos === "t" ? box.y + box.h - 6 - h : box.y + Math.min(6, box.h - h);
+  return { x: box.x + (box.w - w) / 2, y, w, h };
 }
 
 /**
@@ -560,13 +703,33 @@ function toOutline(
  * outermost; the ones turning towards the high end last, likewise. Only the
  * first run and the corner at its end move, along the face, so every route
  * stays square. A swap that would turn a climb into a drop is not made.
+ *
+ * Nor one that sends a line the wrong way out of a box, or through one. Two
+ * lines arriving at the same face can come from anywhere, and swapping the
+ * runs they cross over on swaps how far each one travels before it turns: a
+ * line leaving the bottom of a box was given the turn of one coming from
+ * three boxes higher up, set off upwards through the box it was leaving and
+ * the two above it, and was counted an improvement because it crossed one
+ * line fewer on the way.
  */
 function untangleFaces(
   edges: FlowEdge[],
   ends: Map<string, Ends>,
   routes: Map<string, Point[]>,
+  solid: Rect[],
 ): Map<string, Point[]> {
-  type Line = { id: string; first: boolean; at: number; key: number; next: number };
+  const sides = new Map<string, Ends>(ends);
+  type Line = {
+    id: string;
+    first: boolean;
+    at: number;
+    key: number;
+    next: number;
+    /** Its run out of the face, or the one it turns on to, is where someone put it. */
+    placed: boolean;
+    turned: boolean;
+  };
+  const cornersOf = new Map(edges.map((e) => [e.id, e.data?.points]));
   const faces = new Map<string, { along: Axis; lines: Line[] }>();
   for (const edge of edges) {
     const route = routes.get(edge.id);
@@ -590,7 +753,15 @@ function untangleFaces(
       const node = first ? edge.source : edge.target;
       const face = `${node}|${side}`;
       const entry = faces.get(face) ?? { along, lines: [] };
-      entry.lines.push({ id: edge.id, first, at: p0[along], key, next: p2[along] });
+      entry.lines.push({
+        id: edge.id,
+        first,
+        at: p0[along],
+        key,
+        next: p2[along],
+        placed: holds(cornersOf.get(edge.id), p0, p1),
+        turned: holds(cornersOf.get(edge.id), p1, p2),
+      });
       faces.set(face, entry);
     }
   }
@@ -598,8 +769,11 @@ function untangleFaces(
   const out = new Map(routes);
   for (const { along, lines } of faces.values()) {
     if (lines.length < 2) continue;
-    const slots = lines.map((l) => l.at).sort((a, b) => a - b);
-    const wanted = [...lines].sort((a, b) => a.key - b.key || a.at - b.at);
+    // A line whose way out of the face is where someone put it keeps its
+    // place; the others change places among themselves.
+    const free = lines.filter((l) => !l.placed);
+    const slots = free.map((l) => l.at).sort((a, b) => a - b);
+    const wanted = [...free].sort((a, b) => a.key - b.key || a.at - b.at);
     // Each line would keep heading the same way from its new place.
     const keeps = wanted.every(
       (l, i) => Math.sign(l.next - slots[i]) === Math.sign(l.next - l.at) || slots[i] === l.at,
@@ -626,6 +800,24 @@ function untangleFaces(
     const ends = (l: Line) => {
       const r = out.get(l.id)!;
       return l.first ? [0, 1, 2] : [r.length - 1, r.length - 2, r.length - 3];
+    };
+    /** Out of the face it leaves and into the one it reaches, both ways round. */
+    const faces = (id: string, r: Point[]) => {
+      const at = sides.get(id);
+      if (!at) return true;
+      const out = outward(at.fromSide);
+      const into = outward(at.toSide);
+      const [a, b] = [r[0], r[1]];
+      const [y, z] = [r[r.length - 2], r[r.length - 1]];
+      return (
+        (b.x - a.x) * out.x + (b.y - a.y) * out.y > 0 &&
+        (y.x - z.x) * into.x + (y.y - z.y) * into.y > 0
+      );
+    };
+    const through = (r: Point[]) => {
+      let n = 0;
+      for (let k = 1; k < r.length; k++) if (blocked(r[k - 1], r[k], solid)) n++;
+      return n;
     };
     // Only routes whose extent meets the pair's can cross either of them.
     const tally = (ids: string[]) => {
@@ -664,14 +856,20 @@ function untangleFaces(
         };
         let best = tally([p.id, q.id]);
         let chosen = before;
+        const passed = through(before[0]) + through(before[1]);
         for (const [place, column] of [
           [true, false],
           [false, true],
           [true, true],
         ] as const) {
+          // Not by moving a run that was placed where it is.
+          if (place && (p.placed || q.placed)) continue;
+          if (column && (p.turned || q.turned)) continue;
           const [a, b] = variant(place, column);
           // Still square, and no run squeezed shorter than a stub.
           if (![a, b].every((r) => isSquare(r) && !foldsBack(r))) continue;
+          if (!faces(p.id, a) || !faces(q.id, b)) continue;
+          if (through(a) + through(b) > passed) continue;
           out.set(p.id, a);
           out.set(q.id, b);
           const n = tally([p.id, q.id]);
@@ -706,6 +904,12 @@ function foldsBack(route: Point[]): boolean {
   ) {
     return true;
   }
+  return reverses(route);
+}
+
+/** Does the route turn straight back on itself anywhere? */
+function reverses(route: Point[]): boolean {
+  const n = route.length;
   return route.some((b, i) => {
     if (i === 0 || i === n - 1) return false;
     const a = route[i - 1];
@@ -787,7 +991,63 @@ let cached: {
   kind: DiagramKind;
   ends: Map<string, Ends>;
   routes: Map<string, Point[]>;
+  reach: Map<string, FaceReach>;
 } | null = null;
+
+/**
+ * How far along its face each end of a connection could be moved: what a
+ * slide of the run beside it is allowed to ask for (`slidePath`). A loop back
+ * to its own node has none — its ends are where the loop is, not berths.
+ */
+export function faceReach(
+  nodes: AnyNode[],
+  edges: FlowEdge[],
+  kind: DiagramKind,
+  id: string,
+): FaceReach {
+  return fill(nodes, edges, kind).reach.get(id) ?? {};
+}
+
+/**
+ * The fewest of a connection's corners that still draw the line it has now.
+ *
+ * Asked of the router itself, all of it: a corner is dropped only when the
+ * whole pass — faces, berths, the way round the boxes, the corridors — draws
+ * this connection the same without it. `prune` asks the squaring-off alone,
+ * which is one step of several, and the corners it called redundant were
+ * often the ones holding the line where the user had put it.
+ */
+export function settleCorners(
+  nodes: AnyNode[],
+  edges: FlowEdge[],
+  kind: DiagramKind,
+  id: string,
+): Point[] {
+  const edge = edges.find((e) => e.id === id);
+  const points = edge?.data?.points ?? [];
+  if (!edge || points.length === 0) return points;
+  const held = cached;
+  const drawnWith = (corners: Point[]): Point[] =>
+    fill(
+      nodes,
+      edges.map((e) =>
+        e.id === id ? { ...e, data: { ...(e.data ?? { label: "" }), points: corners } } : e,
+      ),
+      kind,
+    ).routes.get(id) ?? [];
+  const same = (a: Point[], b: Point[]) =>
+    a.length === b.length &&
+    a.every((q, i) => Math.abs(q.x - b[i].x) < 0.5 && Math.abs(q.y - b[i].y) < 0.5);
+  const wanted = drawnWith(points);
+  let kept = points;
+  // Backwards, so an index stays valid while the list shrinks under it.
+  for (let i = kept.length - 1; i >= 0; i--) {
+    const without = [...kept.slice(0, i), ...kept.slice(i + 1)];
+    if (same(drawnWith(without), wanted)) kept = without;
+  }
+  cached = held;
+  return kept;
+}
 
 /**
  * Where every connection meets its two nodes, with the ones sharing a face
@@ -821,16 +1081,127 @@ export function allRoutes(
   return fill(nodes, edges, kind).routes;
 }
 
-/** The whole pass: where the connections meet, and where they then go. */
-function fill(
-  nodes: AnyNode[],
-  edges: FlowEdge[],
-  kind: DiagramKind,
-): { ends: Map<string, Ends>; routes: Map<string, Point[]> } {
+type Laid = {
+  ends: Map<string, Ends>;
+  routes: Map<string, Point[]>;
+  reach: Map<string, FaceReach>;
+};
+
+/** The connections drawn without some of their corners, and what they were drawn for. */
+let loosened = new Map<string, { key: string; points: Point[] }>();
+
+/** How near a box a connection's first or last corner is taken to be pinning its end there. */
+const PIN_REACH = 30;
+
+/**
+ * The whole pass, and then again for the connections it could not draw.
+ *
+ * A corner beside a box pins that end to a face — a drawing from draw.io
+ * pins most of its ends so — and some pins cannot be honoured: the far end of
+ * a bar the line lies along in draw.io, the side of an icon whose neighbour
+ * stands ten units off. Obeyed, the line went through the very box it was
+ * joining, or reached its pin and turned straight back. A line that does
+ * either is laid again without its pins, the faces left to the geometry as
+ * they are for any other connection; and one still wrong after that, with no
+ * corners at all. Each try is kept only if it leaves fewer lines wrong than
+ * the one before — where the line meets a box matters less than that it is
+ * one line.
+ *
+ * The stored corners are not touched: this is how they are drawn, not what
+ * the file says.
+ */
+function fill(nodes: AnyNode[], edges: FlowEdge[], kind: DiagramKind): Laid {
   if (cached && cached.nodes === nodes && cached.edges === edges && cached.kind === kind) {
     return cached;
   }
+  const boxes = routingBoxes(nodes);
+  const inside = (r: Rect): Rect => ({ x: r.x + 3, y: r.y + 3, w: r.w - 6, h: r.h - 6 });
+  const wrong = (edge: FlowEdge, laid: Laid): boolean => {
+    const route = laid.routes.get(edge.id);
+    const style = edge.data?.style?.route ?? "orthogonal";
+    if (!route || route.length < 2 || style !== "orthogonal" || edge.source === edge.target) {
+      return false;
+    }
+    if (reverses(route)) return true;
+    // Across one of its own two boxes, the runs that meet them aside.
+    const own = [boxes.get(edge.source), boxes.get(edge.target)].filter((b): b is Rect => !!b);
+    for (let i = 2; i < route.length - 1; i++) {
+      if (own.some((b) => crosses(route[i - 1], route[i], inside(b)))) return true;
+    }
+    return false;
+  };
+  const near = (p: Point, box: Rect | undefined): boolean => {
+    if (!box) return false;
+    const dx = Math.max(box.x - p.x, 0, p.x - (box.x + box.w));
+    const dy = Math.max(box.y - p.y, 0, p.y - (box.y + box.h));
+    return dx <= PIN_REACH && dy <= PIN_REACH;
+  };
+  const unpinned = (edge: FlowEdge): Point[] => {
+    const points = [...(edge.data?.points ?? [])];
+    if (points.length && near(points[0], boxes.get(edge.source))) points.shift();
+    if (points.length && near(points[points.length - 1], boxes.get(edge.target))) points.pop();
+    return points;
+  };
+
+  // What was settled last time stands while the connection and its two
+  // boxes are as they were, so a drag — one layout a frame — does not lay
+  // everything out three times a frame to reach the same answer.
+  const keyOf = (e: FlowEdge): string =>
+    JSON.stringify([boxes.get(e.source), boxes.get(e.target), e.data?.points ?? []]);
+  let effective = edges.map((e) => {
+    const was = loosened.get(e.id);
+    return was && was.key === keyOf(e)
+      ? { ...e, data: { ...(e.data ?? { label: "" }), points: was.points } }
+      : e;
+  });
+  let laid = layOut(nodes, effective, kind);
+  let bad = effective.filter((e) => wrong(e, laid));
+  for (const loosen of [unpinned, (): Point[] => []]) {
+    const again = bad.filter((e) => (e.data?.points ?? []).length > 0);
+    if (again.length === 0) break;
+    const ids = new Set(again.map((e) => e.id));
+    const tried = effective.map((e) =>
+      ids.has(e.id) ? { ...e, data: { ...(e.data ?? { label: "" }), points: loosen(e) } } : e,
+    );
+    const next = layOut(nodes, tried, kind);
+    const still = tried.filter((e) => wrong(e, next));
+    if (still.length >= bad.length) continue;
+    [effective, laid, bad] = [tried, next, still];
+  }
+  loosened = new Map();
+  edges.forEach((e, i) => {
+    const drawn = effective[i].data?.points ?? [];
+    if (drawn.length !== (e.data?.points ?? []).length) {
+      loosened.set(e.id, { key: keyOf(e), points: drawn });
+    }
+  });
+  cached = { nodes, edges, kind, ...laid };
+  return cached;
+}
+
+/**
+ * Every box as the router sees it: a picture node is its picture.
+ *
+ * The node holds the picture, room for a caption and padding round both, and
+ * is a good deal bigger than what is drawn — forty units taller for an icon
+ * with no caption at all. A line met the node, not the icon: it stopped short
+ * of the picture in empty canvas, and an icon standing just above the bus it
+ * hangs from had its node reach down over the bus, so there was no gap for
+ * the drop to cross and the line went round. draw.io ties a line to the
+ * picture, with the caption outside it, and so does this.
+ */
+function routingBoxes(nodes: AnyNode[]): Map<string, Rect> {
   const boxes = absoluteBoxes(nodes);
+  for (const n of nodes) {
+    const box = boxes.get(n.id);
+    if (box) boxes.set(n.id, pictureOnly(n, box));
+  }
+  return boxes;
+}
+
+/** One pass: where the connections meet, and where they then go. */
+function layOut(nodes: AnyNode[], edges: FlowEdge[], kind: DiagramKind): Laid {
+  const boxes = routingBoxes(nodes);
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const flat = (node: string, side: Side, at: number): boolean =>
     depthAt(byId.get(node), boxes.get(node), side, at) < 0.5;
@@ -845,7 +1216,7 @@ function fill(
     const at = endsOf(edge, boxes, kind);
     if (at) meeting.set(edge.id, at);
   }
-  const solid = obstaclesOf(nodes, boxes);
+  const solid = obstaclesOf(nodes, boxes, edges);
   // On a shaped node only the middle of each face is close to the outline;
   // berths are kept there, so ones on neighbouring faces do not run in to
   // the same stretch of curve. A plain box keeps its whole face.
@@ -878,23 +1249,69 @@ function fill(
     quayOf,
   );
 
+  // The subgraphs each connection is no part of: neither of its ends is in
+  // them, at any depth. It may cross them, at a price (see `SOFT_COST`).
+  const groups = nodes.filter(isGroup);
+  const holders = (id: string): Set<string> => {
+    const out = new Set<string>();
+    for (let at = byId.get(id)?.parentId; at && !out.has(at); at = byId.get(at)?.parentId) {
+      out.add(at);
+    }
+    return out;
+  };
   const drawn = new Map<string, Point[]>();
   for (const edge of edges) {
-    drawn.set(edge.id, routeOf(edge, solid, ends.get(edge.id) ?? null));
+    const own = new Set([...holders(edge.source), ...holders(edge.target)]);
+    const foreign = groups
+      .filter((g) => !own.has(g.id) && g.id !== edge.source && g.id !== edge.target)
+      .map((g) => boxes.get(g.id))
+      .filter((b): b is Rect => !!b);
+    drawn.set(edge.id, routeOf(edge, solid, ends.get(edge.id) ?? null, boxes, foreign));
   }
   // Only now, with all of them in hand, can two that lie on top of each other
   // be told apart and moved aside. The group frames go in as lines that cannot
   // move: a connection flush with a container's border vanishes into it.
   const frames = nodes.filter(isGroup).map((n) => boxes.get(n.id));
+  // Except connections someone routed by hand out of, or into, the same
+  // node. A trunk shared by design — a switch's line running down past every
+  // device in its rack, an org chart's rail — is drawn that way in draw.io
+  // and in Visio, and fanned apart here each line became a strand of a
+  // tangle beside the others. They stay as drawn.
+  //
+  // As drawn, but not out of sight. They used to be left out of the pass
+  // altogether, so nothing else knew they were there: two connections of one
+  // node touched by hand, and every other line that came their way was drawn
+  // straight on top of them. They take part now, as lines that do not move
+  // and that the rest make room for — only not for each other, the trunk
+  // being the point.
+  const shared = new Set<string>();
+  const routed = edges.filter((e) => (e.data?.points ?? []).length > 0);
+  for (const e of routed) {
+    if (routed.some((o) => o !== e && (o.source === e.source || o.target === e.target))) {
+      shared.add(e.id);
+    }
+  }
+  const endsOfEdge = new Map(edges.map((e) => [e.id, e]));
+  const spread = spreadRuns(
+    drawn,
+    frames.filter((b): b is Rect => !!b),
+    undefined,
+    solid.map(([, b]) => b),
+    {
+      corners: new Map(routed.map((e) => [e.id, e.data?.points ?? []])),
+      still: shared,
+      mates: (a, b) => {
+        if (!shared.has(a) || !shared.has(b)) return false;
+        const [p, q] = [endsOfEdge.get(a), endsOfEdge.get(b)];
+        return !!p && !!q && (p.source === q.source || p.target === q.target);
+      },
+    },
+  );
   const routes = untangleFaces(
     edges,
     ends,
-    spreadRuns(
-      drawn,
-      frames.filter((b): b is Rect => !!b),
-      undefined,
-      solid.map(([, b]) => b),
-    ),
+    spread,
+    solid.map(([, b]) => b),
   );
   for (const edge of edges) {
     const route = routes.get(edge.id);
@@ -903,6 +1320,16 @@ function fill(
     const reached = toOutline(dressed, ends.get(edge.id), edge, byId, boxes);
     if (reached !== route) routes.set(edge.id, reached);
   }
-  cached = { nodes, edges, kind, ends, routes };
-  return cached;
+  const reach = new Map<string, FaceReach>();
+  for (const edge of edges) {
+    const at = ends.get(edge.id);
+    const from = boxes.get(edge.source);
+    const to = boxes.get(edge.target);
+    if (!at || !from || !to || edge.source === edge.target) continue;
+    reach.set(edge.id, {
+      from: berthRange(quayOf(edge.source, at.fromSide, from)),
+      to: berthRange(quayOf(edge.target, at.toSide, to)),
+    });
+  }
+  return { ends, routes, reach };
 }

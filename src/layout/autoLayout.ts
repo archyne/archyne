@@ -136,6 +136,36 @@ export type Arrangement = LayoutStyle | "auto";
  * drawing keeps the order its author wrote.
  */
 /**
+ * ELK's layered algorithm, breaking cycles the way Mermaid's layout does.
+ *
+ * A graph with a loop in it has to have one connection of the loop turned
+ * round before it can be put in ranks, and which one decides the picture.
+ * ELK's default is greedy: it reverses whatever leaves the fewest reversed,
+ * counting connections rather than following them. In an order-handling flow
+ * with an inventory check whose "no" branch goes off to a backorder process
+ * and comes back, it turned round the way *out* — so the backorder process,
+ * which the inventory check feeds, was drawn above it, and the line into it
+ * climbed back up the page. Dagre, which draws the Mermaid preview, walks the
+ * graph depth first from where it starts and turns round the connection that
+ * leads back to somewhere already visited — the one coming back, which is the
+ * one an author thinks of as going backwards. Depth first here gives the same
+ * order the preview has.
+ *
+ * And trying harder to keep lines from crossing. `thoroughness` is how many
+ * times ELK reshuffles each rank looking for fewer crossings, and its default
+ * of 7 settled, in the same order flow, on a lane for the long line from
+ * payment to fraud checking that the line from a refused payment to the end
+ * then had to cross — a crossing Mermaid's preview does not have. At 15 it
+ * found the other arrangement; 25 is that with room to spare, and on a
+ * diagram of that size costs no time anyone would notice.
+ */
+const LAYERED: Record<string, string> = {
+  "elk.algorithm": "layered",
+  "elk.layered.cycleBreaking.strategy": "DEPTH_FIRST",
+  "elk.layered.thoroughness": "25",
+};
+
+/**
  * Containers, one above the other and all the same width.
  *
  * An aspect ratio this narrow leaves room for one band across, so the packer
@@ -173,12 +203,12 @@ const NESTED_LAYERED: {
   root: (holdsGroups: boolean) => Record<string, string>;
   group?: (holdsGroups: boolean, order: number, nested: boolean) => Record<string, string>;
 } = {
-  root: () => ({ "elk.hierarchyHandling": "SEPARATE_CHILDREN", "elk.algorithm": "layered" }),
+  root: () => ({ "elk.hierarchyHandling": "SEPARATE_CHILDREN", ...LAYERED }),
   group: (holdsGroups, order, nested): Record<string, string> => ({
     // Only inside a container: the top level must keep ranking by its edges,
     // and a priority here would pull a tier up to where the entry chain sits.
     ...(nested ? { "elk.priority": String(1000 - order) } : {}),
-    ...(holdsGroups ? STACKED : { "elk.algorithm": "layered" }),
+    ...(holdsGroups ? STACKED : LAYERED),
   }),
 };
 
@@ -197,7 +227,7 @@ const ELK_OPTIONS: Record<
   }
 > = {
   layered: {
-    root: () => ({ "elk.algorithm": "layered", "elk.hierarchyHandling": "INCLUDE_CHILDREN" }),
+    root: () => ({ ...LAYERED, "elk.hierarchyHandling": "INCLUDE_CHILDREN" }),
   },
   rectpacking: {
     root: () => ({
@@ -214,15 +244,43 @@ const ELK_OPTIONS: Record<
   bands: {
     root: (holdsGroups) => ({
       "elk.hierarchyHandling": "SEPARATE_CHILDREN",
-      ...(holdsGroups ? STACKED : { "elk.algorithm": "layered" }),
+      ...(holdsGroups ? STACKED : LAYERED),
     }),
     group: (holdsGroups, order): Record<string, string> => ({
       // Descending, because ELK places the most important first and the
       // containers should come out in the order they were written.
       "elk.priority": String(1000 - order),
-      ...(holdsGroups ? STACKED : { "elk.algorithm": "layered", "elk.direction": "RIGHT" }),
+      ...(holdsGroups ? STACKED : { ...LAYERED, "elk.direction": "RIGHT" }),
     }),
   },
+};
+
+/**
+ * How far apart things are put: between ranks, and between neighbours in one.
+ *
+ * Given to every container as well as to the top level. ELK reads each
+ * container's own options for laying out what is in it, so set at the top
+ * alone it applied between the subgraphs and nowhere inside them, where ELK's
+ * own default of 20 left a decision diamond and the boxes it branches to with
+ * no room between them. A connection with no room to come out of the bottom of
+ * one and go into the top of the next left sideways and hooked into the side
+ * of its target, and the lines passing through a subgraph had to squeeze
+ * between boxes or run along their edges. Mermaid's own layout spaces the
+ * inside of a subgraph as it spaces everything else.
+ */
+const SPACING: Record<string, string> = {
+  "elk.layered.spacing.nodeNodeBetweenLayers": "70",
+  "elk.spacing.nodeNode": "40",
+  // Room for the lines, as well as the boxes. ELK keeps ten units between two
+  // lines running side by side, and between a line and a box, which at the
+  // zoom a whole diagram is seen at is three pixels: two connections down one
+  // corridor read as one, and the boxes were placed with no corridor wide
+  // enough to part them. Twenty gives every line a lane of its own, and in an
+  // order-handling flow of eight subgraphs took the crossings from six to one.
+  "elk.spacing.edgeNode": "20",
+  "elk.spacing.edgeEdge": "20",
+  "elk.layered.spacing.edgeNodeBetweenLayers": "20",
+  "elk.layered.spacing.edgeEdgeBetweenLayers": "20",
 };
 
 const ELK_DIRECTION: Record<Direction, string> = {
@@ -288,10 +346,10 @@ export async function autoLayout(
   direction: Direction,
   style: Arrangement = "layered",
   kind: DiagramKind = "flowchart",
-): Promise<{ positions: PositionMap; arranged: LayoutStyle }> {
+): Promise<{ positions: PositionMap; arranged: LayoutStyle; routes: Routes }> {
   if (style === "auto") {
-    const { positions, winner } = await chooseLayout(nodes, edges, direction, kind);
-    return { positions, arranged: winner };
+    const { positions, winner, routes } = await chooseLayout(nodes, edges, direction, kind);
+    return { positions, arranged: winner, routes };
   }
   const childrenOf = new Map<string | undefined, AnyNode[]>();
   for (const n of nodes) {
@@ -334,6 +392,7 @@ export async function autoLayout(
         children: children.map(toElk),
         layoutOptions: {
           "elk.padding": "[top=40,left=16,bottom=16,right=16]",
+          ...SPACING,
           ...(opts.group?.(children.some(isGroup), order.get(n.id) ?? 0, !!n.parentId) ?? {}),
         },
       };
@@ -360,8 +419,7 @@ export async function autoLayout(
     id: "root",
     layoutOptions: {
       "elk.direction": ELK_DIRECTION[statedDirection(edges) ?? direction],
-      "elk.layered.spacing.nodeNodeBetweenLayers": "70",
-      "elk.spacing.nodeNode": "40",
+      ...SPACING,
       ...opts.root(top.some(isGroup)),
     },
     children: top.map(toElk),
@@ -372,8 +430,29 @@ export async function autoLayout(
     })),
   };
 
+  // The flat layered arrangement routes every connection as well as placing
+  // every box, and the two were worked out together: the boxes stand where
+  // they do so that the lines have the lanes ELK gave them. Thrown away and
+  // routed afresh, the lines took whatever way was shortest between the boxes
+  // as placed, which is not the way the boxes were placed for — they ran down
+  // one another's lanes and crossed where ELK had kept them apart. So for this
+  // arrangement the routes come back too, in the diagram's own coordinates,
+  // and are kept as the connections' corners.
   const elk = await getElk();
+  const routed = style === "layered" && !nested;
+  if (routed) graph.layoutOptions = { ...graph.layoutOptions, "elk.json.edgeCoords": "ROOT" };
   const result = await elk.layout(graph);
+  const routes: Record<string, Array<{ x: number; y: number }>> = {};
+  if (routed) {
+    const byElkId = new Map(edges.map((e, i) => [e.id || `e${i}`, e]));
+    for (const r of result.edges ?? []) {
+      const edge = byElkId.get(r.id);
+      const section = r.sections?.length === 1 ? r.sections[0] : undefined;
+      if (!edge || !section || edge.source === edge.target) continue;
+      const bends = section.bendPoints ?? [];
+      if (bends.length > 0) routes[edge.id] = bends.map((p) => ({ x: p.x, y: p.y }));
+    }
+  }
   const positions: PositionMap = {};
   const collect = (elkNode: ElkNode, isRoot: boolean) => {
     if (!isRoot) {
@@ -386,7 +465,21 @@ export async function autoLayout(
     for (const c of elkNode.children ?? []) collect(c, false);
   };
   collect(result, true);
-  return { positions, arranged: style };
+  return { positions, arranged: style, routes };
+}
+
+/** The connections with the corners an arrangement routed them through. */
+export function withRoutes(edges: FlowEdge[], routes: Routes): FlowEdge[] {
+  return edges.map((e) => {
+    const corners = routes[e.id];
+    const style = e.data?.style?.route ?? "orthogonal";
+    if (style !== "orthogonal" || e.source === e.target) {
+      return e.data?.points?.length ? { ...e, data: { ...e.data, points: [] } } : e;
+    }
+    const points = (corners ?? []).map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) }));
+    if (points.length === 0 && !e.data?.points?.length) return e;
+    return { ...e, data: { ...(e.data ?? { label: "" }), points } };
+  });
 }
 
 /**
@@ -405,19 +498,36 @@ async function chooseLayout(
   edges: FlowEdge[],
   direction: Direction,
   kind: DiagramKind,
-): Promise<{ positions: PositionMap; winner: LayoutStyle }> {
-  let winner: { score: Score; positions: PositionMap; style: LayoutStyle } | null = null;
+): Promise<{ positions: PositionMap; winner: LayoutStyle; routes: Routes }> {
+  let winner: {
+    score: Score;
+    positions: PositionMap;
+    style: LayoutStyle;
+    routes: Routes;
+  } | null = null;
   for (const style of LAYOUT_STYLES) {
-    let positions: PositionMap;
+    let laid: { positions: PositionMap; routes: Routes };
     try {
-      positions = (await autoLayout(nodes, edges, direction, style, kind)).positions;
+      laid = await autoLayout(nodes, edges, direction, style, kind);
     } catch (err) {
       console.warn(`auto arrangement skipped ${style}:`, err);
       continue;
     }
-    const score = layoutScore(placedNodes(nodes, positions), edges, kind);
-    if (!winner || betterScore(score, winner.score)) winner = { score, positions, style };
+    // The solver runs in a worker; the judging does not, and five of them
+    // back to back held the window still for seconds with the notice that
+    // something was happening unable to turn. A breath between them lets it.
+    await new Promise((resolve) => setTimeout(resolve));
+    // Judged as it will be drawn: with the corners this arrangement gives the
+    // connections, and none of the ones they have now. Rearranging drops
+    // those — they belong to the layout being replaced — and judged with them
+    // every line set off for a corner where its node used to be.
+    const drawn = withRoutes(edges, laid.routes);
+    const score = layoutScore(placedNodes(nodes, laid.positions), drawn, kind);
+    if (!winner || betterScore(score, winner.score)) winner = { score, style, ...laid };
   }
   if (!winner) throw new Error("no arrangement produced a layout");
-  return { positions: winner.positions, winner: winner.style };
+  return { positions: winner.positions, winner: winner.style, routes: winner.routes };
 }
+
+/** The corners an arrangement routed each connection through, by edge id. */
+export type Routes = Record<string, Array<{ x: number; y: number }>>;

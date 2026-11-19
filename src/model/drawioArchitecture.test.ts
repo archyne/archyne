@@ -30,15 +30,14 @@ const file = (cells: string) => `<mxfile>
   </diagram>
 </mxfile>`;
 
-describe("recognising a cloud drawing", () => {
-  it("reads AWS stencils as an architecture diagram, not a flowchart", () => {
-    // The whole point: a flowchart has nowhere to put the icons, which are
-    // the part of a cloud drawing that makes it legible.
+describe("reading a cloud drawing", () => {
+  it("reads AWS stencils as a flowchart unless asked otherwise", () => {
+    // Architecture-beta lays the services out afresh and loses the drawing's
+    // containers, captions and positions; a flowchart keeps all three.
     const { code } = drawioToMermaid(
       file(aws("2", "API", "api_gateway", 'x="0" y="0" width="78" height="78"')),
     );
-    expect(code).toContain("architecture-beta");
-    expect(code).not.toContain("flowchart");
+    expect(code.startsWith("flowchart")).toBe(true);
   });
 
   it("leaves an ordinary drawing as a flowchart", () => {
@@ -122,6 +121,7 @@ describe("the converted diagram", () => {
           aws("12", "Orders API", "ec2", 'x="240" y="60" width="78" height="78"') +
           link("20", "11", "12"),
       ),
+      "architecture",
     );
     expect(code).toContain("service n_title_text(server)[Title text]");
     await expect(parseDiagram(code)).resolves.toBeTruthy();
@@ -130,7 +130,7 @@ describe("the converted diagram", () => {
   it("makes the container a group and the shapes services", () => {
     // Lower-case ids: `architecture-beta` rejects a capital outright, which
     // the labels beside them do not.
-    const { code, nodes, edges } = drawioToMermaid(CLOUD);
+    const { code, nodes, edges } = drawioToMermaid(CLOUD, "architecture");
     expect([nodes, edges]).toEqual([4, 2]);
     expect(code).toContain("group amazon_vpc(cloud)[Amazon VPC]");
     expect(code).toContain("service postgresql(database)[PostgreSQL]");
@@ -140,7 +140,7 @@ describe("the converted diagram", () => {
   it("anchors each connection on the side the other end lies", () => {
     // `architecture-beta` has no coordinates, so the relative positions
     // survive as the anchors or not at all.
-    const { code } = drawioToMermaid(CLOUD);
+    const { code } = drawioToMermaid(CLOUD, "architecture");
     // The API is to the right of the load balancer…
     expect(code).toContain("load_balancer:R -[http]-> L:orders_api");
     // …and the database is below the API.
@@ -165,7 +165,7 @@ describe("the converted diagram", () => {
   });
 
   it("parses back as an architecture diagram", async () => {
-    const graph = await parseDiagram(drawioToMermaid(CLOUD).code);
+    const graph = await parseDiagram(drawioToMermaid(CLOUD, "architecture").code);
     expect(graph.kind).toBe("architecture");
     expect(graph.nodes.filter((n) => n.type === "service")).toHaveLength(3);
     expect(graph.nodes.find((n) => n.id === "orders_api")?.parentId).toBe("amazon_vpc");

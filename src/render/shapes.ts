@@ -51,13 +51,18 @@ export type Primitive =
 
 /** The rounded rectangle nearly every shape is a variation on. */
 function body(w: number, h: number, rx?: number): Primitive {
+  // Inset a unit for the stroke, except across a box too thin to give one: a
+  // rule a unit tall — draw.io's `line`, the bar in a UML class — came out a
+  // rectangle of height -1, which draws nothing and says so in the console.
+  const ix = w > 2 ? 1 : 0;
+  const iy = h > 2 ? 1 : 0;
   return {
     kind: "rect",
     paint: "fill",
-    x: 1,
-    y: 1,
-    width: w - 2,
-    height: h - 2,
+    x: ix,
+    y: iy,
+    width: w - 2 * ix,
+    height: h - 2 * iy,
     ...(rx !== undefined ? { rx } : {}),
   };
 }

@@ -1,4 +1,4 @@
-import { Fragment, useRef } from "react";
+import { Fragment, useRef, useState } from "react";
 import { BaseEdge, EdgeLabelRenderer, useReactFlow, type EdgeProps } from "@xyflow/react";
 import type { FlowEdge } from "../model/types";
 import {
@@ -11,14 +11,24 @@ import {
 } from "../routing";
 import { absoluteBoxes, useGraphStore } from "../store";
 import { useGraphView } from "./useGraphView";
-import { prune, segmentsOf, slideRun, type Axis } from "../orthogonal";
-import { allEnds, allRoutes } from "../routes";
+import {
+  prune,
+  segmentsOf,
+  slidePath,
+  slideRun,
+  type Axis,
+  type FaceReach,
+} from "../orthogonal";
+import { allEnds, allRoutes, faceReach, settleCorners } from "../routes";
 import { allLabels, midpointOf } from "../labels";
 import { labelLines } from "../model/label";
 import { crossings } from "../jumps";
 import { edgeColors } from "../theme";
 import { clearGuides, computeSnap, GRID, setGuides, type Box } from "../guides";
 import { useT } from "../i18n";
+import { isGroup } from "../model/types";
+import { CONNECT_RADIUS, CONNECT_RADIUS_INSIDE, nearestFace, nearestPin } from "../reconnect";
+import type { Side } from "../orthogonal";
 
 /**
  * The ordinary edge, plus the corners a user can put in it.
@@ -67,6 +77,8 @@ export function RoutedEdge({
   const commitWaypoints = useGraphStore((s) => s.commitWaypoints);
   const setWaypoints = useGraphStore((s) => s.setWaypoints);
   const setEdgeStyle = useGraphStore((s) => s.setEdgeStyle);
+  const reconnectEdge = useGraphStore((s) => s.reconnectEdge);
+  const setReconnecting = useGraphStore((s) => s.setReconnecting);
   const t = useT();
   /** Which corner is being dragged, so pointermove knows what to move. */
   const dragging = useRef<number | null>(null);
@@ -79,6 +91,18 @@ export function RoutedEdge({
   const pending = useRef<{ index: number; x: number; y: number } | null>(null);
   /** Where the pointer took hold of the label, relative to its offset. */
   const labelDrag = useRef<Point | null>(null);
+  /**
+   * An end of the line taken hold of, and where the pointer went down on it:
+   * like a hollow handle, it means nothing until the pointer has travelled.
+   */
+  const endHeld = useRef<{
+    end: "source" | "target";
+    x: number;
+    y: number;
+    moved: boolean;
+  } | null>(null);
+  /** The end being moved and where it is, drawn as a line to the pointer. */
+  const [loose, setLoose] = useState<{ end: "source" | "target"; at: Point } | null>(null);
 
   const points = data?.points ?? [];
 
@@ -107,6 +131,10 @@ export function RoutedEdge({
   const toAxis = ends?.to ?? "x";
   const startAt = ends?.start ?? { x: sourceX, y: sourceY };
   const endAt = ends?.end ?? { x: targetX, y: targetY };
+
+  /** Where the line is drawn to start and finish, which is where its ends are grabbed. */
+  const firstAt = drawn[0] ?? startAt;
+  const lastAt = drawn[drawn.length - 1] ?? endAt;
 
   const runs = segmentsOf(drawn);
   /** Where the other connections cross this one, so it can hop them. */
@@ -252,7 +280,26 @@ export function RoutedEdge({
     axis: Axis;
     corners: Point[];
     path: Point[];
+    /** How far along its face each end may be taken, for a squared route. */
+    reach: FaceReach | null;
   } | null>(null);
+
+  /**
+   * Take hold of a run. A squared route is held as the line on the screen,
+   * with its ends on the faces of their boxes rather than on the outlines
+   * drawn inside them, and slid as that line (`slidePath`); a straight or a
+   * curved one has no runs to speak of and keeps the older arithmetic.
+   */
+  const grab = (index: number, axis: Axis) => {
+    const squared = route === "orthogonal" && ends !== null && drawn.length >= 2;
+    slide.current = {
+      index,
+      axis,
+      corners: points,
+      path: squared ? [ends.start, ...drawn.slice(1, -1), ends.end] : drawn,
+      reach: squared ? faceReach(nodes, edges, kind, id) : null,
+    };
+  };
 
   const onSlide = (e: React.PointerEvent<SVGElement>) => {
     const held = slide.current;
@@ -260,7 +307,10 @@ export function RoutedEdge({
     e.stopPropagation();
     const at = screenToFlowPosition({ x: e.clientX, y: e.clientY }, { snapToGrid: false });
     const value = held.axis === "x" ? at.y : at.x;
-    setWaypoints(id, slideRun(held.corners, held.path, held.index, value), false);
+    const corners = held.reach
+      ? (slidePath(held.path, held.index, value, held.reach) ?? held.corners)
+      : slideRun(held.corners, held.path, held.index, value);
+    setWaypoints(id, corners, false);
   };
 
   /**
@@ -271,8 +321,15 @@ export function RoutedEdge({
    * once, at the end, before the route is written to the file.
    */
   const settle = () => {
-    const live = latest().edges.find((e) => e.id === id)?.data?.points ?? [];
-    const kept = prune(live, startAt, endAt, fromAxis, toAxis);
+    const now = latest();
+    const live = now.edges.find((e) => e.id === id)?.data?.points ?? [];
+    // Asked of the whole router for a squared route, since that is what will
+    // draw it: the squaring-off alone called corners redundant that were
+    // holding the line clear of a box, or level with its berth.
+    const kept =
+      route === "orthogonal"
+        ? settleCorners(now.nodes, now.edges, kind, id)
+        : prune(live, startAt, endAt, fromAxis, toAxis);
     if (kept.length !== live.length) setWaypoints(id, kept, false);
     commitWaypoints();
   };
@@ -314,6 +371,80 @@ export function RoutedEdge({
     e.preventDefault();
     e.stopPropagation();
     moveWaypoint(id, index, { x: at.x + delta.x, y: at.y + delta.y });
+  };
+
+  /**
+   * Where a moved end was let go, as the node and face it now belongs to — or
+   * nothing, when that is not a place an end can go.
+   *
+   * A connection point within reach wins, on any node, and pins the end to its
+   * face. Failing that, the node under the pointer, with the face left to the
+   * router; but not a container, which covers too much of the canvas for
+   * "anywhere on it" to be meant, and not the node at the other end, which
+   * would turn every drag that wandered back over it into a loop. Both are
+   * still reachable through their connection points. The rules a new line
+   * released in the same place obeys, in `CanvasView`.
+   */
+  const dropAt = (
+    client: { x: number; y: number },
+    end: "source" | "target",
+  ): { node: string; side: Side | null } | null => {
+    const at = screenToFlowPosition(client, { snapToGrid: false });
+    const { nodes: all } = latest();
+    const boxes = absoluteBoxes(all);
+    const zoom = getZoom();
+    const pin = nearestPin(at, boxes, CONNECT_RADIUS / zoom, CONNECT_RADIUS_INSIDE / zoom);
+    if (pin) return pin;
+    // The innermost node under the pointer: a child inside a group is what
+    // the pointer is over, not the group behind it. From the document, past
+    // the handle being dragged, which is under the pointer too.
+    const id = document
+      .elementsFromPoint(client.x, client.y)
+      .map((el) => el.closest<HTMLElement>(".react-flow__node")?.dataset.id)
+      .find(Boolean);
+    const node = id ? all.find((n) => n.id === id) : undefined;
+    const other = end === "source" ? edge?.target : edge?.source;
+    if (!node || isGroup(node) || node.id === other) return null;
+    const box = boxes.get(node.id);
+    // An architecture diagram writes the face into the file, so one is always
+    // named: the one nearest where the end was let go.
+    return {
+      node: node.id,
+      side: kind === "architecture" && box ? nearestFace(at, box) : null,
+    };
+  };
+
+  const onEndMove = (e: React.PointerEvent<HTMLElement>) => {
+    const held = endHeld.current;
+    if (!held) return;
+    e.stopPropagation();
+    if (!held.moved) {
+      if (Math.hypot(e.clientX - held.x, e.clientY - held.y) < SLOP) return;
+      held.moved = true;
+      setReconnecting(true);
+    }
+    setLoose({
+      end: held.end,
+      at: screenToFlowPosition({ x: e.clientX, y: e.clientY }, { snapToGrid: false }),
+    });
+  };
+
+  const endEndMove = (e: React.PointerEvent<HTMLElement>, cancelled = false) => {
+    const held = endHeld.current;
+    if (!held) return;
+    e.stopPropagation();
+    endHeld.current = null;
+    if (!held.moved) return; // a press that never travelled
+    setLoose(null);
+    setReconnecting(false);
+    if (cancelled) return;
+    const drop = dropAt({ x: e.clientX, y: e.clientY }, held.end);
+    if (!drop) return;
+    const current = held.end === "source" ? edge?.source : edge?.target;
+    // Back on the node it was on, with no face named: nothing has changed,
+    // and the route the user laid is not thrown away for it.
+    if (drop.node === current && drop.side === null) return;
+    reconnectEdge(id, held.end, drop.node, drop.side);
   };
 
   const endDrag = (e: React.PointerEvent<SVGElement>) => {
@@ -419,13 +550,48 @@ export function RoutedEdge({
           );
           const run = runs[nearestSegment(drawn, at)];
           if (!run) return;
-          slide.current = { index: run.index, axis: run.axis, corners: points, path: drawn };
+          grab(run.index, run.axis);
           e.currentTarget.setPointerCapture(e.pointerId);
         }}
         onPointerMove={onSlide}
         onPointerUp={endSlide}
         onPointerCancel={endSlide}
       />
+      {loose && (
+        <path
+          className="edge-reconnect"
+          d={`M ${(loose.end === "source" ? lastAt : firstAt).x} ${(loose.end === "source" ? lastAt : firstAt).y} L ${loose.at.x} ${loose.at.y}`}
+          fill="none"
+        />
+      )}
+      {/* The two ends, each a handle that moves that end somewhere else. In
+          the layer above the nodes, like the label: an end sits on a node's
+          face, right where that node's own connection point is, and a press
+          that reached the connection point started a new line instead. */}
+      {editable && selected && (
+        <EdgeLabelRenderer>
+          {(["source", "target"] as const).map((end) => {
+            const at = loose?.end === end ? loose.at : end === "source" ? firstAt : lastAt;
+            return (
+              <div
+                key={end}
+                className="edge-end nodrag nopan"
+                style={{ transform: `translate(-50%, -50%) translate(${at.x}px, ${at.y}px)` }}
+                title={t("edge.moveEnd")}
+                onPointerDown={(e) => {
+                  if (e.button !== 0) return;
+                  e.stopPropagation();
+                  endHeld.current = { end, x: e.clientX, y: e.clientY, moved: false };
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                }}
+                onPointerMove={onEndMove}
+                onPointerUp={(e) => endEndMove(e)}
+                onPointerCancel={(e) => endEndMove(e, true)}
+              />
+            );
+          })}
+        </EdgeLabelRenderer>
+      )}
       {/* Every affordance below edits the document, so none of them belongs
           on a canvas that is only showing one. */}
       {editable && selected && (
@@ -443,12 +609,7 @@ export function RoutedEdge({
                 onPointerDown={(e) => {
                   if (e.button !== 0) return;
                   e.stopPropagation();
-                  slide.current = {
-                    index: s.index,
-                    axis: s.axis,
-                    corners: points,
-                    path: drawn,
-                  };
+                  grab(s.index, s.axis);
                   e.currentTarget.setPointerCapture(e.pointerId);
                 }}
                 onPointerMove={onSlide}

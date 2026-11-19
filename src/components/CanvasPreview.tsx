@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ConnectionMode,
   ReactFlow,
@@ -23,6 +23,8 @@ import { annotateParallel, placeNodes, withStoredLooks } from "../store";
 import { StaticGraphProvider } from "./GraphSource";
 import { useT } from "../i18n";
 import type { AnyNode, DiagramKind, FlowEdge } from "../model/types";
+import { stacked } from "../stacking";
+import { MIN_ZOOM } from "../zoom";
 
 /**
  * The same node components the editor draws with, so the preview is not an
@@ -66,6 +68,9 @@ const FIT = { padding: 0.06, duration: 0 };
 function Flow({ nodes, edges }: { nodes: AnyNode[]; edges: FlowEdge[] }) {
   const { fitView } = useReactFlow();
   const measured = useNodesInitialized();
+  // Stacked as the canvas stacks them, or a box lying across two lanes is
+  // hidden under both here as well.
+  const layered = useMemo(() => stacked(nodes, edges), [nodes, edges]);
 
   useEffect(() => {
     if (!measured) return;
@@ -79,12 +84,13 @@ function Flow({ nodes, edges }: { nodes: AnyNode[]; edges: FlowEdge[] }) {
 
   return (
     <ReactFlow
-      nodes={nodes}
-      edges={edges}
+      nodes={layered.nodes}
+      edges={layered.edges}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       fitView
       fitViewOptions={FIT}
+      minZoom={MIN_ZOOM}
       // The canvas runs loose, and so must this: every handle a node offers
       // is a `source`, and without loose mode React Flow refuses to attach
       // an edge whose target handle is unnamed — which silently dropped

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useGraphStore, loadInitialCode, SAMPLE } from "./store";
 import { useFileStore } from "./files";
 import {
@@ -74,6 +74,77 @@ describe("switching documents", () => {
 
     await switchTo(second);
     expect(useGraphStore.getState().code).toBe(OTHER);
+  });
+
+  it("does not empty, or swap, documents switched through while one is still loading", async () => {
+    // Opening a document makes it active at once and loads its source after.
+    // Switching on before the load finished saved what was on screen — the
+    // document being left — into the one being opened, and when its load did
+    // finish, saved that into whichever was active by then. A diagram found
+    // empty, an imported page empty on arrival.
+    await boot();
+    const [first] = documentList();
+    await useGraphStore.getState().applyCode(FLOWCHART, { record: false });
+    const second = await createDoc();
+    await useGraphStore.getState().applyCode(OTHER, { record: false });
+    const third = await createDoc();
+    const THIRD = `flowchart TD\n  p["P"] --> q["Q"]\n`;
+    await useGraphStore.getState().applyCode(THIRD, { record: false });
+
+    // Three clicks in a row, none waiting for the one before.
+    const a = switchTo(first.id);
+    const b = switchTo(second);
+    const c = switchTo(third);
+    await Promise.all([a, b, c]);
+
+    expect(localStorage.getItem(DOC_PREFIX + first.id)).toBe(FLOWCHART);
+    expect(localStorage.getItem(DOC_PREFIX + second)).toBe(OTHER);
+    expect(localStorage.getItem(DOC_PREFIX + third)).toBe(THIRD);
+    expect(useGraphStore.getState().code).toBe(THIRD);
+  });
+
+  it("does not carry text typed in one document into the next", async () => {
+    // Typing is read back after a short pause. Switching document within it
+    // let the read-back run anyway, for whichever document was active by
+    // then: it overtook that document's load and saved the other's text in.
+    await boot();
+    const [first] = documentList();
+    await useGraphStore.getState().applyCode(FLOWCHART, { record: false });
+    const second = await createDoc();
+    await useGraphStore.getState().applyCode(OTHER, { record: false });
+    await switchTo(first.id);
+
+    const TYPED = `flowchart TD\n  a["A"] --> b["B"] --> c["C"]\n`;
+    useGraphStore.getState().setCodeFromEditor(TYPED);
+    await switchTo(second);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    expect(localStorage.getItem(DOC_PREFIX + first.id)).toBe(TYPED);
+    expect(localStorage.getItem(DOC_PREFIX + second)).toBe(OTHER);
+    expect(useGraphStore.getState().code).toBe(OTHER);
+  });
+
+  it("does not save an empty screen over a document just after a reload", async () => {
+    await boot();
+    const [first] = documentList();
+    await useGraphStore.getState().applyCode(FLOWCHART, { record: false });
+    const second = await createDoc();
+    await useGraphStore.getState().applyCode(OTHER, { record: false });
+
+    // A reload: the app starts again from what is stored, with nothing on
+    // screen while the open document loads — and a tab is clicked before it
+    // has.
+    vi.resetModules();
+    const store = await import("./store");
+    const docs = await import("./documents");
+    const loading = store.useGraphStore
+      .getState()
+      .applyCode(store.loadInitialCode(), { record: false });
+    const away = docs.switchTo(first.id);
+    await Promise.all([loading, away]);
+
+    expect(localStorage.getItem(DOC_PREFIX + second)).toBe(OTHER);
+    expect(store.useGraphStore.getState().code).toBe(FLOWCHART);
   });
 
   it("does not let undo reach across documents", async () => {

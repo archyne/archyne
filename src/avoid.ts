@@ -41,6 +41,53 @@ export const CLEARANCE = 14;
  */
 const BEND_COST = 40;
 
+/**
+ * What a unit of path inside a soft obstacle costs, on top of the unit itself.
+ *
+ * A soft obstacle is a frame a path may cross but would rather go round: a
+ * subgraph the connection has no business in. Mermaid's own layout routes a
+ * long connection round the clusters it passes, and drawn straight through
+ * three of them it ran down the inside of their borders and past their boxes
+ * close enough to read as touching them. Forbidding it outright is not an
+ * option: the lanes of a swimlane diagram tile the pool, and a connection
+ * between two of them has nowhere else to go.
+ *
+ * Priced by the distance travelled inside rather than per frame entered, so
+ * that a short way round beats a long way through, and a way round the whole
+ * pool — which is what forbidding produced — loses to a single lane crossed.
+ * Two: a detour has to be shorter than twice what it saves, plus the corners
+ * it costs.
+ */
+const SOFT_COST = 2;
+
+/**
+ * How far out from a soft obstacle the way round it runs, as a multiple of
+ * the clearance a path keeps off a box. Twice: a frame's border is a faint
+ * dashed line, and a connection one box-clearance off it read as running
+ * down it.
+ *
+ * Only the way round, though, not a margin that costs: priced, it moved a
+ * connection off the gap between two subnets of a swimlane drawing — the
+ * lanes are packed too close for any line to keep that far off them — and
+ * sent it up a corridor beside the pool, across seven other lines and through
+ * the approach to someone else's arrowhead.
+ */
+const FRAME_CLEARANCE = 2;
+
+/** How much of an axis-aligned run lies strictly inside `r`. */
+function lengthInside(a: Point, b: Point, r: Rect): number {
+  if (Math.abs(a.y - b.y) < 0.5) {
+    if (a.y <= r.y || a.y >= r.y + r.h) return 0;
+    const lo = Math.max(Math.min(a.x, b.x), r.x);
+    const hi = Math.min(Math.max(a.x, b.x), r.x + r.w);
+    return Math.max(0, hi - lo);
+  }
+  if (a.x <= r.x || a.x >= r.x + r.w) return 0;
+  const lo = Math.max(Math.min(a.y, b.y), r.y);
+  const hi = Math.min(Math.max(a.y, b.y), r.y + r.h);
+  return Math.max(0, hi - lo);
+}
+
 /** Beyond this many boxes near a path the lattice stops being cheap; the caller falls back. */
 const TOO_MANY = 60;
 
@@ -99,6 +146,8 @@ const key = (s: State): string => `${s.at}:${s.dir}${s.sign}`;
  * step is free, being on the axis it set out on, and it drew a spike at the
  * node: out, back a few units, and only then away.
  *
+ * `soft` are frames the path may cross at a price (see `SOFT_COST`).
+ *
  * Returns the corners including both ends, or `null` when there is no way
  * through — a node sitting on the target, most often — so the caller can fall
  * back to the direct route rather than draw nothing.
@@ -112,8 +161,9 @@ export function routeAround(
   clearance = CLEARANCE,
   leave?: Point,
   arrive?: Point,
+  soft: Rect[] = [],
 ): Point[] | null {
-  if (obstacles.length === 0) return null;
+  if (obstacles.length === 0 && soft.length === 0) return null;
   // Only the boxes near the two ends take part, widening the neighbourhood
   // when the path found there runs into one left out. The cap below is on
   // the search, not on the diagram: applied to every box on the page, it
@@ -122,9 +172,9 @@ export function routeAround(
   for (const margin of NEIGHBOURHOODS) {
     const near =
       margin === Infinity ? obstacles : obstacles.filter((r) => meets(r, around(a, b, margin)));
-    if (near.length === 0) continue;
+    if (near.length === 0 && (soft.length === 0 || margin !== Infinity)) continue;
     if (near.length > TOO_MANY) return null;
-    const found = search(a, b, from, to, near, clearance, leave, arrive);
+    const found = search(a, b, from, to, near, clearance, leave, arrive, soft);
     // Fewer boxes is more room: no way through these is no way through all.
     if (!found) return null;
     if (found.every((q, i) => i === 0 || !blocked(found[i - 1], q, obstacles))) return found;
@@ -157,8 +207,12 @@ function search(
   clearance: number,
   leave?: Point,
   arrive?: Point,
+  soft: Rect[] = [],
 ): Point[] | null {
   const walls = obstacles.map((r) => grown(r, clearance));
+  // A frame's sides are lines worth turning on too, so the way round one has
+  // somewhere to run, `FRAME_CLEARANCE` out.
+  const frames = soft.map((r) => grown(r, clearance * FRAME_CLEARANCE));
 
   // The lines worth turning on: every wall's sides, and the ends themselves —
   // and, where a direction is fixed, one a little way along it from each end.
@@ -177,12 +231,14 @@ function search(
     b.x,
     ...extra.map((q) => q.x),
     ...walls.flatMap((r) => [r.x, r.x + r.w]),
+    ...frames.flatMap((r) => [r.x, r.x + r.w]),
   ]);
   const ys = sortedUnique([
     a.y,
     b.y,
     ...extra.map((q) => q.y),
     ...walls.flatMap((r) => [r.y, r.y + r.h]),
+    ...frames.flatMap((r) => [r.y, r.y + r.h]),
   ]);
 
   const lattice: Point[] = [];
@@ -341,7 +397,10 @@ function search(
       if (step.dir === state.dir && step.sign !== state.sign) continue;
       const next: State = { at: step.at, dir: step.dir, sign: step.sign };
       const k = key(next);
-      const total = cost + length + (step.dir === state.dir ? 0 : BEND_COST);
+      let through = 0;
+      for (const r of soft) through += lengthInside(p, q, r);
+      const total =
+        cost + length + SOFT_COST * through + (step.dir === state.dir ? 0 : BEND_COST);
       if ((best.get(k) ?? Infinity) <= total) continue;
       cameFrom.set(k, state);
       push(next, total);

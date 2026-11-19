@@ -19,10 +19,6 @@ import { serializeArchitecture } from "./kinds/architecture";
 import { positionsLine, type PositionMap } from "./positions";
 import { idFactory } from "./importShared";
 
-/** The vendor stencils that say a drawing is cloud architecture. */
-export const CLOUD_STENCILS =
-  /mxgraph\.(aws\d?|azure\w*|gcp\w*|kubernetes|k8s|veeam|cisco\w*|network|rack)\b/i;
-
 /**
  * Stencil and label fragments, and the icon each suggests.
  *

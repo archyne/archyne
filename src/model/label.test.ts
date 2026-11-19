@@ -9,6 +9,24 @@ describe("a label as it is drawn", () => {
   it("decodes the entities mermaid's own parser hands back", () => {
     expect(decodeLabel("DNS &amp; DDoS")).toBe("DNS & DDoS");
   });
+
+  it("draws a character written by number, as mermaid does", () => {
+    expect(decodeLabel("say #34;hi#34;")).toBe('say "hi"');
+  });
+});
+
+describe("a label read back from mermaid's parser", () => {
+  it("shows a quote as a quote, not as the parser's placeholder", async () => {
+    // A draw.io label in quotes is written `#quot;…#quot;`, and the parser
+    // handed it back as `ﬂ°quot¶ß…ﬂ°quot¶ß`, which the canvas drew as it was.
+    const { parseDiagram } = await import("./diagram");
+    const parsed = await parseDiagram(
+      'flowchart TD\n  a["say #quot;hi#quot;"] -->|"#34;ok#34;"| b[/"#quot;x#quot;"/]\n',
+    );
+    const labels = parsed.nodes.map((n) => decodeLabel(String(n.data.label)));
+    expect(labels).toEqual(['say "hi"', '"x"']);
+    expect(decodeLabel(String(parsed.edges[0].data?.label))).toBe('"ok"');
+  });
 });
 
 describe("a label as it is edited", () => {

@@ -71,6 +71,8 @@ export const en = {
   "import.onePage": "Only the first page, “{page}”, of {count} is converted",
   "import.looksLike": "This looks like a {family} diagram; it converts as a flowchart",
   "import.dropped": "Some elements had no Mermaid equivalent and were left out ({count})",
+  "import.imagesEmbedded": "{count} pictures from the web now travel inside the diagram",
+  "import.imagesFailed": "{count} pictures could not be fetched and stay links to the web",
   "import.unbound": "Arrives as {name}, unsaved. The file you chose is not touched.",
   "import.cancel": "Cancel",
   "import.confirm": "Import",
@@ -154,6 +156,8 @@ export const en = {
   "item.subgraph": "Subgraph",
 
   "canvas.label": "Diagram canvas",
+  "canvas.toolSelect": "Selection — click for the hand (V / H)",
+  "canvas.toolPan": "Hand — click for selection (V / H, or hold Space)",
   "canvas.arranging": "Arranging the diagram…",
   "canvas.brokenTitle": "This diagram cannot be drawn",
   "canvas.brokenBody":
@@ -238,6 +242,8 @@ export const en = {
   "palette.sectionBase": "Base",
   "palette.sectionPinned": "Recent & favorites",
   "palette.sectionCarried": "In this diagram",
+  "palette.sectionImported": "Imported icons",
+  "palette.removeImported": "Remove {name} from the icons kept in this browser",
   "palette.sectionVendor": "Vendor icons",
   "palette.searchIcons": "Search 13000+ icons…",
   "item.compositeState": "Composite state",
@@ -270,6 +276,7 @@ export const en = {
   "edge.moveSegment": "Drag to move this run of the line",
   "edge.moveLabel": "Drag to move the label, double-click to put it back",
   "edge.removeCorner": "Drag to move, double-click to remove",
+  "edge.moveEnd": "Drag onto another node or connection point to move this end",
   "edge.cornerNamed":
     "Corner {index} of {total}. Arrow keys move it, Shift for a bigger step, Delete removes it.",
   "insp.corners": "Corners",
@@ -464,6 +471,10 @@ export const en = {
   "shortcuts.cancel": "Cancel",
   "shortcuts.nudge": "Nudge the selection",
   "shortcuts.nudgeFar": "Nudge further",
+  "shortcuts.toolSelect": "Select tool",
+  "shortcuts.toolPan": "Hand tool",
+  "shortcuts.panHold": "Move the canvas while held",
+  "shortcuts.toolToggle": "Switch between selection and hand",
   "shortcuts.commandPalette": "Command palette",
 
   "panel.tabOutline": "Outline",

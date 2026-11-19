@@ -35,6 +35,9 @@ const GROUPS: Array<{ title: MessageKey; rows: Array<[string, MessageKey]> }> = 
       ["Escape", "shortcuts.cancel"],
       ["↑ ↓ ← →", "shortcuts.nudge"],
       ["Shift + ↑ ↓ ← →", "shortcuts.nudgeFar"],
+      ["V", "shortcuts.toolSelect"],
+      ["H", "shortcuts.toolPan"],
+      ["Space", "shortcuts.panHold"],
     ],
   },
   {
