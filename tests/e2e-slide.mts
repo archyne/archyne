@@ -270,9 +270,17 @@ for (const name of FIXTURES) {
 
         const after = await stateOf(id);
         const bent = reversals(after.d);
-        // Pinning the run it moved takes two corners; anything beyond that is
+        // What is kept is the line as it is drawn, less the corners the router
+        // would draw anyway: never more corners than the line has bends (and
+        // one, for a straight line held where it was put). More than that is
         // a drag that has been applied more than once.
-        const grew = after.corners > before.corners + 2;
+        // A squared line rounds each bend with a curve; a straight one joins
+        // its corners with plain lines, one more of them than it has corners.
+        const bends = Math.max(
+          (after.d.match(/Q/g) ?? []).length,
+          (after.d.match(/L/g) ?? []).length - 1,
+        );
+        const grew = after.corners > bends + 1;
         if (bent.length > 0 || grew) {
           failures++;
           console.error(

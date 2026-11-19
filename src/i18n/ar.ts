@@ -68,6 +68,8 @@ export const messages: Messages = {
   "import.onePage": "تُحوَّل الصفحة الأولى «{page}» فقط من {count}",
   "import.looksLike": "يبدو أنه مخطط {family}؛ سيُحوَّل كمخطط انسيابي",
   "import.dropped": "بعض العناصر بلا مقابل في Mermaid ولم تُستورد ({count})",
+  "import.imagesEmbedded": "أصبحت {count} صورة من الويب مضمّنة في المخطط",
+  "import.imagesFailed": "تعذّر جلب {count} صورة وبقيت روابط إلى الويب",
   "import.unbound": "سيصل باسم {name} دون حفظ. لن يُمسّ الملف الذي اخترته.",
   "import.cancel": "إلغاء",
   "import.confirm": "استيراد",
@@ -151,6 +153,8 @@ export const messages: Messages = {
   "item.subgraph": "مخطط فرعي",
 
   "canvas.label": "لوحة المخطط",
+  "canvas.toolSelect": "تحديد — انقر للتبديل إلى اليد (V / H)",
+  "canvas.toolPan": "اليد — انقر للتبديل إلى التحديد (V / H، أو اضغط مع الاستمرار على المسافة)",
   "canvas.arranging": "جارٍ ترتيب المخطط…",
   "canvas.brokenTitle": "يتعذّر رسم هذا المخطط",
   "canvas.brokenBody":
@@ -235,6 +239,8 @@ export const messages: Messages = {
   "palette.sectionBase": "أساسية",
   "palette.sectionPinned": "الأخيرة والمفضلة",
   "palette.sectionCarried": "أيقونات هذا المخطط",
+  "palette.sectionImported": "الأيقونات المستوردة",
+  "palette.removeImported": "إزالة {name} من الأيقونات المحفوظة في هذا المتصفح",
   "palette.sectionVendor": "أيقونات المزوّدين",
   "palette.searchIcons": "ابحث في أكثر من 13000 أيقونة…",
   "item.compositeState": "حالة مركّبة",
@@ -265,6 +271,7 @@ export const messages: Messages = {
   "edge.moveSegment": "اسحب لتحريك هذا الجزء",
   "edge.moveLabel": "اسحب لتحريك التسمية، ونقرة مزدوجة لإعادتها",
   "edge.removeCorner": "اسحب للتحريك، انقر نقرًا مزدوجًا للحذف",
+  "edge.moveEnd": "اسحب إلى عقدة أخرى أو نقطة اتصال لنقل هذا الطرف",
   "edge.cornerNamed":
     "الزاوية {index} من {total}. الأسهم تحرّكها، مع Shift خطوة أكبر، وDelete يحذفها.",
   "insp.corners": "الزوايا",
@@ -456,6 +463,10 @@ export const messages: Messages = {
   "shortcuts.cancel": "إلغاء",
   "shortcuts.nudge": "تحريك التحديد",
   "shortcuts.nudgeFar": "تحريك أبعد",
+  "shortcuts.toolSelect": "أداة التحديد",
+  "shortcuts.toolPan": "أداة اليد",
+  "shortcuts.panHold": "تحريك اللوحة أثناء الضغط",
+  "shortcuts.toolToggle": "التبديل بين التحديد واليد",
   "shortcuts.commandPalette": "لوحة الأوامر",
 
   "panel.tabOutline": "المخطط التفصيلي",

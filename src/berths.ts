@@ -60,6 +60,12 @@ interface Slot {
  */
 export type QuayOf = (node: string, side: Side, box: Rect) => { from: number; span: number };
 
+/** The stretch of a quay a berth may stand on: all of it but the room by each corner. */
+export function berthRange(q: { from: number; span: number }): [number, number] {
+  const room = Math.min(CORNER_ROOM, q.span / 4);
+  return [q.from + room, q.from + q.span - room];
+}
+
 /** The extent of a face along the axis a berth can move on. */
 function quay(box: Rect, side: Side): { from: number; span: number } {
   return axisOfSide(side) === "x" ? { from: box.y, span: box.h } : { from: box.x, span: box.w };
@@ -391,13 +397,63 @@ export function separateHeads(
     // The places on the face stay the ones the earlier passes chose; which
     // line takes which is decided by where each one turns (`nesting`), so
     // none of them turning off crosses another still running on.
-    const want = list.map((e) => pointOf(e)[across]).sort((a, b) => a - b);
-    const sorted = list
-      .map((e) => ({ e, at: pointOf(e)[across], key: nesting(e, side) }))
+    //
+    // Except an end that stands level with a corner of its own line. That
+    // place was not an earlier pass's guess: the corner is where someone put
+    // the line, and the end was brought level with it (`alignWithCorners`) so
+    // the line runs straight in. Handed to a neighbour for turning the other
+    // way, the line it belonged to went to the neighbour's place and came
+    // back along the face to its corner — and a run dragged along a face
+    // moved the *other* connection's end instead of its own. Those keep their
+    // places, and the rest are ordered round them.
+    const held = (e: End): boolean => {
+      const bends = corners.get(e.id) ?? [];
+      const beside = e.end === "from" ? bends[0] : bends[bends.length - 1];
+      if (!beside) return false;
+      const at = pointOf(e);
+      const n = outward(side);
+      return (
+        Math.abs(beside[across] - at[across]) < 0.5 &&
+        (beside.x - at.x) * n.x + (beside.y - at.y) * n.y > 0
+      );
+    };
+    const lines = list.map((e) => ({
+      e,
+      at: pointOf(e)[across],
+      key: nesting(e, side),
+      held: held(e),
+    }));
+    const loose = lines
+      .filter((l) => !l.held)
       .sort((a, b) => a.key - b.key || a.at - b.at || (a.e.id < b.e.id ? -1 : 1));
+    const slots = loose.map((l) => l.at).sort((a, b) => a - b);
+    const given = new Map(loose.map((l, i) => [l, slots[i]]));
+    const sorted = lines
+      .map((l) => ({ ...l, want: given.get(l) ?? l.at }))
+      .sort(
+        (a, b) => a.want - b.want || a.key - b.key || a.at - b.at || (a.e.id < b.e.id ? -1 : 1),
+      );
+    const want = sorted.map((l) => l.want);
     const n = want.length;
     let placed: number[];
-    if (hi - lo < (n - 1) * room) {
+    // An end held by its corner stands where the corner put it, and only the
+    // others give way. Several lines pinned to one point of a box — a trunk
+    // out of a switch or into a hub, drawn so in draw.io — were otherwise
+    // pushed a head's width apart and each went back to the shared corner by
+    // a step of its own: a comb where there had been one line. Arriving,
+    // they share one head, as they do in draw.io: one trunk, one arrow.
+    const fixed = sorted.map((l) => l.held);
+    if (fixed.some(Boolean)) {
+      placed = [...want];
+      for (let i = 0; i < n; i++) {
+        if (fixed[i]) continue;
+        placed[i] = Math.max(placed[i], i > 0 ? placed[i - 1] + room : lo);
+      }
+      for (let i = n - 1; i >= 0; i--) {
+        if (fixed[i]) continue;
+        placed[i] = Math.min(placed[i], i < n - 1 ? placed[i + 1] - room : hi);
+      }
+    } else if (hi - lo < (n - 1) * room) {
       placed = want.map((_, i) => lo + ((hi - lo) * i) / (n - 1));
     } else {
       placed = [...want];

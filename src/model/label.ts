@@ -29,7 +29,15 @@ const ENTITIES: Record<string, string> = {
 
 /** Decode the entities Mermaid produces, and nothing else. */
 export function decodeLabel(text: string): string {
-  return text.replace(/&(?:amp|lt|gt|quot|#39|apos|nbsp);|#quot;/g, (m) => ENTITIES[m] ?? m);
+  return (
+    text
+      .replace(/&(?:amp|lt|gt|quot|#39|apos|nbsp);|#quot;/g, (m) => ENTITIES[m] ?? m)
+      // Mermaid's own spelling of a character by number, `#34;`.
+      .replace(/#(\d{1,6});/g, (m, n: string) => {
+        const code = Number(n);
+        return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : m;
+      })
+  );
 }
 
 /** Split on every spelling of a Mermaid line break. */

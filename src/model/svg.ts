@@ -151,6 +151,26 @@ export function sanitiseSvg(source: string): string | null {
       }
       walk(child);
     }
+    // A `style` attribute goes, like anything else that can carry more than
+    // it shows — but what it says about how the shape is painted is kept, as
+    // the attributes of the same names. Inkscape writes every colour there
+    // (`style="fill:url(#a);stroke:none"`), and so do Microsoft's own Azure
+    // icons: with the attribute simply dropped, each of them came out a
+    // black silhouette. A declaration is kept only if it is one an attribute
+    // may say, with a value an attribute may have.
+    const style = el.getAttribute("style");
+    if (style) {
+      for (const declaration of style.split(";")) {
+        const colon = declaration.indexOf(":");
+        if (colon < 0) continue;
+        const name = declaration.slice(0, colon).trim().toLowerCase();
+        const value = declaration.slice(colon + 1).trim();
+        if (!name || !value || name === "style" || name === "id" || name === "class") continue;
+        if (name === "href" || !ALLOWED_ATTRS.has(name) || !safeValue(value)) continue;
+        // What the style says wins over the attribute, as it does in a browser.
+        el.setAttribute(name, value);
+      }
+    }
     for (const attr of [...el.attributes]) {
       const name = attr.name.toLowerCase();
       const isRef = name === "href" || name === "xlink:href";

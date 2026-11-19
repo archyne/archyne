@@ -6,6 +6,8 @@ interface IconPrefs {
   favorites: string[];
   recordRecent: (name: string) => void;
   toggleFavorite: (name: string) => void;
+  /** Drop an icon that no longer exists from both lists. */
+  forget: (name: string) => void;
 }
 
 const RECENTS_KEY = "graph:recent-icons";
@@ -46,6 +48,14 @@ export const useIconPrefs = create<IconPrefs>((set, get) => ({
       ? get().favorites.filter((n) => n !== name)
       : [name, ...get().favorites].slice(0, 24);
     set({ favorites });
+    save(FAVS_KEY, favorites);
+  },
+
+  forget: (name) => {
+    const recents = get().recents.filter((n) => n !== name);
+    const favorites = get().favorites.filter((n) => n !== name);
+    set({ recents, favorites });
+    save(RECENTS_KEY, recents);
     save(FAVS_KEY, favorites);
   },
 }));

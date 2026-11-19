@@ -77,7 +77,9 @@ export function idFactory() {
  * is not a hex colour — both formats also write `none` and X11 colour names.
  */
 function luminance(hex: string): number | null {
-  const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
+  // An alpha on the end is passed over: a see-through fill is judged as the
+  // colour it is, which is what most of what shows through it looks like.
+  const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})(?:[0-9a-f]{2})?$/i.exec(hex.trim());
   if (!match) return null;
   const digits =
     match[1].length === 3

@@ -489,6 +489,115 @@ export function slideRun(
 }
 
 /**
+ * How far along its face each end of a connection may stand: the stretch a
+ * berth can be given, as a pair of coordinates on the axis the face runs on.
+ */
+export interface FaceReach {
+  from?: [number, number];
+  to?: [number, number];
+}
+
+/** The least run worth leaving between two corners a slide puts in. */
+const MIN_RUN = 8;
+
+/**
+ * The corners to store after a run of a squared route has been slid: the
+ * line the user is looking at, with that one run moved, and nothing else.
+ *
+ * `slideRun` stores two corners to pin the run and trusts the router to draw
+ * the rest of the line as it did before. It does not: the rest was often the
+ * obstacle search's work, or the corridor pass's, and neither runs the same
+ * way once the connection has corners of its own. One pull on a run and the
+ * far half of the line went somewhere else, or through a box, or back on
+ * itself. So what is kept here is the whole path as drawn — every corner of
+ * it — and the ones the router would have drawn anyway are dropped once, when
+ * the gesture ends, by asking the router itself (`settleCorners`).
+ *
+ * `path` is the drawn route with its two ends on the faces of their boxes.
+ *
+ * A run in the middle moves, and the runs either side stretch. The one next
+ * to an end stops a stub short of the face, as before.
+ *
+ * The run a line leaves or arrives on takes its end with it, along the face,
+ * for as far as the face has berths to give (`reach`) — which is what draw.io
+ * does with a floating end. Past that the end stays, and the line steps out a
+ * stub, across, and on. A run too short to hold that step stops at the last
+ * berth.
+ *
+ * `null` when the run is not one that can be slid — it lies on the slant.
+ */
+export function slidePath(
+  path: Point[],
+  index: number,
+  value: number,
+  reach: FaceReach = {},
+): Point[] | null {
+  const runs = segmentsOf(path);
+  const run = runs[index];
+  if (!run) return null;
+  const along: Axis = run.axis;
+  const pinned: Axis = other(along);
+  if (Math.abs(run.from[pinned] - run.to[pinned]) > 0.5) return null;
+  const was = run.from[pinned];
+  const last = runs.length - 1;
+  const set = (q: Point): Point =>
+    pinned === "x" ? { x: value, y: q.y } : { x: q.x, y: value };
+
+  if (index !== 0 && index !== last) {
+    for (const anchor of [
+      index - 1 === 0 ? path[0][pinned] : null,
+      index + 1 === last ? path[path.length - 1][pinned] : null,
+    ]) {
+      if (anchor === null) continue;
+      value = was >= anchor ? Math.max(value, anchor + STUB) : Math.min(value, anchor - STUB);
+    }
+    const moved = path.map((q, j) => (j === index || j === index + 1 ? set(q) : { ...q }));
+    return tidy(moved).slice(1, -1);
+  }
+
+  const dir = Math.sign(run.to[along] - run.from[along]) || 1;
+  const length = Math.abs(run.to[along] - run.from[along]);
+  const within = (r: [number, number] | undefined, v: number) =>
+    !!r && v >= r[0] - 0.5 && v <= r[1] + 0.5;
+  const faces = [index === 0 ? reach.from : null, index === last ? reach.to : null].filter(
+    (r) => r !== null,
+  );
+  const steps = faces.filter((r) => !within(r, value)).length;
+  if (steps > 0 && length < steps * STUB + MIN_RUN) {
+    // No room to step aside: the end goes as far along its face as it can.
+    if (faces.some((r) => !r)) return null;
+    const lo = Math.max(...faces.map((r) => r![0]));
+    const hi = Math.min(...faces.map((r) => r![1]));
+    if (lo > hi) return null;
+    value = Math.min(hi, Math.max(lo, value));
+  }
+
+  const step = (q: Point, by: number): Point =>
+    along === "x" ? { x: q.x + by, y: q.y } : { x: q.x, y: q.y + by };
+  const head =
+    index !== 0
+      ? [...path.slice(0, index).map((q) => ({ ...q })), set(run.from)]
+      : within(reach.from, value)
+        ? [set(run.from)]
+        : [{ ...run.from }, step(run.from, dir * STUB), set(step(run.from, dir * STUB))];
+  const tail =
+    index !== last
+      ? [set(run.to), ...path.slice(index + 2).map((q) => ({ ...q }))]
+      : within(reach.to, value)
+        ? [set(run.to)]
+        : [set(step(run.to, -dir * STUB)), step(run.to, -dir * STUB), { ...run.to }];
+  const corners = tidy([...head, ...tail]).slice(1, -1);
+  // A straight line moved whole has no corner to say where it now is; one in
+  // its middle holds both ends level with it.
+  if (corners.length === 0 && Math.abs(value - was) >= 0.5) {
+    const a = set(run.from);
+    const b = set(run.to);
+    return [{ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }];
+  }
+  return corners;
+}
+
+/**
  * Carry an edge's corners along when the nodes it hangs from move.
  *
  * The corners are absolute canvas positions — they have to be, since an edge
@@ -504,7 +613,13 @@ export function slideRun(
  * corner by the same amount and the shape is untouched; and dragging one node
  * a long way does not drag the far end of the line with it.
  */
-export function carryWaypoints(points: Point[], bySource: Point, byTarget: Point): Point[] {
+export function carryWaypoints(
+  points: Point[],
+  bySource: Point,
+  byTarget: Point,
+  source?: Frame,
+  target?: Frame,
+): Point[] {
   if (points.length === 0) return points;
   const still =
     Math.abs(bySource.x) < 0.01 &&
@@ -513,7 +628,7 @@ export function carryWaypoints(points: Point[], bySource: Point, byTarget: Point
     Math.abs(byTarget.y) < 0.01;
   if (still) return points;
 
-  return points.map((q, i) => {
+  const out = points.map((q, i) => {
     // 0 at the source end, 1 at the target end, never quite either: a corner
     // is always its own point, not one of the two nodes.
     const towardsTarget = (i + 1) / (points.length + 1);
@@ -523,6 +638,42 @@ export function carryWaypoints(points: Point[], bySource: Point, byTarget: Point
       y: q.y + bySource.y * towardsSource + byTarget.y * towardsTarget,
     };
   });
+
+  // Each corner going its own fraction of the way takes a run apart: the two
+  // corners at the ends of a level run stood at one height, were carried by a
+  // quarter and by a half, and the run came back as a step. So corners that
+  // shared a coordinate go on sharing one — a run moves as a run.
+  //
+  // And a run that stood in line with the box at its end goes the whole way
+  // with it. That is the run the line leaves or arrives on: carried part of
+  // the way, it was left beside the face it used to come out of, and the line
+  // stepped across to reach it. `source` and `target` are the two boxes as
+  // they stood before the move.
+  const last = points.length - 1;
+  const inLine = (v: number, box: Frame | undefined, axis: Axis): boolean => {
+    if (!box) return false;
+    const lo = axis === "x" ? box.x : box.y;
+    const hi = lo + (axis === "x" ? box.w : box.h);
+    return v >= lo - 0.5 && v <= hi + 0.5;
+  };
+  for (const axis of ["x", "y"] as Axis[]) {
+    for (let i = 0; i <= last;) {
+      let j = i;
+      while (j < last && Math.abs(points[j + 1][axis] - points[i][axis]) < 0.5) j++;
+      const held: number[] = [];
+      if (i === 0 && inLine(points[0][axis], source, axis)) held.push(bySource[axis]);
+      if (j === last && inLine(points[last][axis], target, axis)) held.push(byTarget[axis]);
+      let by = 0;
+      if (held.length) by = held.reduce((m, v) => m + v, 0) / held.length;
+      else {
+        for (let k = i; k <= j; k++) by += out[k][axis] - points[k][axis];
+        by /= j - i + 1;
+      }
+      for (let k = i; k <= j; k++) out[k][axis] = points[k][axis] + by;
+      i = j + 1;
+    }
+  }
+  return out;
 }
 
 /** Do these two paths draw the same line? */

@@ -272,18 +272,48 @@ export function layoutScore(placed: AnyNode[], edges: FlowEdge[], kind: DiagramK
 
   const frames = groups.map((n) => boxes.get(n.id)!).filter((b): b is Rect => !!b);
 
+  // Each line's runs, taken apart once, with the box each run fits in. A
+  // drawn line is its route with every corner rounded, so a few dozen short
+  // runs, and comparing every run of every line with every run of every
+  // other — taking the second line apart again for each run of the first —
+  // was thirteen seconds of a still window on a drawing of seventy-five
+  // connections, for each of the five arrangements. Two lines whose boxes do
+  // not meet share nothing and cross nowhere, and neither do two runs.
+  const runs = drawn.map((d) =>
+    segmentsOf(d.line).map((s) => ({
+      s,
+      x0: Math.min(s.a.x, s.b.x),
+      x1: Math.max(s.a.x, s.b.x),
+      y0: Math.min(s.a.y, s.b.y),
+      y1: Math.max(s.a.y, s.b.y),
+    })),
+  );
+  const extent = runs.map((list) => ({
+    x0: Math.min(...list.map((r) => r.x0)),
+    x1: Math.max(...list.map((r) => r.x1)),
+    y0: Math.min(...list.map((r) => r.y0)),
+    y1: Math.max(...list.map((r) => r.y1)),
+  }));
+  type Span = { x0: number; x1: number; y0: number; y1: number };
+  const apart = (m: Span, n: Span) =>
+    m.x1 < n.x0 - 0.5 || n.x1 < m.x0 - 0.5 || m.y1 < n.y0 - 0.5 || n.y1 < m.y0 - 0.5;
+
   let coincident = 0;
   let crossings = 0;
   for (let i = 0; i < drawn.length; i++)
     for (let j = i + 1; j < drawn.length; j++) {
+      if (apart(extent[i], extent[j])) continue;
       let long = false;
       let crossed = false;
-      scan: for (const s of segmentsOf(drawn[i].line))
-        for (const t of segmentsOf(drawn[j].line)) {
-          if (!long && collinearOverlap(s, t) > RUN) long = true;
-          if (!crossed && properCrosses(s.a, s.b, t.a, t.b)) crossed = true;
+      scan: for (const m of runs[i]) {
+        if (apart(m, extent[j])) continue;
+        for (const n of runs[j]) {
+          if (apart(m, n)) continue;
+          if (!long && collinearOverlap(m.s, n.s) > RUN) long = true;
+          if (!crossed && properCrosses(m.s.a, m.s.b, n.s.a, n.s.b)) crossed = true;
           if (long && crossed) break scan;
         }
+      }
       if (long) coincident++;
       if (crossed) crossings++;
     }

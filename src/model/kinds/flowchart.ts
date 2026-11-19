@@ -10,7 +10,7 @@ import type {
   ShapeNode,
 } from "../types";
 import { IMG_SIZE, SHAPES, isGroup } from "../types";
-import { entriesOf, normalizeDirection, quote } from "./shared";
+import { entriesOf, normalizeDirection, quote, unplaceholder } from "./shared";
 
 function normalizeShape(type: unknown): Shape {
   if (typeof type === "string" && (SHAPES as readonly string[]).includes(type)) {
@@ -80,7 +80,7 @@ export function parseFlowchart(db: Record<string, (...a: unknown[]) => unknown>)
       type: "group",
       position: { x: 0, y: 0 },
       data: {
-        label: String(sg.title ?? gid),
+        label: unplaceholder(String(sg.title ?? gid)),
         subgraphId: gid,
         ...(styles.length ? { styles } : {}),
       },
@@ -107,7 +107,7 @@ export function parseFlowchart(db: Record<string, (...a: unknown[]) => unknown>)
       type: "shape",
       position: { x: 0, y: 0 },
       data: {
-        label: String(v.text ?? id),
+        label: unplaceholder(String(v.text ?? id)),
         shape: normalizeShape(v.type),
         direction,
         ...(classes.length ? { classes } : {}),
@@ -133,7 +133,12 @@ export function parseFlowchart(db: Record<string, (...a: unknown[]) => unknown>)
       id: `e${i}_${e.start}_${e.end}`,
       source: String(e.start),
       target: String(e.end),
-      data: { label: String(e.text ?? ""), stroke, arrow, ...(both ? { both: true } : {}) },
+      data: {
+        label: unplaceholder(String(e.text ?? "")),
+        stroke,
+        arrow,
+        ...(both ? { both: true } : {}),
+      },
     };
   });
 

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { isPlainNode, patchNodeStyles, readNodeStyles, stripNodeStyles } from "./nodeStyle";
+import {
+  isPlainNode,
+  labelPlaceOf,
+  patchNodeStyles,
+  readNodeStyles,
+  stripNodeStyles,
+  styleProps,
+  readableLabel,
+} from "./nodeStyle";
 
 const DIAGRAM = "architecture-beta\n  service web(internet)[Web]\n";
 
@@ -69,5 +77,46 @@ describe("telling an ordinary node from a styled one", () => {
 
   it("counts the icon alone as worth keeping", () => {
     expect(isPlainNode({ look: "icon" })).toBe(false);
+  });
+});
+
+describe("where a label stands in its box", () => {
+  it("runs from the edge the style names", () => {
+    // A draw.io wireframe's words start at the left; a class's name sits at the top.
+    expect(labelPlaceOf(styleProps(["text-align:left", "vertical-align:top"]))).toEqual({
+      justifyContent: "flex-start",
+      alignItems: "flex-start",
+    });
+    expect(labelPlaceOf(styleProps(["text-align:right", "vertical-align:bottom"]))).toEqual({
+      justifyContent: "flex-end",
+      alignItems: "flex-end",
+    });
+  });
+
+  it("says nothing for words centred both ways", () => {
+    expect(labelPlaceOf(styleProps(["text-align:center", "fill:#fff"]))).toEqual({});
+  });
+});
+
+describe("a label on a filled box", () => {
+  it("is given a text colour that reads on a pale fill", () => {
+    // `classDef process fill:#bbf`: Mermaid's own theme writes dark words on
+    // it, and the dark canvas's light grey could not be read there.
+    expect(readableLabel({ fill: "#bbf" }).color).toBe("#111111");
+    expect(readableLabel({ fill: "#ff9" }).color).toBe("#111111");
+  });
+
+  it("and one that reads on a dark fill", () => {
+    expect(readableLabel({ fill: "#1e3a5f" }).color).toBe("#ffffff");
+  });
+
+  it("keeps a text colour the file states", () => {
+    expect(readableLabel({ fill: "#bbf", color: "#c00" }).color).toBe("#c00");
+  });
+
+  it("leaves a box with no fill, or one it cannot judge, alone", () => {
+    expect(readableLabel({}).color).toBeUndefined();
+    expect(readableLabel({ fill: "none" }).color).toBeUndefined();
+    expect(readableLabel({ fill: "rebeccapurple" }).color).toBeUndefined();
   });
 });

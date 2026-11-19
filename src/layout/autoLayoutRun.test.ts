@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { autoLayout, LAYOUT_STYLES } from "./autoLayout";
 import type { AnyNode, FlowEdge } from "../model/types";
+import { useGraphStore } from "../store";
+import { allRoutes } from "../routes";
+import type { Point } from "../routing";
 
 /**
  * `autoLayout()` actually running, rather than the helpers around it.
@@ -161,6 +164,52 @@ describe("the arrangements on offer", () => {
     expect(seen.size).toBeGreaterThan(1);
   });
 
+  it("puts a subgraph after the one that feeds it, when the two feed each other", async () => {
+    // An order flow: the inventory check's "no" branch goes off to a backorder
+    // process, and the backorder comes back to reserve the stock. The two
+    // subgraphs feed each other, so one of the two connections has to be
+    // turned round before they can be put in ranks. Greedy cycle breaking
+    // counted connections and turned round the way out, and the backorder
+    // process was drawn above the check that leads to it.
+    const nodes = [
+      group("pay"),
+      node("p", 160, 54, "pay"),
+      group("inv"),
+      node("check", 150, 86, "inv"),
+      node("reserve", 160, 54, "inv"),
+      node("reorder", 160, 54, "inv"),
+      group("back"),
+      node("notify", 160, 54, "back"),
+      node("wait", 160, 54, "back"),
+      node("done", 160, 54, "back"),
+      node("escalate", 160, 54, "back"),
+    ];
+    const edges = [
+      edge("p", "check"),
+      edge("check", "reserve"),
+      edge("check", "reorder"),
+      edge("reorder", "notify"),
+      edge("notify", "wait"),
+      edge("wait", "done"),
+      edge("wait", "escalate"),
+      edge("done", "reserve"),
+    ];
+    const out = (await autoLayout(nodes, edges, "TB", "layered")).positions;
+    expect(out.pay.y).toBeLessThan(out.inv.y);
+    expect(out.inv.y).toBeLessThan(out.back.y);
+  });
+
+  it("spaces the inside of a subgraph as it spaces the outside", async () => {
+    const [nodes, edges] = [
+      [group("g"), node("a", 160, 54, "g"), node("b", 160, 54, "g")],
+      [edge("a", "b")],
+    ];
+    const out = (await autoLayout(nodes, edges, "TB", "layered")).positions;
+    // The gap between ranks at the top level is 70; ELK's own default, which
+    // a subgraph got, is 20.
+    expect(out.b.y - (out.a.y + 54)).toBeGreaterThanOrEqual(70);
+  });
+
   it("arranges hierarchically when no style is asked for", async () => {
     const [nodes, edges] = graph();
     const asked = (await autoLayout(nodes, edges, "TB", "layered")).positions;
@@ -168,3 +217,99 @@ describe("the arrangements on offer", () => {
     expect(silent).toEqual(asked);
   });
 });
+
+describe("the lines an arrangement routes", () => {
+  /** Two runs, one on each line, lying side by side closer than `near`. */
+  const alongside = (a: Point[], b: Point[], near: number): number => {
+    let n = 0;
+    for (let i = 1; i < a.length; i++)
+      for (let j = 1; j < b.length; j++) {
+        const [p, q, r, t] = [a[i - 1], a[i], b[j - 1], b[j]];
+        const across: "x" | "y" | null =
+          Math.abs(p.y - q.y) < 0.5 && Math.abs(r.y - t.y) < 0.5
+            ? "y"
+            : Math.abs(p.x - q.x) < 0.5 && Math.abs(r.x - t.x) < 0.5
+              ? "x"
+              : null;
+        if (!across || Math.abs(p[across] - r[across]) >= near) continue;
+        const k = across === "x" ? "y" : "x";
+        const lo = Math.max(Math.min(p[k], q[k]), Math.min(r[k], t[k]));
+        const hi = Math.min(Math.max(p[k], q[k]), Math.max(r[k], t[k]));
+        n += Math.max(0, hi - lo);
+      }
+    return n;
+  };
+
+  it("keeps them, and keeps them in lanes of their own", async () => {
+    // An order-handling flow of eight subgraphs. Its lines were routed afresh
+    // after the boxes were placed, ran down one another's lanes and crossed
+    // six times; routed by the arrangement that placed the boxes for them,
+    // and given room, they cross once and none lies alongside another.
+    await useGraphStore.getState().applyCode(ORDER_FLOW, { forceLayout: true });
+    await useGraphStore.getState().runAutoLayout("layered");
+    const s = useGraphStore.getState();
+    expect(s.edges.filter((e) => (e.data?.points ?? []).length > 0).length).toBeGreaterThan(0);
+    const routes = [...allRoutes(s.nodes, s.edges, s.kind).values()];
+    for (let i = 0; i < routes.length; i++)
+      for (let j = i + 1; j < routes.length; j++) {
+        expect(alongside(routes[i], routes[j], 12)).toBeLessThan(40);
+      }
+  });
+
+  it("are not kept for an arrangement that does not route them", async () => {
+    await useGraphStore.getState().applyCode(ORDER_FLOW, { forceLayout: true });
+    await useGraphStore.getState().runAutoLayout("force");
+    expect(
+      useGraphStore.getState().edges.every((e) => (e.data?.points ?? []).length === 0),
+    ).toBe(true);
+  });
+});
+
+const ORDER_FLOW = `flowchart TD
+    subgraph start["Inizio"]
+        S0([Inizio])
+    end
+    subgraph end["Fine"]
+        S20([Fine])
+    end
+    subgraph order["Inserimento Ordine"]
+        S0 --> S1([Ordine Ricevuto])
+        S1 --> S2([Validazione Ordine])
+        S2 --> S3([Elaborazione Pagamento])
+    end
+    subgraph payment["Pagamento"]
+        S3 --> S4{Pagamento Approvato?}
+        S4 -->|Sì| S5([Verifica Inventario])
+        S4 -->|No| S6([Pagamento Rifiutato])
+        S6 --> S20
+    end
+    subgraph inventory["Inventario"]
+        S5 --> S7{Inventario Disponibile?}
+        S7 -->|Sì| S8([Riserva Inventario])
+        S7 -->|No| S9([Processo di Riordino])
+    end
+    subgraph backorder["Processo di Riordino"]
+        S9 --> S10([Notifica Cliente])
+        S10 --> S11([Attesa Riassortimento])
+        S11 --> S12{Riassortimento Ricevuto?}
+        S12 -->|Sì| S13([Riordino Completato])
+        S12 -->|No| S14([Escalation al Supporto])
+        S13 --> S8
+    end
+    subgraph shipment["Spedizione"]
+        S8 --> S15([Preparazione Spedizione])
+        S15 --> S16([Spedizione Ordine])
+        S16 --> S17([Aggiorna Stato Ordine])
+        S17 --> S18([Invia Email di Conferma])
+        S18 --> S20
+    end
+    subgraph fraud["Rilevamento Frodi"]
+        S3 --> V([Controllo Frodi])
+        V -->|Frodi Rilevati| S21([Mantenimento Ordine])
+        V -->|Nessuna Frode| S15
+        S21 --> S22([Notifica Team Frodi])
+        S22 --> S23([Supporto Clienti])
+        S23 --> S15
+    end
+    S14 --> S23
+`;

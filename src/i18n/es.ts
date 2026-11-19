@@ -66,6 +66,8 @@ export const messages: Messages = {
   "import.looksLike": "Parece un diagrama {family}: se convierte como diagrama de flujo",
   "import.dropped":
     "Algunos elementos no tienen equivalente en Mermaid y se han omitido ({count})",
+  "import.imagesEmbedded": "{count} imágenes de la web ahora viajan dentro del diagrama",
+  "import.imagesFailed": "{count} imágenes no se pudieron descargar y siguen siendo enlaces",
   "import.unbound": "Llega como {name}, sin guardar. El archivo elegido no se modifica.",
   "import.cancel": "Cancelar",
   "import.confirm": "Importar",
@@ -149,6 +151,8 @@ export const messages: Messages = {
   "item.subgraph": "Subgrafo",
 
   "canvas.label": "Lienzo del diagrama",
+  "canvas.toolSelect": "Selección — clic para la mano (V / H)",
+  "canvas.toolPan": "Mano — clic para la selección (V / H, o mantén Espacio)",
   "canvas.arranging": "Ordenando el diagrama…",
   "canvas.brokenTitle": "Este diagrama no se puede dibujar",
   "canvas.brokenBody":
@@ -233,6 +237,8 @@ export const messages: Messages = {
   "palette.sectionBase": "Básicos",
   "palette.sectionPinned": "Recientes y favoritos",
   "palette.sectionCarried": "En este diagrama",
+  "palette.sectionImported": "Iconos importados",
+  "palette.removeImported": "Quitar {name} de los iconos guardados en este navegador",
   "palette.sectionVendor": "Iconos de proveedores",
   "palette.searchIcons": "Buscar entre más de 13000 iconos…",
   "item.compositeState": "Estado compuesto",
@@ -265,6 +271,7 @@ export const messages: Messages = {
   "edge.moveSegment": "Arrastra para mover este tramo",
   "edge.moveLabel": "Arrastra para mover la etiqueta, doble clic para devolverla",
   "edge.removeCorner": "Arrastra para mover, doble clic para quitar",
+  "edge.moveEnd": "Arrastra a otro nodo o punto de conexión para mover este extremo",
   "edge.cornerNamed":
     "Vértice {index} de {total}. Las flechas lo mueven, Mayús para un paso mayor, Supr lo quita.",
   "insp.corners": "Vértices",
@@ -458,6 +465,10 @@ export const messages: Messages = {
   "shortcuts.cancel": "Cancelar",
   "shortcuts.nudge": "Desplazar la selección",
   "shortcuts.nudgeFar": "Desplazar más",
+  "shortcuts.toolSelect": "Herramienta de selección",
+  "shortcuts.toolPan": "Herramienta mano",
+  "shortcuts.panHold": "Mover el lienzo mientras se mantiene",
+  "shortcuts.toolToggle": "Cambiar entre selección y mano",
   "shortcuts.commandPalette": "Paleta de comandos",
 
   "panel.tabOutline": "Esquema",

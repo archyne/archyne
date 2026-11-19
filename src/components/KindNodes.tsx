@@ -6,7 +6,7 @@ import { useSized } from "./useSized";
 
 import { SideHandles } from "./SideHandles";
 import { useRename } from "./useRename";
-import { boxStyleOf, labelStyleOf, styleProps } from "../model/nodeStyle";
+import { boxStyleOf, labelStyleOf, readableLabel, styleProps } from "../model/nodeStyle";
 import { edgeColors, useThemeStore } from "../theme";
 import { markerDefs } from "../render/markers";
 
@@ -50,7 +50,7 @@ function NormalState({
 }) {
   const rename = useRename(id, data.label, {
     multiline: true,
-    style: labelStyleOf(styleProps(data.styles ?? [])),
+    style: labelStyleOf(readableLabel(styleProps(data.styles ?? []))),
   });
   return (
     <SizedBox
@@ -91,7 +91,7 @@ function SizedBox({
   return (
     <div
       className={`${className}${selected ? " selected" : ""}${sized ? " sized" : ""}`}
-      style={boxStyleOf(styleProps(styles ?? []))}
+      style={boxStyleOf(readableLabel(styleProps(styles ?? [])))}
       onDoubleClick={onDoubleClick}
     >
       <NodeResize id={id} visible={selected} />

@@ -221,6 +221,16 @@ export function ImportDialog({ opened }: { opened: OpenedFile }) {
               {t("import.dropped", { count: String(imported.dropped) })}
             </p>
           )}
+          {!!imported?.images?.embedded && (
+            <p className="field-hint">
+              {t("import.imagesEmbedded", { count: String(imported.images.embedded) })}
+            </p>
+          )}
+          {!!imported?.images?.failed && (
+            <p className="field-hint">
+              {t("import.imagesFailed", { count: String(imported.images.failed) })}
+            </p>
+          )}
           {error && <p className="preview-error">{error}</p>}
           <p className="field-hint">{t("import.unbound", { name: file.name })}</p>
 

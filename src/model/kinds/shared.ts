@@ -4,6 +4,19 @@ export function quote(label: string): string {
   return `"${label.replace(/"/g, "#quot;")}"`;
 }
 
+/**
+ * A label as it was written, from the text Mermaid's parser hands back.
+ *
+ * Mermaid hides an entity in a label behind a placeholder while it parses —
+ * `#quot;` becomes `ﬂ°quot¶ß`, `#34;` becomes `ﬂ°°34¶ß` — and turns it back
+ * only when it renders. The parser's text is the placeholder, so a quoted
+ * word in a node read `ﬂ°quot¶ßLogin failedﬂ°quot¶ß` on the canvas. Put
+ * back, it is the `#quot;` that `quote` writes and the canvas draws as `"`.
+ */
+export function unplaceholder(text: string): string {
+  return text.replace(/ﬂ°°(\d+)¶ß/g, "#$1;").replace(/ﬂ°(\w+)¶ß/g, "#$1;");
+}
+
 export function normalizeDirection(dir: unknown): Direction {
   const d = typeof dir === "string" ? dir.toUpperCase() : "TB";
   return d === "TB" || d === "TD" || d === "LR" || d === "RL" || d === "BT"

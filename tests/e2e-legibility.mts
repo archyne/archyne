@@ -67,6 +67,17 @@ const FIXTURES = [
 ];
 
 /**
+ * Fixtures read as a family other than their default, chosen in the dialog.
+ *
+ * cloud-aws was written for this suite when it opened as architecture-beta,
+ * and that reading is still offered. Read as the flowchart it now opens as,
+ * its "Pubblica" label has a 20-unit connection under an icon's caption to
+ * sit on, and the label search sends it a long way off — a crowding case of
+ * its own, not a measure of the import.
+ */
+const READ_AS: Record<string, string> = { "cloud-aws.drawio": "architecture" };
+
+/**
  * How much of that a reader would notice, in diagram units.
  *
  * This one is the test's own and not the code's: `spread.ts` has no opinion
@@ -477,6 +488,14 @@ try {
     await ready(page);
     await page.setInputFiles('input[type="file"]', fixture(name));
     await page.locator(".modal").waitFor({ timeout: 30000 });
+    if (READ_AS[name]) {
+      await page
+        .locator(".import-canvas .react-flow__node")
+        .first()
+        .waitFor({ timeout: 30000 });
+      await page.locator(".export-opts select").first().selectOption(READ_AS[name]);
+      await page.waitForTimeout(1500);
+    }
     await page.getByRole("button", { name: "Import", exact: true }).click();
     await page.waitForTimeout(2000);
     judge(name, await look(page));

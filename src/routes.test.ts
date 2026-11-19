@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { allRoutes } from "./routes";
+import { allEnds, allRoutes, faceReach, settleCorners } from "./routes";
+import { outward, segmentsOf, slidePath, STUB } from "./orthogonal";
 import { crosses } from "./avoid";
-import { HEAD_ROOM } from "./berths";
 import { absoluteBoxes, useGraphStore } from "./store";
 import { TEMPLATES } from "./templates";
 import type { Point } from "./routing";
@@ -172,10 +172,12 @@ describe("routing every connection together", () => {
     expect(route("a", "b")).toHaveLength(2);
   });
 
-  it("keeps the heads of a bus into one face apart, without folding back", async () => {
+  it("brings a bus into one face as one trunk with one head, without folding back", async () => {
     // Three connections down one column with their last corner all at the
-    // middle of the target's face, as draw.io draws a bus. Their heads landed
-    // on one spot; parted, each line overshot its turn and came back.
+    // middle of the target's face, as draw.io draws a bus: one trunk, one
+    // arrow. The heads were once parted, a head's width each, and every line
+    // then stepped off the trunk to reach its own — a comb where draw.io has
+    // a line. They arrive together now, as drawn.
     await loadPlaced(
       placed(
         '  a["A"] --> t["T"]\n  b["B"] --> t\n  c["C"] --> t',
@@ -208,9 +210,7 @@ describe("routing every connection together", () => {
     });
     for (let i = 0; i < heads.length; i++) {
       for (let j = i + 1; j < heads.length; j++) {
-        expect(
-          Math.hypot(heads[i].x - heads[j].x, heads[i].y - heads[j].y),
-        ).toBeGreaterThanOrEqual(HEAD_ROOM - 0.5);
+        expect(Math.hypot(heads[i].x - heads[j].x, heads[i].y - heads[j].y)).toBeLessThan(0.5);
       }
     }
   });
@@ -391,5 +391,276 @@ describe("routing every connection together", () => {
     for (let i = 0; i < all.length; i++) {
       for (let j = i + 1; j < all.length; j++) expect(crossing(all[i], all[j])).toBe(false);
     }
+  });
+
+  it("routes an order flow out of its boxes and round the subgraphs it is not in", async () => {
+    // Two lines arriving at the top of one box ("Preparazione Spedizione"),
+    // from two boxes a long way apart. Swapping the runs they cross over on made one of them set off
+    // upwards out of the bottom of its own box, through it and the two above
+    // it, because that crossed one line fewer.
+    // The order-handling flow it was found in, as it came.
+    await load(`flowchart TD
+    subgraph start["Inizio"]
+        S0([Inizio])
+    end
+    subgraph end["Fine"]
+        S20([Fine])
+    end
+    subgraph order["Inserimento Ordine"]
+        S0 --> S1([Ordine Ricevuto])
+        S1 --> S2([Validazione Ordine])
+        S2 --> S3([Elaborazione Pagamento])
+    end
+    subgraph payment["Pagamento"]
+        S3 --> S4{Pagamento Approvato?}
+        S4 -->|Sì| S5([Verifica Inventario])
+        S4 -->|No| S6([Pagamento Rifiutato])
+        S6 --> S20
+    end
+    subgraph inventory["Inventario"]
+        S5 --> S7{Inventario Disponibile?}
+        S7 -->|Sì| S8([Riserva Inventario])
+        S7 -->|No| S9([Processo di Riordino])
+    end
+    subgraph backorder["Processo di Riordino"]
+        S9 --> S10([Notifica Cliente])
+        S10 --> S11([Attesa Riassortimento])
+        S11 --> S12{Riassortimento Ricevuto?}
+        S12 -->|Sì| S13([Riordino Completato])
+        S12 -->|No| S14([Escalation al Supporto])
+        S13 --> S8
+    end
+    subgraph shipment["Spedizione"]
+        S8 --> S15([Preparazione Spedizione])
+        S15 --> S16([Spedizione Ordine])
+        S16 --> S17([Aggiorna Stato Ordine])
+        S17 --> S18([Invia Email di Conferma])
+        S18 --> S20
+    end
+    subgraph fraud["Rilevamento Frodi"]
+        S3 --> V([Controllo Frodi])
+        V -->|Frodi Rilevati| S21([Mantenimento Ordine])
+        V -->|Nessuna Frode| S15
+        S21 --> S22([Notifica Team Frodi])
+        S22 --> S23([Supporto Clienti])
+        S23 --> S15
+    end
+    S14 --> S23
+`);
+    const boxes = absoluteBoxes(state().nodes);
+    const groups = new Set(
+      state()
+        .nodes.filter((n) => n.type === "group")
+        .map((n) => n.id),
+    );
+    const ends = allEnds(state().nodes, state().edges, state().kind);
+    for (const e of state().edges) {
+      const r = route(e.source, e.target);
+      // Out through the face it leaves, not back into its own box. (Not
+      // "never inside it": a line off a diamond starts on the outline, which
+      // is inside the box.)
+      const side = ends.get(e.id)!.fromSide;
+      const out = outward(side);
+      expect((r[1].x - r[0].x) * out.x + (r[1].y - r[0].y) * out.y).toBeGreaterThan(0);
+      // Nor through a subgraph it is no part of: the long ones go round them,
+      // as the Mermaid preview draws them.
+      const holders = (id: string) => {
+        const out = new Set<string>();
+        for (let at = state().nodes.find((n) => n.id === id)?.parentId; at;) {
+          out.add(at);
+          at = state().nodes.find((n) => n.id === at)?.parentId;
+        }
+        return out;
+      };
+      const own = new Set([...holders(e.source), ...holders(e.target)]);
+      for (const g of groups) {
+        if (own.has(g)) continue;
+        const frame = boxes.get(g)!;
+        expect(r.every((q, i) => i === 0 || !crosses(r[i - 1], q, frame))).toBe(true);
+      }
+      // And through no box but its own two.
+      for (const [id, box] of boxes) {
+        if (groups.has(id) || id === e.source || id === e.target) continue;
+        expect(r.every((q, i) => i === 0 || !crosses(r[i - 1], q, box))).toBe(true);
+      }
+    }
+  });
+});
+
+describe("dragging a run of a connection", () => {
+  /**
+   * The gesture as the canvas makes it: the line on the screen with one run
+   * moved, kept, and then the corners the router would draw anyway dropped.
+   */
+  const drag = (id: string, index: number, to: number): Point[] | null => {
+    const { nodes, edges, kind } = state();
+    const drawn = allRoutes(nodes, edges, kind).get(id)!;
+    const at = allEnds(nodes, edges, kind).get(id)!;
+    const path = [at.start, ...drawn.slice(1, -1), at.end];
+    const corners = slidePath(path, index, to, faceReach(nodes, edges, kind, id));
+    if (!corners) return null;
+    state().setWaypoints(id, corners, false);
+    const kept = settleCorners(state().nodes, state().edges, kind, id);
+    state().setWaypoints(id, kept, false);
+    return corners;
+  };
+
+  it.each(["approval", "order-state", "domain", "webapp"])(
+    "puts every run of %s where it is dragged, and folds none",
+    async (template) => {
+      // Sliding used to store two corners to pin the run and trust the router
+      // to draw the rest as before. It did not — the rest was the obstacle
+      // search's work, or the corridor pass's — and barely half the drags on
+      // these diagrams ended with the run where the pointer had left it.
+      const code = TEMPLATES.find((t) => t.id === template)!.code;
+      await load(code);
+      const base = { nodes: state().nodes, edges: state().edges };
+      const first = new Map(routes());
+      for (const edge of base.edges) {
+        if (edge.source === edge.target) continue;
+        const drawn = first.get(edge.id)!;
+        const runs = segmentsOf(drawn);
+        for (const run of runs) {
+          if (Math.abs(run.to.x - run.from.x) + Math.abs(run.to.y - run.from.y) < 24) continue;
+          const across = run.axis === "x" ? "y" : "x";
+          for (const by of [-60, -30, 30, 60]) {
+            useGraphStore.setState(base);
+            const asked = drag(edge.id, run.index, run.from[across] + by);
+            if (!asked) continue;
+            const now = routes().get(edge.id)!;
+            expect(folds(now)).toBe(false);
+            // Where the gesture said the run would be: the pointer's place,
+            // or as near it as a face or a stub allows.
+            const places = asked.map((c) => c[across]);
+            if (places.length === 0) continue;
+            const want = places.reduce((m, v) =>
+              Math.abs(v - (run.from[across] + by)) < Math.abs(m - (run.from[across] + by))
+                ? v
+                : m,
+            );
+            const landed = segmentsOf(now).some(
+              (s) => s.axis === run.axis && Math.abs(s.from[across] - want) <= 1.5,
+            );
+            expect(landed, `${edge.source}->${edge.target} run ${run.index} by ${by}`).toBe(
+              true,
+            );
+          }
+        }
+      }
+    },
+  );
+
+  it("comes back to the line it was when the run is dragged out and back", async () => {
+    await load("flowchart LR\n  a --> b\n  a --> c\n");
+    const e = state().edges.find((x) => x.target === "c")!;
+    const before = routes().get(e.id)!;
+    const run = segmentsOf(before).find((s) => s.axis === "y")!;
+    const taken = { nodes: state().nodes, edges: state().edges };
+    const path = [
+      allEnds(taken.nodes, taken.edges, state().kind).get(e.id)!.start,
+      ...before.slice(1, -1),
+      allEnds(taken.nodes, taken.edges, state().kind).get(e.id)!.end,
+    ];
+    const reach = faceReach(taken.nodes, taken.edges, state().kind, e.id);
+    // Every move of one drag starts from the line taken at pointerdown.
+    state().setWaypoints(e.id, slidePath(path, run.index, run.from.x + 40, reach)!, false);
+    state().setWaypoints(e.id, slidePath(path, run.index, run.from.x, reach)!, false);
+    state().setWaypoints(e.id, settleCorners(state().nodes, state().edges, state().kind, e.id));
+    expect(routes().get(e.id)).toEqual(before);
+    expect(state().edges.find((x) => x.id === e.id)!.data?.points ?? []).toEqual([]);
+  });
+
+  it("moves the end along its face, not its neighbour's", async () => {
+    // Two lines leave one face. Dragging the run one of them leaves on used
+    // to hand its new place to the other — the berths were re-dealt by where
+    // each line turns — and the line that was dragged went to the old place
+    // and came back along the face.
+    await load("flowchart TD\n  a --> b\n  a --> c\n");
+    const [ab, ac] = ["b", "c"].map((t) => state().edges.find((x) => x.target === t)!);
+    const other = routes().get(ac.id)![0];
+    const start = routes().get(ab.id)![0];
+    const reach = faceReach(state().nodes, state().edges, state().kind, ab.id).from!;
+    const to = start.x < other.x ? reach[0] : reach[1];
+    drag(ab.id, 0, to);
+    expect(routes().get(ab.id)![0].x).toBeCloseTo(to, 0);
+    expect(routes().get(ac.id)![0].x).toBeCloseTo(other.x, 0);
+  });
+
+  it("goes round a box to an end pinned on its far face, and does not turn back", async () => {
+    // The corner pinning an end stands a stub out from its face, which is
+    // where the search for a way round starts from too. As a leg of its own
+    // it had no length and a direction to arrive in; the leg before it,
+    // no longer the last, arrived from whichever side was nearer.
+    await load(
+      'flowchart LR\n  a["Alpha"] --> c["Gamma"]\n  b["Beta"]\n' +
+        '%% graph:positions {"a":{"x":0,"y":0},"b":{"x":360,"y":0},"c":{"x":360,"y":300}}\n',
+    );
+    const boxes = absoluteBoxes(state().nodes);
+    const c = boxes.get("c")!;
+    const e = state().edges[0];
+    state().setWaypoints(e.id, [{ x: c.x + c.w + STUB, y: c.y + c.h / 2 }]);
+    const r = routes().get(e.id)!;
+    expect(r[r.length - 1].x).toBeCloseTo(c.x + c.w, 0);
+    expect(folds(r)).toBe(false);
+    const b = boxes.get("b")!;
+    expect(r.every((q, i) => i === 0 || !crosses(r[i - 1], q, b))).toBe(true);
+    expect(r.every((q, i) => i === 0 || i === r.length - 1 || !crosses(r[i - 1], q, c))).toBe(
+      true,
+    );
+  });
+});
+
+describe("ends that cannot be met where they are pinned", () => {
+  const at = (positions: Record<string, { x: number; y: number }>) =>
+    `flowchart LR\n  a["Alpha"] --> b["Beta"]\n  c["Gamma"]\n%% graph:positions ${JSON.stringify(positions)}\n`;
+
+  it("lets go of a pin with a box standing on it, rather than fold the line", async () => {
+    // A drawing from draw.io pins most of its ends, and its boxes are often
+    // closer together than a line needs to come in between them: an icon ten
+    // units from its neighbour, pinned on the side that faces it. Obeyed, the
+    // line reached the pin through the neighbour and turned straight back.
+    await load(at({ a: { x: 0, y: 0 }, b: { x: 300, y: 0 }, c: { x: 300, y: 200 } }));
+    const first = absoluteBoxes(state().nodes).get("b")!;
+    // Gamma hard against Beta's far side, where the pin is to stand.
+    await load(
+      at({ a: { x: 0, y: 0 }, b: { x: 300, y: 0 }, c: { x: 300 + first.w + 10, y: 0 } }),
+    );
+    const boxes = absoluteBoxes(state().nodes);
+    const b = boxes.get("b")!;
+    const e = state().edges[0];
+    state().setWaypoints(e.id, [{ x: b.x + b.w + STUB, y: b.y + b.h / 2 }]);
+    const r = routes().get(e.id)!;
+    expect(folds(r)).toBe(false);
+    for (const id of ["b", "c"]) {
+      const box = boxes.get(id)!;
+      const inner = { x: box.x + 3, y: box.y + 3, w: box.w - 6, h: box.h - 6 };
+      expect(r.every((q, i) => i === 0 || !crosses(r[i - 1], q, inner))).toBe(true);
+    }
+    // The corner is still the file's: only the drawing went without it.
+    expect(state().edges[0].data?.points).toHaveLength(1);
+  });
+
+  it("draws a line straight through a marker laid on it", async () => {
+    // The numbered badge on a line says which step the line is. Gone round,
+    // every line drawn through its own number had a hump in it.
+    await load(
+      'flowchart LR\n  a["Alpha"] --> b["Beta"]\n  n(("6"))\n' +
+        '%% graph:positions {"a":{"x":0,"y":0},"b":{"x":400,"y":0},"n":{"x":250,"y":10,"w":24,"h":24}}\n',
+    );
+    const r = routes().get(state().edges[0].id)!;
+    expect(r).toHaveLength(2);
+  });
+
+  it("shares a narrow gap between two rows, however far aside the boxes are", async () => {
+    // Faces sixteen units apart and a box-width aside: a full stub from each
+    // crossed over, and the line went down past the lower box's head and
+    // came back up to it.
+    await load(at({ a: { x: 0, y: 0 }, b: { x: 300, y: 0 }, c: { x: 600, y: 0 } }));
+    const a = absoluteBoxes(state().nodes).get("a")!;
+    await load(
+      at({ a: { x: 0, y: 0 }, b: { x: a.w * 0.6, y: a.h + 16 }, c: { x: 600, y: 0 } }),
+    );
+    const r = routes().get(state().edges[0].id)!;
+    expect(folds(r)).toBe(false);
   });
 });

@@ -95,6 +95,45 @@ interface Candidate {
   room: { back: number; on: number };
   /** A line that is not a connection and cannot be moved — a group's border. */
   fixed?: true;
+  /**
+   * A run one of its connection's own corners lies on: where someone put it.
+   *
+   * It holds still and the others make room, the way they do for a border. A
+   * run dragged to a place and let go was otherwise moved again by this pass
+   * the moment it came within a few units of a neighbour — nine units off
+   * where the pointer left it, or the neighbour's width the other way. Only
+   * two held runs lying on each other still come apart: neither was put on
+   * the other on purpose, and one line hidden under another is the fault
+   * this pass exists for.
+   */
+  held?: true;
+  /** A run of a connection that is drawn as it was routed, and never moved. */
+  still?: true;
+}
+
+/** What the pass is told about the connections, beyond where they run. */
+export interface Placed {
+  /** Each connection's own corners, by id: a run one of them lies on holds still. */
+  corners?: Map<string, Point[]>;
+  /** Connections that stay exactly as drawn. The others still make room for them. */
+  still?: Set<string>;
+  /** Two connections that share a line on purpose, and are not in each other's way. */
+  mates?: (a: string, b: string) => boolean;
+}
+
+/** Does a corner lie on the run from `a` to `b`? */
+function on(c: Point, a: Point, b: Point): boolean {
+  const near = (v: number, m: number, n: number) =>
+    v >= Math.min(m, n) - 1 && v <= Math.max(m, n) + 1;
+  return (
+    (Math.abs(a.y - b.y) < 0.5 && Math.abs(c.y - a.y) <= 1 && near(c.x, a.x, b.x)) ||
+    (Math.abs(a.x - b.x) < 0.5 && Math.abs(c.x - a.x) <= 1 && near(c.y, a.y, b.y))
+  );
+}
+
+/** Is this run of a route one that a corner of the connection's own lies on? */
+export function holds(corners: Point[] | undefined, a: Point, b: Point): boolean {
+  return !!corners && corners.some((c) => on(c, a, b));
 }
 
 /** Do two runs cover any of the same ground? */
@@ -200,7 +239,7 @@ function square(route: Point[]): boolean {
 }
 
 /** Every run long enough to be a corridor rather than a join. */
-function corridors(routes: Map<string, Point[]>): Candidate[] {
+function corridors(routes: Map<string, Point[]>, placed: Placed = {}): Candidate[] {
   const runs: Candidate[] = [];
   for (const [id, route] of routes) {
     for (const run of segmentsOf(route)) {
@@ -217,6 +256,8 @@ function corridors(routes: Map<string, Point[]>): Candidate[] {
         lo,
         hi,
         room: roomFor(route, run.index, run.axis, at),
+        ...(holds(placed.corners?.get(id), run.from, run.to) ? { held: true as const } : {}),
+        ...(placed.still?.has(id) ? { still: true as const } : {}),
       });
     }
   }
@@ -345,13 +386,15 @@ function once(
   frames: Rect[],
   gap: number,
   obstacles: Rect[],
+  placed: Placed = {},
 ): Map<string, Point[]> {
   const moved = new Set<string>();
   const out = new Map(routes);
-  for (const group of bundles([...corridors(routes), ...borders(frames)])) {
+  const apart = (a: string, b: string) => a !== b && !placed.mates?.(a, b);
+  for (const group of bundles([...corridors(routes, placed), ...borders(frames)])) {
     const together = [...group];
     const overlapping = together.filter((c) =>
-      together.some((other) => other !== c && other.id !== c.id && share(c, other)),
+      together.some((other) => other !== c && apart(other.id, c.id) && share(c, other)),
     );
     if (overlapping.length < 2) continue;
 
@@ -384,11 +427,23 @@ function once(
     // the middle and fanning both ways sounds tidier and is worse, because
     // it obliges the runs at both ends to travel, and a run boxed in by its
     // own approach cannot, so it stays lying on its neighbour.
+    // Failing a border, a run someone placed: it is where it was put.
     const border = ordered.findIndex((c) => c.fixed);
-    const anchor = border >= 0 ? border : 0;
+    const put = ordered.findIndex((c) => c.still);
+    const held = ordered.findIndex((c) => c.held);
+    const anchor = border >= 0 ? border : put >= 0 ? put : held >= 0 ? held : 0;
 
     ordered.forEach((run, i) => {
-      if (i === anchor || run.fixed || moved.has(run.id)) return;
+      if (i === anchor || run.fixed || run.still || moved.has(run.id)) return;
+      // A placed run moves only off another placed run it is lying on.
+      if (
+        run.held &&
+        !ordered.some(
+          (o) => o !== run && (o.held || o.still) && apart(o.id, run.id) && share(run, o),
+        )
+      ) {
+        return;
+      }
       // One lane per place in the order, counted off from the anchor — and
       // measured from where this run already is, not towards an absolute
       // line. The difference shows when a bundle is not quite coincident: an
@@ -415,7 +470,9 @@ function once(
       // there by an earlier bundle, and landing on it is the fault this pass
       // exists to undo. So the lane wanted is tried first, then the same
       // distance the other way, then further out, each only if it is free.
-      const lanes = corridors(out).filter((c) => c.axis === run.axis && c.id !== run.id);
+      const lanes = corridors(out, placed).filter(
+        (c) => c.axis === run.axis && c.id !== run.id,
+      );
       const free = (d: number) =>
         !lanes.some(
           (c) =>
@@ -463,7 +520,8 @@ function once(
  * not reshuffle the ones beside it.
  *
  * `frames` are the group boxes: their borders take part as lines that cannot
- * move, so a connection running flush with one is pushed off it.
+ * move, so a connection running flush with one is pushed off it. `placed`
+ * says which runs someone put where they are, and those hold still.
  *
  * Looked at again after each pass, and stopped as soon as a pass changes
  * nothing — which for most diagrams is the second one.
@@ -473,10 +531,11 @@ export function spreadRuns(
   frames: Rect[] = [],
   gap = GAP,
   obstacles: Rect[] = [],
+  placed: Placed = {},
 ): Map<string, Point[]> {
   let out = routes;
   for (let pass = 0; pass < PASSES; pass++) {
-    const next = once(out, frames, gap, obstacles);
+    const next = once(out, frames, gap, obstacles, placed);
     let same = true;
     for (const [id, route] of next) {
       if (route !== out.get(id)) {

@@ -6,6 +6,8 @@ import { parseDiagram } from "./diagram";
 import { useGraphStore } from "../store";
 import { readPositions } from "./positions";
 import { readWaypoints } from "./waypoints";
+import { readEdgeStyles } from "./edgeStyle";
+import { stencilsFromXml } from "./drawioStencils";
 
 /** Wrap loose `<mxCell>` markup in the file structure draw.io writes. */
 function file(cells: string, attrs = ""): string {
@@ -729,6 +731,28 @@ describe("pictures", () => {
     );
     expect(code.startsWith("flowchart")).toBe(true);
   });
+
+  it("keep a drawing with a cloud stencil or two among many shapes a flowchart", () => {
+    // draw.io's PESTEL example: one Cisco icon among seventy shapes sent the
+    // table to architecture-beta, which kept neither its rows nor its words.
+    const rows = Array.from({ length: 12 }, (_, i) => box(`r${i}`, `Row ${i}`)).join("");
+    const { code } = drawioToMermaid(
+      file(rows + box("i", "", "shape=mxgraph.cisco_safe.technology_icons.icon21;")),
+    );
+    expect(code.startsWith("flowchart")).toBe(true);
+  });
+
+  it("read a drawing of nothing but cloud stencils as architecture only when asked", () => {
+    const cloud = file(
+      box("a", "Gateway", "shape=mxgraph.aws4.internet_gateway;") +
+        box("b", "Bucket", "shape=mxgraph.aws4.s3;") +
+        box("c", "Queue", "shape=mxgraph.aws4.sqs;"),
+    );
+    expect(drawioToMermaid(cloud).code.startsWith("flowchart")).toBe(true);
+    expect(drawioToMermaid(cloud, "architecture").code.startsWith("architecture-beta")).toBe(
+      true,
+    );
+  });
 });
 
 describe("words fitted where draw.io drew them", () => {
@@ -860,7 +884,12 @@ describe("where a connection meets its boxes", () => {
       file(
         box("a", "A") +
           box("b", "B", "", 'x="400" y="40" width="120" height="60"') +
-          link("e", "a", "b", "exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;"),
+          link(
+            "e",
+            "a",
+            "b",
+            "edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;",
+          ),
       ),
     );
     // A stands at 40,40 and is 120 by 60: its foot's middle is 100,100.
@@ -887,8 +916,9 @@ describe("where a connection meets its boxes", () => {
     );
     expect(code).toContain("Hub <--> Spoke");
     expect(readWaypoints(code)?.["Hub>Spoke"]).toEqual([
-      { x: 100, y: 120 },
-      { x: 100, y: 180 },
+      // A straight line, so on the faces themselves: no step out first.
+      { x: 100, y: 100 },
+      { x: 100, y: 200 },
     ]);
   });
 
@@ -903,5 +933,442 @@ describe("where a connection meets its boxes", () => {
       ),
     );
     expect(code).toContain("Spoke --> Hub");
+  });
+});
+
+describe("what draw.io works out for itself", () => {
+  const holder = (cells: string, vars = 'status="New"') =>
+    `<object label="TO DO" ${vars} id="col"><mxCell style="swimlane;fillColor=#A0522D;" vertex="1" parent="1"><mxGeometry x="0" y="0" width="200" height="300" as="geometry"/></mxCell></object>` +
+    cells;
+  const card = (style: string) =>
+    `<object label="Task 1&lt;br&gt;%status%" placeholders="1" id="card"><mxCell style="${style}" vertex="1" parent="col"><mxGeometry x="20" y="40" width="160" height="60" as="geometry"/></mxCell></object>`;
+
+  it("fills in a placeholder from the shape holding it", () => {
+    // draw.io's kanban: every card reads `%status%`, and its column says what.
+    const { code } = drawioToMermaid(file(holder(card("rounded=1;"))));
+    expect(code).toContain("Task 1<br/>New");
+    expect(code).not.toContain("%status%");
+  });
+
+  it("takes a colour of `swimlane` from the shape holding it", () => {
+    const { code } = drawioToMermaid(file(holder(card("rounded=1;fillColor=swimlane;"))));
+    expect(code).toMatch(/style Task_1[^\n]*fill:#A0522D/);
+  });
+});
+
+describe("words set as draw.io set them", () => {
+  const styleLine = (code: string, id: string) =>
+    code.split("\n").find((l) => l.trim().startsWith(`style ${id} `)) ?? "";
+
+  it("reads the colour most of a label's HTML is in over the style's", () => {
+    // The org chart: white by style, dark blue by a <font> round every word.
+    const { code } = drawioToMermaid(
+      file(
+        box(
+          "h",
+          "&lt;font color=&quot;#23497d&quot;&gt;Head of Development&lt;/font&gt;",
+          "rounded=1;html=1;fillColor=#E6E6E6;fontColor=#FFFFFF;fontStyle=1;",
+        ),
+      ),
+    );
+    const line = styleLine(code, "Head_of_Development");
+    expect(line).toContain("color:#23497d");
+    expect(line).not.toContain("color:#FFFFFF");
+    expect(line).toContain("font-weight:bold");
+  });
+
+  it("carries the type size, the slant and where the words stand", () => {
+    const { code } = drawioToMermaid(
+      file(
+        box(
+          "t",
+          "Notes",
+          "text;fontSize=16;fontStyle=2;align=left;verticalAlign=top;",
+          'x="40" y="40" width="300" height="200"',
+        ),
+      ),
+    );
+    const line = styleLine(code, "Notes");
+    expect(line).toContain("font-size:16px");
+    expect(line).toContain("font-style:italic");
+    expect(line).toContain("text-align:left");
+    expect(line).toContain("vertical-align:top");
+  });
+
+  it("makes a see-through fill see-through", () => {
+    // draw.io's Venn circles are at 75: solid, each hid the overlap it drew.
+    const { code } = drawioToMermaid(
+      file(box("v", "Car", "ellipse;fillColor=#ea6b66;opacity=75;")),
+    );
+    expect(styleLine(code, "Car")).toContain("fill:#ea6b66bf");
+  });
+});
+
+describe("shapes the canvas has no node for", () => {
+  const imgOf = (code: string, id: string) =>
+    code.split("\n").find((l) => l.trim().startsWith(`${id}@{`)) ?? "";
+
+  it("tells a gateway and an event by their outline", () => {
+    const { code } = drawioToMermaid(
+      file(
+        box("g", "Ok?", "shape=mxgraph.custom.thing;perimeter=rhombusPerimeter;") +
+          box(
+            "c",
+            "Start",
+            "shape=mxgraph.custom.thing;perimeter=ellipsePerimeter;",
+            'x="300" y="40" width="40" height="40"',
+          ),
+      ),
+    );
+    expect(lineFor(code, "Ok")).toContain('{"Ok?"}');
+    expect(lineFor(code, "Start")).toContain('(("Start"))');
+  });
+
+  it("draws a shape with its words beside it as a picture, the words under it", () => {
+    // "Order received" under its event, not crammed into a 40-unit circle.
+    const { code } = drawioToMermaid(
+      file(
+        box(
+          "e",
+          "Order received",
+          "ellipse;verticalLabelPosition=bottom;verticalAlign=top;",
+          'x="40" y="40" width="40" height="40"',
+        ),
+      ),
+    );
+    const line = imgOf(code, "Order_received");
+    expect(line).toContain('img: "data:image/svg+xml;base64,');
+    expect(line).toContain('label: "Order received"');
+    expect(line).not.toContain('pos: "t"');
+  });
+
+  // A library in draw.io's stencil format, standing in for draw.io's own.
+  const library = stencilsFromXml(`
+    <shapes name="mxgraph.vendor">
+      <shape name="Laptop" w="20" h="10" aspect="variable" strokewidth="inherit">
+        <background><rect x="0" y="0" w="20" h="10"/></background>
+        <foreground><fill/></foreground>
+      </shape>
+    </shapes>`);
+  const laptop =
+    "verticalLabelPosition=bottom;aspect=fixed;html=1;strokeColor=none;shape=mxgraph.vendor.laptop;fillColor=#000000;";
+
+  it("draws a library's shape from its definition, in the cell's colours", () => {
+    const { code } = drawioToMermaid(
+      file(box("l", "Client", laptop, 'x="40" y="40" width="60" height="60"')),
+      undefined,
+      0,
+      (name) => library.get(name),
+    );
+    const svg = atob(/base64,([^"]+)"/.exec(imgOf(code, "Client"))![1]);
+    expect(svg).toContain('d="M0 0h60v60h-60Z" fill="#000000"');
+    // Its caption is not set to read on its ink.
+    expect(code).not.toMatch(/style Client [^\n]*color:#ffffff/i);
+  });
+
+  it("draws a library's shape it has no definition for as a box in its own colours", () => {
+    // What draw.io itself draws for a shape it cannot find.
+    const { code } = drawioToMermaid(
+      file(
+        box(
+          "l",
+          "Client",
+          "shape=mxgraph.vendor.laptop;fillColor=#ED7100;strokeColor=#036897;",
+          'x="40" y="40" width="60" height="60"',
+        ),
+      ),
+    );
+    expect(code).toMatch(/style Client fill:#ED7100,stroke:#036897/);
+  });
+
+  it("draws a `line` as a rule, not a box", () => {
+    const { code } = drawioToMermaid(
+      file(
+        box(
+          "r",
+          "",
+          "line;strokeWidth=1;fillColor=none;strokeColor=#333333;",
+          'x="40" y="100" width="160" height="8"',
+        ),
+      ),
+    );
+    const at = Object.values(readPositions(code)!)[0];
+    expect(at.h).toBe(1);
+    // Across the middle of the 8 units it was given, to the whole unit.
+    expect(Math.abs(at.y - 103.5)).toBeLessThanOrEqual(0.5);
+    expect(code).toMatch(/fill:#333333,stroke:none/);
+  });
+
+  it("keeps a circle with words laid on it a circle, not a container", () => {
+    const { code } = drawioToMermaid(
+      file(
+        box("c", "", "ellipse;fillColor=#7EA6E0;", 'x="0" y="0" width="300" height="300"') +
+          box("a", "Fly", "text;", 'x="100" y="100" width="60" height="20"') +
+          box("b", "Wings", "text;", 'x="100" y="160" width="60" height="20"'),
+      ),
+    );
+    expect(code).not.toContain("subgraph");
+  });
+});
+
+describe("connections drawn as draw.io drew them", () => {
+  it("keeps a straight line straight and a curve curved", () => {
+    const { code } = drawioToMermaid(
+      file(
+        box("a", "A") +
+          box("b", "B", "", 'x="400" y="300" width="120" height="60"') +
+          box("c", "C", "", 'x="400" y="40" width="120" height="60"') +
+          box("d", "D", "", 'x="40" y="300" width="120" height="60"') +
+          link("e1", "a", "b") +
+          `<mxCell id="e2" style="curved=1;" edge="1" parent="1" source="a" target="c"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="300" y="20"/></Array></mxGeometry></mxCell>` +
+          link("e3", "a", "d", "edgeStyle=orthogonalEdgeStyle;"),
+      ),
+    );
+    const routes = readEdgeStyles(code)!;
+    expect(routes["A>B"]?.route).toBe("straight");
+    expect(routes["A>C"]?.route).toBe("curved");
+    expect(routes["A>D"]).toBeUndefined();
+  });
+
+  it("puts the words at a connection's ends into its label, not into nodes", () => {
+    // A UML association's "0..1" and "1": each came out a node of its own.
+    const end = (id: string, value: string, x: number) =>
+      `<mxCell id="${id}" value="${value}" style="resizable=0;align=left;" vertex="1" connectable="0" parent="e"><mxGeometry x="${x}" relative="1" as="geometry"/></mxCell>`;
+    const { code, nodes } = drawioToMermaid(
+      file(
+        box("a", "Person") +
+          box("b", "Address", "", 'x="400" y="40" width="120" height="60"') +
+          link("e", "a", "b", "", "lives at") +
+          end("m1", "0..1", -1) +
+          end("m2", "1", 1),
+      ),
+    );
+    expect(nodes).toBe(2);
+    expect(code).toContain("0..1 · lives at · 1");
+  });
+
+  it("draws a sideways elbow between two boxes one above the other as a straight drop", () => {
+    // A laptop over the bus it hangs from. draw.io stands the elbow midway
+    // across the stretch the two share, finds that inside both, and draws no
+    // elbow: one line straight down. Read as leaving by the side, the line
+    // went out of the laptop's flank and round to the end of the bar.
+    const { code } = drawioToMermaid(
+      file(
+        box("a", "Laptop", "", 'x="200" y="40" width="80" height="60"') +
+          box("b", "Bus", "", 'x="100" y="130" width="400" height="20"') +
+          link("e", "a", "b", "edgeStyle=elbowEdgeStyle;"),
+      ),
+    );
+    // One corner, under the laptop's middle and between the two boxes.
+    expect(readWaypoints(code)?.["Laptop>Bus"]).toEqual([{ x: 240, y: 115 }]);
+  });
+
+  it("draws an isometric connector straight, not squared off", () => {
+    // The links of a WAN mesh, router to router on the slant.
+    const { code } = drawioToMermaid(
+      file(
+        box("a", "BNE") +
+          box("b", "CNS", "", 'x="300" y="200" width="120" height="60"') +
+          link("e", "a", "b", "edgeStyle=isometricEdgeStyle;"),
+      ),
+    );
+    expect(code).toContain('"BNE>CNS":{"route":"straight"}');
+  });
+
+  it("reads an end's point as a corner of the box and a distance from it", () => {
+    // `exitX=0;exitY=0;exitDx=120;exitDy=30` is the middle of the right side.
+    const { code } = drawioToMermaid(
+      file(
+        box("a", "Plate") +
+          box("b", "Merge", "", 'x="400" y="40" width="120" height="60"') +
+          link(
+            "e",
+            "a",
+            "b",
+            "edgeStyle=orthogonalEdgeStyle;exitX=0;exitY=0;exitDx=120;exitDy=30;",
+          ),
+      ),
+    );
+    expect(readWaypoints(code)?.["Plate>Merge"]?.[0]).toEqual({ x: 180, y: 70 });
+  });
+
+  it("sends an org chart's elbow out of the foot and into the head", () => {
+    const { code } = drawioToMermaid(
+      file(
+        box("a", "Head") +
+          box("b", "Team", "", 'x="400" y="300" width="120" height="60"') +
+          link("e", "a", "b", "edgeStyle=elbowEdgeStyle;elbow=vertical;"),
+      ),
+    );
+    // Head's foot is at 100,100; Team's head at 460,300.
+    expect(readWaypoints(code)?.["Head>Team"]).toEqual([
+      { x: 100, y: 120 },
+      { x: 460, y: 280 },
+    ]);
+  });
+});
+
+describe("connections drawn level, as draw.io meets a box", () => {
+  it("sends a message level from the bar it leaves", () => {
+    // A sequence diagram's activation bar is tall and the message pinned to
+    // the next bar's top: draw.io draws it level, and left to the router it
+    // left from the middle of the bar on a slant.
+    const { code } = drawioToMermaid(
+      file(
+        box("a", "Caller", "", 'x="40" y="40" width="10" height="400"') +
+          box("b", "Callee", "", 'x="300" y="100" width="10" height="200"') +
+          link("e", "a", "b", "endArrow=block;entryX=0;entryY=0;"),
+      ),
+    );
+    const [leave, arrive] = readWaypoints(code)!["Caller>Callee"];
+    expect(leave.y).toBe(arrive.y);
+    // On the bar's right-hand face, where draw.io starts it.
+    expect(leave.x).toBe(50);
+  });
+
+  it("leaves a loop that goes nowhere out", () => {
+    // The SWOT's "W": tied to itself, leaving and arriving at one point.
+    const { edges } = drawioToMermaid(
+      file(
+        box("w", "W") +
+          link(
+            "e",
+            "w",
+            "w",
+            "edgeStyle=orthogonalEdgeStyle;exitX=0.25;exitY=0;entryX=0.25;entryY=0;",
+          ),
+      ),
+    );
+    expect(edges).toBe(0);
+  });
+
+  it("makes see-through words see-through", () => {
+    const { code } = drawioToMermaid(
+      file(box("w", "W", "fontSize=250;fontColor=#FFFFFF;textOpacity=40;fillColor=#e1d5e7;")),
+    );
+    expect(code).toMatch(/style W [^\n]*color:#FFFFFF66/i);
+  });
+});
+
+describe("words draw.io sets beside a shape", () => {
+  it("stand beside it, not on the shape below", () => {
+    // home-lab's rack: servers fifteen units tall, each named on its right.
+    const unit = (id: string, label: string, y: number) =>
+      box(
+        id,
+        label,
+        "shape=mxgraph.rack.general.1u_rack_server;labelPosition=right;align=left;spacingLeft=15;",
+        `x="33" y="${y}" width="162" height="15"`,
+      );
+    const { code } = drawioToMermaid(
+      file(unit("a", "Mail Server", 66) + unit("b", "Web Server", 81)),
+    );
+    const at = readPositions(code)!;
+    // The server is bare, its name a node of words to its right.
+    expect(code).toContain('Mail_Server[" "]');
+    // Beside the server, `spacingLeft` plus draw.io's own 2 units of spacing away.
+    expect(at.Mail_Server_label.x).toBe(33 + 162 + 2 + 15);
+    expect(at.Mail_Server_label.y).toBe(66 + 2);
+    expect(at.Mail_Server_label.h).toBe(15 - 4);
+    expect(code).toMatch(/style Mail_Server_label [^\n]*text-align:left/);
+    expect(code).not.toMatch(/Mail_Server@\{/);
+  });
+});
+
+describe("lines in a label's HTML", () => {
+  it("starts a line at a block, not only at its end", () => {
+    const { code } = drawioToMermaid(
+      file(box("r", "Living Room&lt;div&gt;192.168.3.x&lt;/div&gt;", "html=1;")),
+    );
+    expect(code).toContain('"Living Room<br/>192.168.3.x"');
+  });
+});
+
+describe("words set over a picture", () => {
+  it("stand over it, not under it", () => {
+    // A numbered badge: a disc, and its number in white across the middle.
+    const { code } = drawioToMermaid(
+      file(
+        box(
+          "b",
+          "4c",
+          "shape=image;verticalLabelPosition=middle;labelPosition=center;align=center;verticalAlign=middle;fontColor=#FFFFFF;image=data:image/svg+xml,PHN2Zy8+;",
+          'x="100" y="100" width="40" height="40"',
+        ),
+      ),
+    );
+    const at = readPositions(code)!;
+    const label = Object.entries(at).find(([id]) => id.endsWith("_label"))![1];
+    // Centred on the disc: its middle is the disc's middle.
+    expect(Math.abs(label.x + label.w! / 2 - 120)).toBeLessThanOrEqual(1);
+    expect(Math.abs(label.y + label.h! / 2 - 120)).toBeLessThanOrEqual(1);
+    expect(code).toMatch(/_label [^\n]*color:#FFFFFF/);
+  });
+});
+
+describe("lines drawn freehand", () => {
+  it("end where they were drawn, not on the container round them", () => {
+    // A network's bus: a bar drawn as a line with both ends free, inside the
+    // room it serves, and a switch's line ending on it.
+    const line = (id: string, a: string, b: string, src = "") =>
+      `<mxCell id="${id}" style="endArrow=none;" edge="1" parent="1"${src ? ` source="${src}"` : ""}>
+        <mxGeometry relative="1" as="geometry">
+          <mxPoint ${a} as="sourcePoint" /><mxPoint ${b} as="targetPoint" />
+        </mxGeometry>
+      </mxCell>`;
+    const { code, edges } = drawioToMermaid(
+      file(
+        box("room", "", "fillColor=#dae8fc;", 'x="0" y="0" width="600" height="300"') +
+          box("s1", "Switch", "", 'x="100" y="40" width="80" height="40"') +
+          box("s2", "Server", "", 'x="400" y="40" width="80" height="40"') +
+          line("bus", 'x="50" y="200"', 'x="550" y="200"') +
+          line("drop", 'x="140" y="80"', 'x="140" y="200"', "s1"),
+      ),
+    );
+    expect(edges).toBe(2);
+    // Neither end of the bus, nor the switch's line, is tied to the room.
+    expect(code).not.toMatch(/-- \w*room|g\d+ ---|--- g\d+/i);
+    expect(code).toMatch(/pt1 --- pt2/);
+    const at = readPositions(code)!;
+    expect(at.pt1).toMatchObject({ x: 49, y: 199, w: 2, h: 2 });
+  });
+});
+
+describe("a see-through panel", () => {
+  it("takes the colour it had on draw.io's white page", () => {
+    // home-lab's rooms are drawn at 60%: on the dark canvas they went muddy.
+    const { code } = drawioToMermaid(
+      file(
+        box(
+          "p",
+          "Garden",
+          "rounded=1;fillColor=#d5e8d4;opacity=60;",
+          'x="0" y="0" width="300" height="200"',
+        ) +
+          box("a", "Sensor", "", 'x="20" y="20" width="80" height="40"') +
+          box("b", "Hose", "", 'x="150" y="20" width="80" height="40"'),
+      ),
+    );
+    // 60% of #d5e8d4 over white.
+    expect(code).toMatch(/style Garden [^\n]*fill:#e6f1e5/);
+  });
+});
+
+describe("a curve with no points of its own", () => {
+  it("is a straight line from face to face, as draw.io draws it", () => {
+    // home-lab: every line from a mesh router is `curved=1` with no points,
+    // pinned to the router's foot and the device's head.
+    const { code } = drawioToMermaid(
+      file(
+        box("a", "Mesh") +
+          box("b", "TV", "", 'x="300" y="300" width="120" height="60"') +
+          link("e", "a", "b", "edgeStyle=none;curved=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;"),
+      ),
+    );
+    expect(readEdgeStyles(code)!["Mesh>TV"]?.route).toBe("straight");
+    expect(readWaypoints(code)!["Mesh>TV"]).toEqual([
+      { x: 100, y: 100 },
+      { x: 360, y: 300 },
+    ]);
   });
 });

@@ -28,12 +28,16 @@ import type {
 import { serializeFlowchart } from "./kinds/flowchart";
 import { measureNode } from "../measureNode";
 import { textMetrics, wrapText } from "../textMetrics";
-import { BOXES, face } from "../render/boxModel";
+import { BOXES, COMPACT_SHAPE, face } from "../render/boxModel";
 import { labelLines } from "./label";
 import { idFactory, readableOn } from "./importShared";
-import { buildArchitecture, CLOUD_STENCILS } from "./drawioArchitecture";
+import { buildArchitecture } from "./drawioArchitecture";
+import { shapePicture, stencilPicture, tilePicture, type Outline } from "./drawioPictures";
+import { stencilNames, type StencilLookup } from "./drawioStencils";
+import type { StencilPaint } from "./stencilSvg";
 import { positionsLine, type PositionMap } from "./positions";
 import { waypointKey, waypointsLine, type WaypointMap } from "./waypoints";
+import { edgeStylesLine, type EdgeStyleMap, type RouteStyle } from "./edgeStyle";
 
 export interface DrawioImport {
   /** A complete Mermaid document, layout comments included. */
@@ -116,6 +120,13 @@ function pageModel(diagram: Element): Element {
 interface RawCell {
   id: string;
   label: string;
+  /** The label as draw.io wrote it: HTML when the style says `html=1`. */
+  html: string;
+  /**
+   * The properties draw.io lets a shape carry, `status="New"` on a kanban
+   * column — what a `%status%` in a label below it stands for.
+   */
+  vars: Record<string, string>;
   style: string;
   parent: string;
   vertex: boolean;
@@ -167,7 +178,9 @@ function plainText(value: string): string {
     // (`<br style="border-color: …">`), and that one was swallowed whole by
     // the tag strip below, joining the lines it separated.
     .replace(/<br\b[^>]*>/gi, "\n")
-    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, "\n")
+    // A block starts a line as well as ending one: "Living Room<div>192.168.3.x</div>"
+    // is two lines in draw.io, and read only at the closing tag it was one.
+    .replace(/<\/?(p|div|li|tr|h[1-6])\b[^>]*>/gi, "\n")
     .replace(/<[^>]*>/g, "");
   return (
     decodeEntities(lines)
@@ -270,10 +283,19 @@ function readCells(model: Element): RawCell[] {
     const label = wrapped
       ? (element.getAttribute("label") ?? element.getAttribute("value") ?? "")
       : (cell.getAttribute("value") ?? "");
+    const vars: Record<string, string> = {};
+    if (wrapped) {
+      for (const a of [...element.attributes]) {
+        if (!["id", "label", "value", "placeholders"].includes(a.name)) vars[a.name] = a.value;
+      }
+      if (element.getAttribute("placeholders") === "1") vars["%placeholders%"] = "1";
+    }
 
     out.push({
       id: (wrapped ? element.getAttribute("id") : cell.getAttribute("id")) ?? "",
       label: plainText(label),
+      html: label,
+      vars,
       style: cell.getAttribute("style") ?? "",
       parent: cell.getAttribute("parent") ?? "",
       vertex: cell.getAttribute("vertex") === "1",
@@ -285,7 +307,74 @@ function readCells(model: Element): RawCell[] {
       loose: looseOf(cell),
     });
   }
-  return out.filter((c) => c.id);
+  return resolved(out.filter((c) => c.id)).map(turned);
+}
+
+/**
+ * A shape turned a quarter, with the box it is drawn in turned too.
+ *
+ * draw.io keeps a rotated shape's box as it was before the turn and turns
+ * the drawing about its middle; the canvas has no turn, so the box is turned
+ * instead — a triangle 24 wide and 72 tall, turned a quarter, is the 72-wide
+ * roof of a house. Only shapes with no words: words cannot be turned here,
+ * and their box is better left the way they read.
+ */
+function turned(cell: RawCell): RawCell {
+  const g = cell.geometry;
+  const turn = Number(/(?:^|;)\s*rotation=(-?[\d.]+)/.exec(cell.style)?.[1]);
+  if (!g || !cell.vertex || cell.label || !Number.isFinite(turn)) return cell;
+  const quarter = Math.round(turn / 90);
+  if (Math.abs(turn - quarter * 90) > 1 || quarter % 2 === 0) return cell;
+  const cx = g.x + g.w / 2;
+  const cy = g.y + g.h / 2;
+  return { ...cell, geometry: { x: cx - g.h / 2, y: cy - g.w / 2, w: g.h, h: g.w } };
+}
+
+/**
+ * What draw.io works out from a shape's surroundings, worked out.
+ *
+ * A label with `placeholders="1"` stands for a property of the shape or of
+ * anything holding it: every card in draw.io's kanban reads `%status%`, and
+ * the column it is in says what that is. A colour of `swimlane` or `inherit`
+ * is the colour of the shape holding it — the cards there are filled
+ * `swimlane`, so each took its column's, and read as the keyword came out
+ * black.
+ */
+function resolved(cells: RawCell[]): RawCell[] {
+  const byId = new Map(cells.map((c) => [c.id, c]));
+  const up = function* (cell: RawCell) {
+    for (let at: RawCell | undefined = cell, n = 0; at && n < 64; n++) {
+      yield at;
+      at = byId.get(at.parent);
+    }
+  };
+  const lookup = (cell: RawCell, name: string) => {
+    for (const at of up(cell)) if (name in at.vars) return at.vars[name];
+    return undefined;
+  };
+  /** The nearest holder's own value for `key`, passing over ones that defer too. */
+  const inherited = (cell: RawCell, key: string) => {
+    for (const at of [...up(cell)].slice(1)) {
+      const value = parseStyle(at.style).of[key];
+      if (value && !/^(swimlane|inherit|default)$/i.test(value)) return value;
+    }
+    return undefined;
+  };
+  return cells.map((cell) => {
+    let { html, label, style } = cell;
+    if (cell.vars["%placeholders%"] === "1" && /%[\w.-]+%/.test(html)) {
+      html = html.replace(/%([\w.-]+)%/g, (whole, name: string) => lookup(cell, name) ?? whole);
+      label = plainText(html);
+    }
+    style = style.replace(
+      /(^|;)(\s*)(fillColor|strokeColor|fontColor)=(swimlane|inherit)(?=;|$)/gi,
+      (whole, lead: string, gap: string, key: string) => {
+        const from = inherited(cell, key);
+        return from ? `${lead}${gap}${key}=${from}` : whole;
+      },
+    );
+    return html === cell.html && style === cell.style ? cell : { ...cell, html, label, style };
+  });
 }
 
 /* ---------- shapes ---------- */
@@ -310,7 +399,10 @@ const BY_NAME: Record<string, Shape> = {
   cloud: "square",
   triangle: "square",
   actor: "square",
-  umlActor: "square",
+  umlactor: "square",
+  // UML's final state is a ring round a dot, its initial state a dot.
+  endstate: "doublecircle",
+  startstate: "circle",
 };
 
 /** The shape library draw.io's own flowchart stencils come from. */
@@ -350,7 +442,14 @@ function mapShape(style: Style, geometry: RawCell["geometry"]): Shape {
     if (stencil) return stencil;
   }
 
-  const isEllipse = style.names.has("ellipse") || named === "ellipse";
+  // The outline a shape is hit-tested on says what it is when its name does
+  // not: draw.io's BPMN events are `mxgraph.bpmn.shape` with an ellipse
+  // perimeter, its gateways the same with a rhombus one. Read by name alone,
+  // every event and gateway in a process came out a square.
+  const perimeter = (style.of.perimeter ?? "").toLowerCase();
+  if (perimeter.startsWith("rhombus")) return "diamond";
+  const isEllipse =
+    style.names.has("ellipse") || named === "ellipse" || perimeter.startsWith("ellipse");
   if (isEllipse || named === "doubleellipse") {
     if (style.of.shape === "doubleEllipse" || named === "doubleellipse") return "doublecircle";
     // A wide ellipse is a pill in everything but name; only a round one is
@@ -381,7 +480,26 @@ function panelFill(style: Style): string | null {
   const fill = colourStyles(style)
     .find((d) => d.startsWith("fill:"))
     ?.slice(5);
-  return fill && fill !== "transparent" ? fill : null;
+  return fill && fill !== "transparent" ? onWhite(fill) : null;
+}
+
+/**
+ * A see-through colour as it looked on draw.io's white page.
+ *
+ * A panel drawn at 60% is a pale tint there. On the dark canvas the same
+ * alpha let the dark through and every room in a home network came out a
+ * muddy grey-brown. A panel is a backdrop: nothing behind it is meant to
+ * show, so its colour is the one the author saw.
+ */
+function onWhite(colour: string): string {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(colour);
+  if (!m) return colour;
+  const a = parseInt(m[4], 16) / 255;
+  const mix = (h: string) =>
+    Math.round(parseInt(h, 16) * a + 255 * (1 - a))
+      .toString(16)
+      .padStart(2, "0");
+  return `#${mix(m[1])}${mix(m[2])}${mix(m[3])}`;
 }
 
 /**
@@ -412,11 +530,27 @@ function colourStyles(style: Style): string[] {
     return /^(#[0-9a-f]{3,8}|[a-z]+)$/i.test(picked) ? picked : null;
   };
 
-  const fill = colour(style.of.fillColor);
-  const stroke = colour(style.of.strokeColor);
+  // See-through, as draw.io's Venn circles are: `opacity` for the whole
+  // shape, `fillOpacity` and `strokeOpacity` for one half. Taken out, the
+  // three circles were three solid blocks, each hiding the overlap it was
+  // drawn to show. The words stay solid, as draw.io keeps them.
+  const percent = (key: string) => {
+    const n = Number(style.of[key]);
+    return Number.isFinite(n) && n >= 0 && n < 100 ? n / 100 : 1;
+  };
+  const seen = percent("opacity");
+  const fill = withAlpha(colour(style.of.fillColor), seen * percent("fillOpacity"));
+  const stroke = withAlpha(colour(style.of.strokeColor), seen * percent("strokeOpacity"));
   const text = colour(style.of.fontColor);
   if (fill) out.push(`fill:${fill}`);
   if (stroke) out.push(`stroke:${stroke === "transparent" ? "none" : stroke}`);
+  // A heavy border is part of what a shape says — a BPMN end event is the
+  // thick circle — and draw.io's default hairline is near enough the
+  // canvas's own that it is left to it.
+  const width = Number(style.of.strokeWidth);
+  if (Number.isFinite(width) && width >= 2 && stroke !== "transparent") {
+    out.push(`stroke-width:${width}px`);
+  }
 
   if (text) {
     out.push(`color:${text}`);
@@ -432,27 +566,301 @@ function colourStyles(style: Style): string[] {
   return out;
 }
 
-/* ---------- the conversion ---------- */
+/** How a label is set: what a Mermaid `style` line can say about its words. */
+interface Type {
+  color?: string;
+  bold: boolean;
+  italic: boolean;
+  /** In pixels; absent when draw.io was left at its own size. */
+  size?: number;
+  align?: "left" | "right";
+  valign?: "top" | "bottom";
+  /** How solid the words are, 0 to 1: draw.io's `textOpacity`. */
+  opacity?: number;
+}
+
+/** Tags with no closing half, which must not be waited for. */
+const VOID_TAGS = new Set(["br", "img", "hr", "input", "wbr"]);
 
 /**
- * Whether a drawing is cloud architecture, from the stencils it uses.
+ * How a cell's words are set: its style's font size, `fontStyle` (a bit
+ * mask, 1 bold and 2 italic) and alignment, and whatever the label's own
+ * HTML says over them.
  *
- * A VPC drawn with `mxgraph.aws4.*` shapes is not a flowchart, and reading it
- * as one throws away the icons — the part that makes it legible.
+ * A Mermaid label is plain text, set one way throughout, and a draw.io label
+ * is HTML that can change colour halfway through a word. So the HTML is read
+ * for what most of its letters are: the org chart's labels are white by
+ * style and dark blue by a `<font color>` round every word, and read by
+ * style alone they came out white on pale grey.
  */
-function looksArchitectural(cells: RawCell[]): boolean {
-  // Unless its icons are mostly pictures the canvas can show. A flowchart
-  // draws those now, with its boxes and captions as they were; one cloud
-  // stencil among seventy pasted icons sent a whole drawing to
-  // architecture-beta, which has neither. Pictures from elsewhere on the web
-  // do not count: the canvas loads them from a short list of hosts only.
-  const stencils = cells.filter((c) => CLOUD_STENCILS.test(c.style)).length;
-  const pictures = cells.filter((c) => {
-    const src = pictureOf(c.style);
-    return !!src && (src.startsWith("data:") || src.startsWith(DRAWIO_IMAGES));
-  }).length;
-  return stencils > 0 && stencils >= pictures;
+function typeOf(style: Style, html: string): Type {
+  const bits = Number(style.of.fontStyle ?? 0) || 0;
+  const size = Number(style.of.fontSize);
+  const base = {
+    color: style.of.fontColor,
+    bold: (bits & 1) !== 0,
+    italic: (bits & 2) !== 0,
+    size: Number.isFinite(size) && size > 0 ? size : undefined,
+  };
+  const align =
+    style.of.align === "left" || style.of.align === "right" ? style.of.align : undefined;
+  const valign =
+    style.of.verticalAlign === "top" || style.of.verticalAlign === "bottom"
+      ? style.of.verticalAlign
+      : undefined;
+  const seen = Number(style.of.textOpacity);
+  const opacity = Number.isFinite(seen) && seen >= 0 && seen < 100 ? seen / 100 : undefined;
+  const placed: Pick<Type, "align" | "valign" | "opacity"> = {
+    ...(align ? { align } : {}),
+    ...(valign ? { valign } : {}),
+    ...(opacity !== undefined ? { opacity } : {}),
+  };
+  if (style.of.html !== "1" || !html.includes("<")) return { ...base, ...placed };
+
+  type Run = typeof base;
+  const stack: Array<{ tag: string; run: Run }> = [{ tag: "", run: base }];
+  const colours = new Map<string, number>();
+  const sizes = new Map<number, number>();
+  let letters = 0;
+  let bold = 0;
+  let italic = 0;
+  const pick = (css: string, name: string) =>
+    new RegExp(`(?:^|;)\\s*${name}\\s*:\\s*([^;]+)`, "i").exec(css)?.[1].trim();
+  for (const m of html.matchAll(/<(\/?)([a-z][a-z0-9]*)\b([^>]*)>|([^<]+)/gi)) {
+    const [, closing, rawTag, attrs, text] = m;
+    const run = stack[stack.length - 1].run;
+    if (text !== undefined) {
+      const n = decodeEntities(text).replace(/\s+/g, "").length;
+      if (!n) continue;
+      letters += n;
+      if (run.bold) bold += n;
+      if (run.italic) italic += n;
+      if (run.color) colours.set(run.color, (colours.get(run.color) ?? 0) + n);
+      if (run.size) sizes.set(run.size, (sizes.get(run.size) ?? 0) + n);
+      continue;
+    }
+    const tag = rawTag.toLowerCase();
+    if (closing) {
+      const at = stack.map((f) => f.tag).lastIndexOf(tag);
+      if (at > 0) stack.length = at;
+      continue;
+    }
+    if (VOID_TAGS.has(tag)) continue;
+    const next = { ...run };
+    if (tag === "b" || tag === "strong" || /^h[1-6]$/.test(tag)) next.bold = true;
+    if (tag === "i" || tag === "em") next.italic = true;
+    const colour = /\bcolor\s*=\s*"([^"]+)"/i.exec(attrs)?.[1];
+    if (tag === "font" && colour) next.color = colour;
+    const css = /\bstyle\s*=\s*"([^"]*)"/i.exec(attrs)?.[1] ?? "";
+    const c = pick(css, "color");
+    if (c) next.color = c;
+    const weight = pick(css, "font-weight");
+    if (weight) next.bold = /bold|[6-9]00/i.test(weight);
+    const slant = pick(css, "font-style");
+    if (slant) next.italic = /italic|oblique/i.test(slant);
+    const px = /^([\d.]+)px$/i.exec(pick(css, "font-size") ?? "")?.[1];
+    if (px) next.size = Number(px);
+    stack.push({ tag, run: next });
+  }
+  const most = <K>(tally: Map<K, number>): K | undefined =>
+    [...tally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  return {
+    color: most(colours) ?? base.color,
+    bold: letters ? bold * 2 > letters : base.bold,
+    italic: letters ? italic * 2 > letters : base.italic,
+    size: most(sizes) ?? base.size,
+    ...placed,
+  };
 }
+
+/** A colour as a Mermaid `style` line can carry it, or `null`. */
+function cssColour(value: string | undefined): string | null {
+  if (!value) return null;
+  const v = value.trim();
+  const rgb = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(v);
+  if (rgb) {
+    return `#${rgb
+      .slice(1, 4)
+      .map((n) => Math.min(255, Number(n)).toString(16).padStart(2, "0"))
+      .join("")}`;
+  }
+  return /^(#[0-9a-f]{3,8}|[a-z]+)$/i.test(v) && !/^(none|default|inherit)$/i.test(v)
+    ? v
+    : null;
+}
+
+/**
+ * A `#rgb` or `#rrggbb` colour made see-through, or the colour as it was:
+ * a named colour has no alpha to give it, and a whole one needs none.
+ */
+function withAlpha(colour: string | null, alpha: number): string | null {
+  if (!colour || alpha >= 1) return colour;
+  const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(colour);
+  const hex = short
+    ? `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`
+    : colour;
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return colour;
+  return `${hex}${Math.round(Math.max(0, alpha) * 255)
+    .toString(16)
+    .padStart(2, "0")}`;
+}
+
+/** The declarations for a label's type, beside the colours `colourStyles` gives. */
+function typeStyles(type: Type): string[] {
+  const out: string[] = [];
+  // See-through words, as the SWOT's great faint letters are: drawn solid,
+  // each covered the list laid over it.
+  const colour = withAlpha(cssColour(type.color), type.opacity ?? 1);
+  if (colour) out.push(`color:${colour}`);
+  if (type.bold) out.push("font-weight:bold");
+  if (type.italic) out.push("font-style:italic");
+  if (type.align) out.push(`text-align:${type.align}`);
+  if (type.valign) out.push(`vertical-align:${type.valign}`);
+  return out;
+}
+
+/** Whether draw.io sets a shape's words beside it rather than in it. */
+function labelOutside(style: Style): boolean {
+  return (
+    /^(top|bottom)$/.test(style.of.verticalLabelPosition ?? "") ||
+    /^(left|right)$/.test(style.of.labelPosition ?? "")
+  );
+}
+
+/**
+ * A stencil's name, when the shape is one: draw.io's libraries all live under
+ * `mxgraph.`, and its own built-in shapes — `rectangle`, `ellipse`,
+ * `triangle` — do not. The flowchart library's symbols the canvas has a
+ * shape of its own for (`BY_STENCIL`) are left to it, since there they stay
+ * editable shapes rather than pictures.
+ */
+function stencilName(style: Style): string | null {
+  const shape = (style.of.shape ?? "").toLowerCase();
+  if (!shape.startsWith("mxgraph.")) return null;
+  if (shape.startsWith("mxgraph.flowchart.") && BY_STENCIL[shape.split(".").pop() ?? ""]) {
+    return null;
+  }
+  return shape;
+}
+
+/** A colour from a style, as draw.io would paint it: the light half of a `light-dark()`. */
+function paintColour(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const pair = /^light-dark\(\s*([^,()]+?)\s*,/i.exec(value.trim());
+  const v = (pair ? pair[1] : value).trim();
+  if (/^none$/i.test(v)) return "none";
+  return cssColour(v) ?? undefined;
+}
+
+/** The cell's own paint, as a stencil is drawn with it. */
+function paintOf(style: Style): StencilPaint {
+  const fill = paintColour(style.of.fillColor);
+  const stroke = paintColour(style.of.strokeColor);
+  const gradient = paintColour(style.of.gradientColor);
+  return {
+    fill: fill ?? "#ffffff",
+    stroke: stroke ?? "#000000",
+    strokeWidth: Number(style.of.strokeWidth) || 1,
+    ...(gradient && gradient !== "none" ? { gradient } : {}),
+    ...(style.of.gradientDirection ? { gradientDirection: style.of.gradientDirection } : {}),
+    ...(style.of.dashed === "1" ? { dashed: true } : {}),
+    ...(style.of.dashPattern ? { dashPattern: style.of.dashPattern } : {}),
+    ...(paintColour(style.of.fontColor) ? { fontColor: paintColour(style.of.fontColor) } : {}),
+    style: style.of,
+  };
+}
+
+/**
+ * A picture to draw a shape as, or `null` for one the canvas draws itself.
+ *
+ * In order: a stencil, run from draw.io's own definition of it; a box that
+ * names a stencil in one of its properties (a tile with an icon on it);
+ * a stencil that could not be had, as its outline; and one of draw.io's
+ * built-in shapes the canvas has no node for, or that draw.io sets its words
+ * beside, as that shape.
+ */
+function drawnPicture(cell: RawCell, style: Style, stencils: StencilLookup): string | null {
+  if (!cell.geometry) return null;
+  const { w, h } = cell.geometry;
+  const paint = paintOf(style);
+  const placement = {
+    ...(style.of.direction ? { direction: style.of.direction } : {}),
+    ...(style.of.flipH === "1" ? { flipH: true } : {}),
+    ...(style.of.flipV === "1" ? { flipV: true } : {}),
+  };
+
+  const name = stencilName(style);
+  const stencil = name ? stencils(name) : undefined;
+  if (stencil) return stencilPicture(stencil, w, h, paint, stencils, placement);
+
+  // A box naming a stencil in a property of its own.
+  for (const [key, value] of Object.entries(style.of)) {
+    if (key === "shape" || !/^mxgraph\./i.test(value)) continue;
+    const named = stencils(value.toLowerCase());
+    if (!named) continue;
+    return tilePicture(named, w, h, paint, stencils);
+  }
+
+  const shape = (style.of.shape ?? "").toLowerCase();
+  const widthOf = Number(style.of.strokeWidth) || 1;
+
+  // A shape there is no definition for — offline, a shape draw.io draws in
+  // code rather than from a stencil, a name no library has — is what
+  // draw.io itself falls back to: a box in the cell's own colours, below.
+
+  // draw.io's built-in shapes the canvas has no node for.
+  if (shape === "triangle" || style.names.has("triangle")) {
+    // It points east unless told otherwise, and a quarter turn turns it.
+    const ways = ["n", "e", "s", "w"];
+    const dir = { north: 0, east: 1, south: 2, west: 3 }[style.of.direction ?? "east"] ?? 1;
+    const turns = Math.round((Number(style.of.rotation) || 0) / 90);
+    const way = ways[(((dir + turns) % 4) + 4) % 4];
+    return shapePicture(`triangle-${way}` as Outline, w, h, {
+      fill: paint.fill,
+      stroke: paint.stroke,
+      width: widthOf,
+    });
+  }
+  if (shape === "waypoint") {
+    return shapePicture("dot", w, h, {
+      fill: "none",
+      stroke: paint.stroke,
+      width: (Number(style.of.size) || 6) / 2,
+    });
+  }
+  if (shape === "umldestroy") {
+    return shapePicture("cross", w, h, { fill: "none", stroke: paint.stroke, width: widthOf });
+  }
+
+  // Any other shape is drawn by the canvas — unless draw.io sets its words
+  // beside it, when the canvas would cram them inside: then it is a picture
+  // of its outline, its words under it.
+  if (!labelOutside(style) || !cell.label) return null;
+  // Words with nothing drawn round them stay words.
+  if (style.names.has("text") || (paint.fill === "none" && paint.stroke === "none"))
+    return null;
+  const actor = shape === "umlactor" || shape === "actor" || style.names.has("umlactor");
+  return shapePicture(actor ? "actor" : outlineOf(mapShape(style, cell.geometry)), w, h, {
+    fill: paint.fill,
+    stroke: paint.stroke,
+    width: widthOf,
+  });
+}
+
+/** The outline a canvas shape is drawn with in a picture. */
+function outlineOf(shape: Shape): Outline {
+  return shape === "circle" || shape === "stadium"
+    ? "ellipse"
+    : shape === "doublecircle"
+      ? "double"
+      : shape === "diamond"
+        ? "diamond"
+        : shape === "round"
+          ? "round"
+          : "box";
+}
+
+/* ---------- the conversion ---------- */
 
 /**
  * draw.io's groups dissolved, their shapes moved up to where the group was.
@@ -468,6 +876,46 @@ function looksArchitectural(cells: RawCell[]): boolean {
  * it. A connection tied to a group is tied instead to the biggest shape the
  * group held, which is the panel the group was made round.
  */
+/** Whether a cell is an icon: a stencil or a picture, drawn as one thing. */
+function isIconCell(c: RawCell): boolean {
+  if (!c.vertex) return false;
+  const style = parseStyle(c.style);
+  // A stencil or a picture, but not a container: a vendor group or a VPC
+  // holds its services on purpose.
+  const picture =
+    stencilName(style) !== null || (style.of.shape ?? "").toLowerCase() === "image";
+  return picture && !style.names.has("group") && style.of.container !== "1";
+}
+
+/**
+ * Shapes laid on an icon, moved out from it to stand where they stood.
+ *
+ * draw.io lets any shape hold others, and an icon often does: the Windows
+ * logo on a laptop's screen is the laptop's child. A shape holding another
+ * becomes a container here, and a container is a box with a title strip —
+ * so every laptop in a home office was an empty rounded box with a logo in
+ * its corner. An icon is a picture, not a box: what it holds is set beside
+ * it, in the page's frame, on top of it.
+ */
+function unnestFromIcons(cells: RawCell[]): RawCell[] {
+  const byId = new Map(cells.map((c) => [c.id, c]));
+  const isIcon = (c: RawCell | undefined) => !!c && !!c.geometry && isIconCell(c);
+  if (!cells.some((c) => isIcon(byId.get(c.parent)))) return cells;
+  return cells.map((c) => {
+    const icon = byId.get(c.parent);
+    if (!c.vertex || !c.geometry || !isIcon(icon)) return c;
+    return {
+      ...c,
+      parent: icon!.parent,
+      geometry: {
+        ...c.geometry,
+        x: c.geometry.x + icon!.geometry!.x,
+        y: c.geometry.y + icon!.geometry!.y,
+      },
+    };
+  });
+}
+
 function dissolveGroups(cells: RawCell[]): RawCell[] {
   const byId = new Map(cells.map((c) => [c.id, c]));
   const invisible = (c: RawCell | undefined): boolean =>
@@ -602,12 +1050,26 @@ const SMALLEST_PX = 7;
  *
  * `fits` is asked of each size in turn, with the font to measure in.
  */
-function fittingSize(fits: (font: ReturnType<typeof face>) => boolean): number | null {
-  if (fits(face(LABEL_PX))) return null;
-  for (let px = LABEL_PX - 0.5; px >= SMALLEST_PX; px -= 0.5) {
-    if (fits(face(px))) return px;
+function fittingSize(
+  fits: (font: ReturnType<typeof face>) => boolean,
+  from = LABEL_PX,
+  weight?: number,
+): number | null {
+  if (fits(face(from, weight))) return from === LABEL_PX ? null : from;
+  for (let px = from - 0.5; px >= SMALLEST_PX; px -= 0.5) {
+    if (fits(face(px, weight))) return px;
   }
   return SMALLEST_PX;
+}
+
+/**
+ * Declarations in order, a later one for the same property replacing an
+ * earlier: a colour read from the label's HTML over the style's own.
+ */
+function lastWins(decls: string[]): string[] {
+  const at = new Map<string, number>();
+  decls.forEach((d, i) => at.set(d.slice(0, d.indexOf(":")), i));
+  return decls.filter((d, i) => at.get(d.slice(0, d.indexOf(":"))) === i);
 }
 
 /**
@@ -636,8 +1098,34 @@ function wrappedBlock(label: string, font: ReturnType<typeof face>, width: numbe
   return { wide, tall };
 }
 
-/** Read a draw.io file. Throws when the file is not one, or is unreadable. */
-export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioImport {
+/**
+ * The stencils a page of a draw.io file names, for `loadStencils` to fetch
+ * before it is converted. Throws as `drawioToMermaid` does on a file that is
+ * not one.
+ */
+export function drawioStencilNames(xml: string, which = 0): Set<string> {
+  const doc = parseXml(xml);
+  const diagrams = [...doc.querySelectorAll("diagram")];
+  const page = which >= 0 && which < diagrams.length ? which : 0;
+  const model = diagrams.length
+    ? pageModel(diagrams[page])
+    : (doc.querySelector("mxGraphModel") ?? null);
+  if (!model) return new Set();
+  return stencilNames(readCells(model).map((c) => c.style));
+}
+
+/**
+ * Read a draw.io file. Throws when the file is not one, or is unreadable.
+ *
+ * `stencils` draws the shapes that come from draw.io's libraries; without it
+ * they are drawn as their outlines.
+ */
+export function drawioToMermaid(
+  xml: string,
+  as?: DrawioAs,
+  which = 0,
+  stencils: StencilLookup = () => undefined,
+): DrawioImport {
   const doc = parseXml(xml);
   const diagrams = [...doc.querySelectorAll("diagram")];
   const pages = diagrams.map((d, i) => d.getAttribute("name") || `Page ${i + 1}`);
@@ -650,18 +1138,32 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
     : (doc.querySelector("mxGraphModel") ?? null);
   if (!model) throw new Error("this file holds no diagram");
 
-  const cells = dissolveGroups(readCells(model));
+  const cells = unnestFromIcons(dissolveGroups(readCells(model)));
   const byId = new Map(cells.map((c) => [c.id, c]));
 
-  // A cell parented to an edge and styled as its label *is* that label, not a
-  // node — which is where draw.io puts most edge labels.
-  const edgeLabels = new Map<string, string>();
+  // A shape parented to an edge *is* one of its labels, not a node — which is
+  // where draw.io puts most of them. Its place along the edge is a fraction
+  // from -1 at the source to 1 at the target, and the ones at an end are
+  // that end's: a UML association's "0..1" and "1". Each of those used to
+  // come out as a node of its own, adrift where the arithmetic left it, the
+  // "1" a box in the corner of the class diagram. Mermaid has one label to a
+  // connection, so they join it, in the order they stand.
+  const onEdge = (cell: RawCell) => cell.vertex && !!byId.get(cell.parent)?.edge;
+  const edgeParts = new Map<string, { from: string[]; mid: string[]; to: string[] }>();
   for (const cell of cells) {
-    const parent = byId.get(cell.parent);
-    if (cell.vertex && parent?.edge && parseStyle(cell.style).names.has("edgelabel")) {
-      if (cell.label) edgeLabels.set(cell.parent, cell.label);
-    }
+    if (!onEdge(cell) || !cell.label) continue;
+    const parts = edgeParts.get(cell.parent) ?? { from: [], mid: [], to: [] };
+    const along = cell.geometry?.x ?? 0;
+    (along <= -0.9 ? parts.from : along >= 0.9 ? parts.to : parts.mid).push(cell.label);
+    edgeParts.set(cell.parent, parts);
   }
+  /** An edge's whole label, read from its source to its target or back. */
+  const labelOf = (edge: RawCell, backwards = false) => {
+    const parts = edgeParts.get(edge.id);
+    const mid = edge.label || parts?.mid.join(" ") || "";
+    const order = [parts?.from.join(" "), mid, parts?.to.join(" ")];
+    return (backwards ? order.reverse() : order).filter(Boolean).join(" · ");
+  };
 
   // Layers are cells parented to the model root. They carry nothing Mermaid
   // can express, so their children are treated as top-level.
@@ -684,7 +1186,14 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
   // A cloud drawing is read as `architecture-beta` instead, unless the reader
   // has asked for a flowchart: its stencils carry icons, and a flowchart has
   // nowhere to put them.
-  if (as === "architecture" || (as !== "flowchart" && looksArchitectural(cells))) {
+  // Read as `architecture-beta` only when asked. It used to be chosen for any
+  // drawing made mostly of cloud stencils, for the sake of their icons — and
+  // it lays the services out afresh, so it lost every container, caption and
+  // position the drawing had. Checked against thirty-four real files, every
+  // cloud and network drawing among them came out closer to the original as
+  // a flowchart, which keeps all three and draws each stencil as a picture.
+  // The import dialog still offers architecture for anyone who wants it.
+  if (as === "architecture") {
     const centreOf = (cell: RawCell) => {
       if (!cell.geometry) return null;
       // Geometry is parent-relative, so walk up to get one frame of reference.
@@ -703,7 +1212,7 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
 
     const result = buildArchitecture(
       cells
-        .filter((c) => c.vertex && !parseStyle(c.style).names.has("edgelabel"))
+        .filter((c) => c.vertex && !onEdge(c))
         .map((c) => ({
           id: c.id,
           label: c.label,
@@ -720,7 +1229,7 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
           return {
             source: c.source,
             target: c.target,
-            label: c.label || edgeLabels.get(c.id) || "",
+            label: labelOf(c),
             intoSource: (style.of.startArrow ?? "none").toLowerCase() !== "none",
             intoTarget: (style.of.endArrow ?? "classic").toLowerCase() !== "none",
           };
@@ -745,11 +1254,7 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
   // belongs to the smallest zone it lies in.
   const frame = (cell: RawCell) => (layers.has(cell.parent) ? "" : cell.parent);
   const placed = cells.filter(
-    (c) =>
-      c.vertex &&
-      c.geometry &&
-      !parseStyle(c.style).names.has("edgelabel") &&
-      !pictureOf(c.style),
+    (c) => c.vertex && c.geometry && !onEdge(c) && !pictureOf(c.style),
   );
   const encloses = (outer: RawCell, inner: RawCell): boolean => {
     const a = outer.geometry!;
@@ -772,14 +1277,22 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
   // coloured background, a swimlane drawn by hand. Holding one, it is far more
   // often a box with a tag on its corner, which is a node and stays one.
   // Pictures are placed in zones too, though they are never one themselves.
-  const zoned = cells.filter(
-    (c) => c.vertex && c.geometry && !parseStyle(c.style).names.has("edgelabel"),
-  );
+  const zoned = cells.filter((c) => c.vertex && c.geometry && !onEdge(c));
   const zones = placed.filter((c) => {
     if (isContainer(c) || parseStyle(c.style).names.has("text")) return false;
+    // Only a box is a zone. A circle with words laid over it is a circle —
+    // the three of a Venn diagram, each with its words on it — and as a
+    // zone it was squared off into a rectangle, which a container always is.
+    const outline = mapShape(parseStyle(c.style), c.geometry);
+    if (outline !== "square" && outline !== "round") return false;
     // Pictures count among what a panel holds — an icon and its caption in a
     // box is a panel round two things.
     const held = zoned.filter((o) => encloses(c, o)).length;
+    // A drawn shape — a stencil, a picture — holding one thing is that shape
+    // with something laid on it: a laptop with a logo on its screen, which as
+    // a zone was an empty box round the logo. Holding several, it is the
+    // frame round them, as a cloud provider's group is.
+    if (isIconCell(c)) return held >= 2;
     return unfilled(c) ? held >= 1 : held >= 2;
   });
   const zoneIds = new Set(zones.map((z) => z.id));
@@ -865,8 +1378,22 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
   const groupCells = cells
     .filter(isGroupCell)
     .sort((a, b) => depth(a) - depth(b) || area(b) - area(a));
-  for (const cell of groupCells) {
-    const id = nextId(cell.label, `g${nodes.length + 1}`);
+  /** Containers whose words draw.io sets beside them; see `sideLabel`. */
+  const besideGroups: Array<{ cell: RawCell; style: Style; id: string; parentId?: string }> =
+    [];
+  for (const drawn of groupCells) {
+    const sideStyle = parseStyle(drawn.style);
+    // Words set anywhere but along its top go where draw.io set them; along
+    // the top they are the container's title, in the strip it has for one.
+    const side =
+      !!drawn.label &&
+      !!drawn.geometry &&
+      !sideStyle.names.has("swimlane") &&
+      ((sideStyle.of.labelPosition ?? "center") !== "center" ||
+        (sideStyle.of.verticalLabelPosition ?? "middle") !== "middle" ||
+        sideStyle.of.verticalAlign === "bottom");
+    const cell = side ? { ...drawn, label: "", html: "" } : drawn;
+    const id = nextId(drawn.label, `g${nodes.length + 1}`);
     idOf.set(cell.id, id);
     const parentId = parentIdOf(cell);
     // Its own colours, and its dash if it had one: every panel was the same
@@ -875,16 +1402,31 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
     // draw.io fills a panel white unless told otherwise, and the words in it
     // are drawn to be read on that.
     const look = parseStyle(cell.style);
-    const fill = panelFill(look);
-    const styles = [
-      ...colourStyles(look).filter((d) => !d.startsWith("fill:")),
-      ...(fill ? [`fill:${fill}`] : look.of.fillColor ? ["fill:transparent"] : []),
-      ...(look.of.dashed === "1" ? [`stroke-dasharray:${dashOf(look)}`] : []),
-    ];
+    // A draw.io group is never drawn, named or not — it is what Ctrl+G left
+    // round some shapes. Kept for its name, it was painted the white of a
+    // panel with no colour of its own: a white box round a house, and round
+    // every laptop in a home office.
+    const unseen = look.names.has("group") && !look.of.fillColor && !look.of.strokeColor;
+    const fill = unseen ? null : panelFill(look);
+    const styles = unseen
+      ? ["fill:transparent", "stroke:none"]
+      : [
+          ...colourStyles(look).filter((d) => !d.startsWith("fill:")),
+          ...(fill ? [`fill:${fill}`] : look.of.fillColor ? ["fill:transparent"] : []),
+          ...(look.of.dashed === "1" ? [`stroke-dasharray:${dashOf(look)}`] : []),
+        ];
     if (fill && !styles.some((d) => d.startsWith("color:"))) {
       const readable = readableOn(fill);
       if (readable) styles.push(`color:${readable}`);
     }
+    // Its title set as draw.io set it, along the strip a container's title
+    // has: centred unless the drawing said otherwise, as draw.io centres it.
+    // A UML class's name sat in its corner, where nothing had put it.
+    const titled = typeOf(look, cell.html);
+    styles.push(...typeStyles({ ...titled, align: undefined, valign: undefined }));
+    styles.push(`text-align:${titled.align ?? "center"}`);
+    if (titled.size && titled.size !== LABEL_PX) styles.push(`font-size:${titled.size}px`);
+    styles.splice(0, styles.length, ...lastWins(styles));
     const group: GroupNode = {
       id,
       type: "group",
@@ -897,51 +1439,175 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
     };
     nodes.push(group);
     positions[id] = placeOf(cell, cell.geometry?.w ?? 320, cell.geometry?.h ?? 220);
+    if (side) besideGroups.push({ cell: drawn, style: sideStyle, id, parentId });
   }
 
-  for (const cell of cells) {
-    if (!cell.vertex || isGroupCell(cell)) continue;
-    const style = parseStyle(cell.style);
+  /**
+   * A shape's words where draw.io sets them, as a node of words alone.
+   *
+   * draw.io works out a label's space from the shape: the shape's own box, or
+   * the one beside it that `labelPosition` and `verticalLabelPosition` name,
+   * shrunk by `spacing` and its four sides — which may be negative, and pull
+   * the words out over the edge. `align` and `verticalAlign` then place the
+   * words in that space. A rack's server names sit to its right; a home
+   * network's room names hang under their rooms; a Kubernetes namespace is
+   * named in its bottom corner. A node of words given exactly that space, and
+   * the same alignment, lands where draw.io drew them.
+   */
+  const sideLabel = (cell: RawCell, style: Style, of: string, parentId?: string) => {
+    const g = cell.geometry!;
+    const n = (key: string, otherwise = 0) => {
+      const v = Number(style.of[key]);
+      return Number.isFinite(v) ? v : otherwise;
+    };
+    const lp = style.of.labelPosition;
+    const vlp = style.of.verticalLabelPosition;
+    const at = placeOf(cell, g.w, g.h);
+    const spacing = n("spacing", 2);
+    const left =
+      (lp === "left" ? at.x - g.w : lp === "right" ? at.x + g.w : at.x) +
+      spacing +
+      n("spacingLeft");
+    const top =
+      (vlp === "top" ? at.y - g.h : vlp === "bottom" ? at.y + g.h : at.y) +
+      spacing +
+      n("spacingTop");
+    const w = Math.max(8, g.w - 2 * spacing - n("spacingLeft") - n("spacingRight"));
+    const h = Math.max(8, g.h - 2 * spacing - n("spacingTop") - n("spacingBottom"));
+    const type = typeOf(style, cell.html);
+    const size = type.size ?? LABEL_PX;
+    const align =
+      style.of.align === "left" || style.of.align === "right" ? style.of.align : undefined;
+    const valign =
+      style.of.verticalAlign === "top" || style.of.verticalAlign === "bottom"
+        ? style.of.verticalAlign
+        : undefined;
+    // draw.io wraps only when told to; otherwise a line is as long as it is,
+    // centred on the space or run from the side it is aligned to.
+    const wraps = style.of.whiteSpace === "wrap";
+    const id = nextId(`${cell.label} label`, `${of}_label`);
+    const label: ShapeNode = {
+      id,
+      type: "shape",
+      position: { x: 0, y: 0 },
+      data: {
+        label: cell.label,
+        shape: "square",
+        direction: "TB",
+        styles: lastWins([
+          "fill:transparent",
+          "stroke:none",
+          // Words with no colour of their own, on a panel, in one that reads
+          // on it — as every other word with no box is given. Left to the
+          // theme, they were pale on the pale room in the dark.
+          ...(() => {
+            if (cssColour(type.color)) return [];
+            const surface = surfaceOf(cell);
+            const readable = surface && readableOn(surface);
+            return readable ? [`color:${readable}`] : [];
+          })(),
+          ...typeStyles({ ...type, align, valign }),
+          ...(align ? [] : ["text-align:center"]),
+          ...(size !== LABEL_PX ? [`font-size:${size}px`] : []),
+          ...(wraps ? [] : ["white-space:nowrap"]),
+        ]),
+      },
+      ...(parentId ? { parentId } : {}),
+    };
+    nodes.push(label);
+    // The node is the words' own size, stood where alignment puts them in
+    // that space: the space beside a wide container is as wide as the
+    // container, and a node that size was an empty box reaching far off the
+    // drawing, which "fit" then made room for.
+    const font = face(size, type.bold ? 700 : undefined);
+    const metrics = textMetrics();
+    const lines = labelLines(cell.label);
+    const textW = Math.ceil(Math.max(...lines.map((l) => metrics.measure(l, font).width)) + 8);
+    const textH = Math.ceil(lines.length * metrics.measure("M", font).height + 4);
+    // Words that wrap keep the whole width only when they need it.
+    const bw = Math.min(w, textW);
+    const bh = Math.min(h, textH);
+    positions[id] = {
+      x: align === "left" ? left : align === "right" ? left + w - bw : left + (w - bw) / 2,
+      y: valign === "top" ? top : valign === "bottom" ? top + h - bh : top + (h - bh) / 2,
+      w: wraps ? bw : textW,
+      h: wraps && textW > w ? h : bh,
+    };
+  };
+
+  // Placed now that `sideLabel` exists; after their containers, before the
+  // shapes, so a word never lands under a box drawn later.
+  for (const g of besideGroups) sideLabel(g.cell, g.style, g.id, g.parentId);
+
+  for (const drawn of cells) {
+    if (!drawn.vertex || isGroupCell(drawn)) continue;
+    const style = parseStyle(drawn.style);
     // Edge labels were harvested above; they are not nodes.
-    if (style.names.has("edgelabel")) continue;
+    if (onEdge(drawn)) continue;
+    // Words draw.io sets to the left or right of a shape are not in it: a
+    // rack's servers are fifteen units tall with their names beside them.
+    // Inside, or hung underneath as a picture's caption is, each name lay on
+    // the server below. So the shape goes in bare and its words become words
+    // of their own, standing where draw.io stood them.
+    // So are words set over a picture: the numbered badges in a reference
+    // architecture are a black disc with the number in white across it, and
+    // hung under the disc as a caption the number was white on the page.
+    const side =
+      !!drawn.label &&
+      !!drawn.geometry &&
+      (/^(left|right)$/.test(style.of.labelPosition ?? "") ||
+        (!!pictureOf(drawn.style) && style.of.verticalLabelPosition === "middle"));
+    const cell = side ? { ...drawn, label: "", html: "" } : drawn;
     if (!cell.label && !cell.geometry) {
       dropped++;
       continue;
     }
 
-    const id = nextId(cell.label, `n${nodes.length + 1}`);
+    const id = nextId(drawn.label, `n${nodes.length + 1}`);
     idOf.set(cell.id, id);
     const parentId = parentIdOf(cell);
-    const picture = pictureOf(cell.style);
+    const picture = pictureOf(cell.style) ?? drawnPicture(cell, style, stencils);
     // A picture is drawn with no box round it, its label above or below as
     // in draw.io — inside a box its own size, the words had a few pixels and
     // were cut to "Gateway (to On-".
+    // Its words in their own colour only. A colour worked out to read on the
+    // fill is no use here: a picture's fill is its ink, not what its words
+    // stand on, and a black icon's caption came out white on a white page.
+    const words = cssColour(style.of.fontColor);
     const styles = picture
-      ? [
-          "fill:none",
-          "stroke:none",
-          ...colourStyles(style).filter((d) => d.startsWith("color:")),
-        ]
+      ? ["fill:none", "stroke:none", ...(words ? [`color:${words}`] : [])]
       : colourStyles(style);
     // Words with no box of their own, and a picture's caption, are read on
     // the panel under them: in the theme's colour, the dark theme's pale
     // text vanished on draw.io's white and pale-blue panels.
     const boxless = picture || styles.some((d) => /^fill:(none|transparent)$/.test(d));
-    if (boxless && !styles.some((d) => d.startsWith("color:"))) {
+    const type = typeOf(style, cell.html);
+    if (boxless && !styles.some((d) => d.startsWith("color:")) && !cssColour(type.color)) {
       const surface = surfaceOf(cell);
       const readable = surface && readableOn(surface);
       if (readable) styles.push(`color:${readable}`);
     }
+    // Set as draw.io set the words. A picture's caption is set under it, so
+    // its alignment is the picture's business.
+    styles.push(
+      ...typeStyles(picture ? { ...type, align: undefined, valign: undefined } : type),
+    );
+    styles.splice(0, styles.length, ...lastWins(styles));
+    const weight = type.bold ? 700 : undefined;
+    const typeSize = type.size ?? LABEL_PX;
+    // A heading set larger than the canvas's own words, and not told to
+    // wrap, keeps to its line as draw.io keeps it: wrapped to its narrow box,
+    // "IoT Enabled House" came out a few letters a line.
+    const heading = typeSize > LABEL_PX && style.of.whiteSpace !== "wrap";
+    if (heading) styles.push("white-space:nowrap");
     // Words fitted inside the box they were drawn in, with the padding the
     // canvas gives them: almost none for words with no box and for a small
     // tag, the label's usual padding for anything else.
     // Words draw.io puts beside the shape — under a stick figure — are not
     // in its box there, and are not fitted to it.
-    const outside =
-      /^(top|bottom)$/.test(style.of.verticalLabelPosition ?? "") ||
-      /^(left|right)$/.test(style.of.labelPosition ?? "");
+    const outside = labelOutside(style);
     let nudge = { x: 0, y: 0 };
-    if (!picture && !outside && cell.label && cell.geometry) {
+    if (!picture && !outside && !heading && cell.label && cell.geometry) {
       const { w, h } = cell.geometry;
       const bare =
         styles.includes("stroke:none") &&
@@ -985,6 +1651,13 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
         Math.max(0, from - start) - Math.max(0, start + size - to);
       /** How far the words are moved at a size, or `null` when they do not fit. */
       const placed = (font: ReturnType<typeof face>) => {
+        // Words with no box in a space too small for padding are set whole,
+        // running past it as draw.io lets them (`.compact`): "Engine" at 22px
+        // in draw.io's 40-unit space, which was made smaller and smaller to
+        // fit a box nobody can see.
+        if (bare && !holder && (w < COMPACT_SHAPE.width || h < COMPACT_SHAPE.height)) {
+          return { x: 0, y: 0 };
+        }
         const block = wrappedBlock(cell.label, font, w - padX);
         if (!block) return null;
         // Words with no box and nothing round them have no edge to keep off.
@@ -1007,9 +1680,22 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
         if (neighbours.some((n) => overlap(moved, n) > overlap(at, n) + 0.5)) return null;
         return shift;
       };
-      const px = fittingSize((font) => placed(font) !== null);
+      const px = fittingSize((font) => placed(font) !== null, typeSize, weight);
       if (px !== null) styles.push(`font-size:${px}px`);
-      nudge = placed(face(px ?? LABEL_PX)) ?? { x: 0, y: 0 };
+      nudge = placed(face(px ?? LABEL_PX, weight)) ?? { x: 0, y: 0 };
+    } else if (!picture && typeSize !== LABEL_PX) {
+      styles.push(`font-size:${typeSize}px`);
+    }
+    // draw.io's `line` is a rule, not a box: the bar between a UML class's
+    // attributes and its methods, a divider in a wireframe. Drawn as the box
+    // it is given, each was an empty frame eight units tall. A bar the line's
+    // own thickness, in its colour, is the line.
+    const rule =
+      !picture && ((style.of.shape ?? "").toLowerCase() === "line" || style.names.has("line"));
+    const thickness = Math.max(1, Number(style.of.strokeWidth) || 1);
+    if (rule) {
+      const ink = cssColour(style.of.strokeColor) ?? "#000000";
+      styles.splice(0, styles.length, `fill:${ink}`, "stroke:none");
     }
     const node: ShapeNode = {
       id,
@@ -1034,6 +1720,7 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
       ...(parentId ? { parentId } : {}),
     };
     nodes.push(node);
+    if (side) sideLabel(drawn, style, id, parentId);
     if (cell.geometry) {
       const at = placeOf(cell, cell.geometry.w, cell.geometry.h);
       if (picture) {
@@ -1060,19 +1747,25 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
             node.data.imgPos === "t"
               ? cell.geometry.y - holder.y
               : holder.y + holder.h - (cell.geometry.y + h);
-          const px = fittingSize((font) => {
-            let widest = 0;
-            let tall = 0;
-            for (const line of labelLines(cell.label)) {
-              const size = metrics.measure(line, font);
-              widest = Math.max(widest, size.width);
-              tall += size.height;
-            }
-            return widest / 2 <= across && 4 + tall <= down - FRAME_INSET - EDGE_CLEARANCE;
-          });
+          const px = fittingSize(
+            (font) => {
+              let widest = 0;
+              let tall = 0;
+              for (const line of labelLines(cell.label)) {
+                const size = metrics.measure(line, font);
+                widest = Math.max(widest, size.width);
+                tall += size.height;
+              }
+              return widest / 2 <= across && 4 + tall <= down - FRAME_INSET - EDGE_CLEARANCE;
+            },
+            typeSize,
+            weight,
+          );
           if (px !== null) {
             node.data.styles = [...(node.data.styles ?? []), `font-size:${px}px`];
           }
+        } else if (typeSize !== LABEL_PX) {
+          node.data.styles = [...(node.data.styles ?? []), `font-size:${typeSize}px`];
         }
         const size = measureNode(node);
         const above = node.data.imgPos === "t";
@@ -1082,13 +1775,17 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
           y: above ? at.y - (size.height - h - 6) : at.y - 6,
         };
       } else {
-        positions[id] = { ...at, x: at.x + nudge.x, y: at.y + nudge.y };
+        positions[id] = rule
+          ? // Across the middle of the box it was given, as draw.io draws it.
+            { ...at, y: at.y + at.h / 2 - thickness / 2, h: thickness }
+          : { ...at, x: at.x + nudge.x, y: at.y + nudge.y };
       }
     }
   }
 
   const edges: FlowEdge[] = [];
   const waypoints: WaypointMap = {};
+  const routes: EdgeStyleMap = {};
   const ordinals = new Map<string, number>();
 
   /** Where a cell's frame starts on the page: the sum of its containers'. */
@@ -1123,7 +1820,35 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
    * on a container's border without being glued to it — "VNet peering"
    * between two networks is drawn that way — and Mermaid has no arrow that
    * ends on nothing, so without this it was dropped.
+   *
+   * An end that rests on nothing, or inside a container rather than on its
+   * border, is a point: the end of a line drawn freehand. A network diagram
+   * draws its bus that way, a bar with every switch's line ending on it, and
+   * tied to the container round them each line was routed to the
+   * container's edge, into a tangle. Such an end becomes an anchor — a node
+   * of no size and no look — where the line ended.
    */
+  const anchors = new Set<string>();
+  const anchorAt = (x: number, y: number) => {
+    const raw = `anchor:${anchors.size}`;
+    const id = nextId("", `pt${anchors.size + 1}`);
+    anchors.add(id);
+    idOf.set(raw, id);
+    onPage.push({ id: raw, x, y, w: 0, h: 0 });
+    nodes.push({
+      id,
+      type: "shape",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "",
+        shape: "square",
+        direction: "TB",
+        styles: ["fill:none", "stroke:none"],
+      },
+    });
+    positions[id] = { x: Math.round(x) - 1, y: Math.round(y) - 1, w: 2, h: 2 };
+    return id;
+  };
   const restingOn = (cell: RawCell, p: { x: number; y: number } | undefined) => {
     if (!p) return undefined;
     const { dx, dy } = offsetOf(cell);
@@ -1142,7 +1867,19 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
       }
       if (!best || b.w * b.h < best.w * best.h) best = b;
     }
-    return best && idOf.get(best.id);
+    const holder = best && byId.get(best.id);
+    const inside =
+      best &&
+      holder &&
+      isGroupCell(holder) &&
+      x > best.x + slack &&
+      x < best.x + best.w - slack &&
+      y > best.y + slack &&
+      y < best.y + best.h - slack;
+    // A bar drawn as a `line` is the bus itself: the line meets it where it was drawn to.
+    const bar = holder && /(^|;)\s*(shape=)?line(;|$)/i.test(holder.style);
+    if (!best || inside || bar) return anchorAt(x, y);
+    return idOf.get(best.id);
   };
 
   for (const cell of cells) {
@@ -1156,7 +1893,16 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
     // cannot come across — nor one whose loose ends both rest on the same
     // box, which is a line drawn across it, not a loop the author tied.
     const looseLoop = source === target && (!tiedSource || !tiedTarget);
-    if (!source || !target || looseLoop) {
+    // A loop that leaves a box at the very point it comes back in is no
+    // line at all, and draw.io draws none; drawn here, the SWOT's "W" grew a
+    // loop over its corner.
+    const loopStyle = parseStyle(cell.style).of;
+    const nowhere =
+      source === target &&
+      loopStyle.exitX !== undefined &&
+      loopStyle.exitX === loopStyle.entryX &&
+      loopStyle.exitY === loopStyle.entryY;
+    if (!source || !target || looseLoop || nowhere) {
       dropped++;
       continue;
     }
@@ -1177,7 +1923,11 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
       y: string | undefined,
       loose: { x: number; y: number } | undefined,
       tied: boolean,
+      stub = PORT_STUB,
+      nudge: [string | undefined, string | undefined] = [undefined, undefined],
     ) => {
+      // A line ends at an anchor itself, not a stub away from a face of it.
+      if (anchors.has(node)) return null;
       const raw = [...idOf.entries()].find(([, v]) => v === node)?.[0];
       const box = onPage.find((b) => b.id === raw);
       if (!box) return null;
@@ -1185,7 +1935,14 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
       const fy = Number(y);
       const at =
         tied && Number.isFinite(fx) && Number.isFinite(fy)
-          ? { x: box.x + fx * box.w, y: box.y + fy * box.h }
+          ? // The point is a fraction of the box and then a distance from
+            // there (`exitDx`, `exitDy`): draw.io writes a point on a shape's
+            // own outline as its corner plus so many units, and read as the
+            // corner alone the line set off from the corner, with a hook.
+            {
+              x: box.x + fx * box.w + (Number(nudge[0]) || 0),
+              y: box.y + fy * box.h + (Number(nudge[1]) || 0),
+            }
           : !tied && loose
             ? { x: loose.x + ox, y: loose.y + oy }
             : null;
@@ -1200,27 +1957,194 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
       const { out } = gaps[0];
       const px = out.x !== 0 ? (out.x < 0 ? box.x : box.x + box.w) : at.x;
       const py = out.y !== 0 ? (out.y < 0 ? box.y : box.y + box.h) : at.y;
-      return { x: px + out.x * PORT_STUB, y: py + out.y * PORT_STUB };
+      return { x: px + out.x * stub, y: py + out.y * stub };
     };
-    const leaving = port(
-      source,
-      style.of.exitX,
-      style.of.exitY,
-      cell.loose.source,
-      !!tiedSource,
-    );
-    const arriving = port(
-      target,
-      style.of.entryX,
-      style.of.entryY,
-      cell.loose.target,
-      !!tiedTarget,
-    );
-    let corners = [
-      ...(leaving ? [leaving] : []),
-      ...cell.points.map((q) => ({ x: q.x + ox, y: q.y + oy })),
-      ...(arriving ? [arriving] : []),
-    ];
+    // An elbow connector with no ends pinned leaves and arrives along its
+    // elbow: one bent up and down — an org chart's — out of the foot of the
+    // box above and into the head of the one below; one bent sideways, out
+    // of the side facing the other box. Left to choose, the router took
+    // whichever face was nearest, and the head of an org chart sent its
+    // lines out of its sides.
+    const boxFor = (node: string) => {
+      const raw = [...idOf.entries()].find(([, v]) => v === node)?.[0];
+      return onPage.find((b) => b.id === raw);
+    };
+    let drop: { x: number; y: number } | null = null;
+    let exit: [string | undefined, string | undefined] = [style.of.exitX, style.of.exitY];
+    let entry: [string | undefined, string | undefined] = [style.of.entryX, style.of.entryY];
+    const from = boxFor(source);
+    const to = boxFor(target);
+    //
+    // Where the elbow stands is the one point such a connector keeps, and
+    // each end faces it: the org chart's lower branches all run down a rail
+    // to the left of the boxes, out of each parent's left side and into each
+    // child's. With no point, the elbow is midway, and each end faces the
+    // other box.
+    if ((style.of.edgeStyle ?? "").toLowerCase() === "elbowedgestyle" && from && to) {
+      const upright = style.of.elbow === "vertical";
+      const bend = cell.points[0] && { x: cell.points[0].x + ox, y: cell.points[0].y + oy };
+      const mid = (b: typeof from) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+      // An elbow standing across a box's own span — a parent's rail down
+      // from its middle — is left from the face looking at the other box,
+      // not from the side: the line comes straight out of the parent's foot.
+      const side = (b: typeof from, other: typeof from): [string, string] => {
+        const at = bend ?? mid(other);
+        const there = mid(other);
+        if (upright) {
+          if (bend && at.y > b.y + 1 && at.y < b.y + b.h - 1) {
+            return [there.x >= mid(b).x ? "1" : "0", "0.5"];
+          }
+          return ["0.5", at.y >= mid(b).y ? "1" : "0"];
+        }
+        if (bend && at.x > b.x + 1 && at.x < b.x + b.w - 1) {
+          return ["0.5", there.y >= mid(b).y ? "1" : "0"];
+        }
+        return [at.x >= mid(b).x ? "1" : "0", "0.5"];
+      };
+      // With no point of its own and the two boxes one above the other, a
+      // sideways elbow has nowhere to stand: draw.io puts it midway across
+      // the stretch the boxes share, finds that inside both of them, and
+      // draws no elbow at all — one straight line down, there. A laptop over
+      // the bus it hangs from is drawn so, forty-seven times on one page;
+      // read as leaving by the side, each line went out of its laptop's
+      // flank and round to the end of the bar. The same holds turned on its
+      // side for an upright elbow between two boxes level with each other.
+      const span = (b: typeof from, axis: "x" | "y"): [number, number] =>
+        axis === "x" ? [b.x, b.x + b.w] : [b.y, b.y + b.h];
+      const across = upright ? "y" : "x";
+      const lo = Math.max(span(from, across)[0], span(to, across)[0]);
+      const hi = Math.min(span(from, across)[1], span(to, across)[1]);
+      const free =
+        !bend && exit[0] === undefined && entry[0] === undefined && tiedSource && tiedTarget;
+      if (free && hi - lo > 1) {
+        const at = (lo + hi) / 2;
+        const frac = (b: typeof from) =>
+          String((at - span(b, across)[0]) / (across === "x" ? b.w : b.h));
+        const after = (b: typeof from, other: typeof from) =>
+          (across === "x" ? mid(other).y >= mid(b).y : mid(other).x >= mid(b).x) ? "1" : "0";
+        exit = across === "x" ? [frac(from), after(from, to)] : [after(from, to), frac(from)];
+        entry = across === "x" ? [frac(to), after(to, from)] : [after(to, from), frac(to)];
+        // Held by one corner midway between the two boxes, not by a pin a
+        // stub out from each: the boxes are often closer than two stubs, and
+        // the pins then stand past each other.
+        const along = across === "x" ? "y" : "x";
+        const gapLo = Math.min(span(from, along)[1], span(to, along)[1]);
+        const gapHi = Math.max(span(from, along)[0], span(to, along)[0]);
+        const between = (gapLo + gapHi) / 2;
+        drop = across === "x" ? { x: at, y: between } : { x: between, y: at };
+      }
+      if (exit[0] === undefined && tiedSource) exit = side(from, to);
+      if (entry[0] === undefined && tiedTarget) entry = side(to, from);
+    }
+    // A square-cornered connector bent through points of its own leaves its
+    // box straight towards the first of them, and arrives from the last:
+    // draw.io lines the end up with the point. Every device in a rack hangs
+    // off its switch by a line down one shared x, and left to choose its own
+    // place on the switch's face each line took a different one, so the rail
+    // they share in draw.io came out as a dozen strands side by side.
+    if (
+      /orthogonaledgestyle/i.test(style.of.edgeStyle ?? "") &&
+      cell.points.length > 0 &&
+      from &&
+      to
+    ) {
+      const towards = (
+        b: typeof from,
+        p: { x: number; y: number },
+      ): [string, string] | null => {
+        if (p.x > b.x && p.x < b.x + b.w) {
+          return [String((p.x - b.x) / b.w), p.y >= b.y + b.h / 2 ? "1" : "0"];
+        }
+        if (p.y > b.y && p.y < b.y + b.h) {
+          return [p.x >= b.x + b.w / 2 ? "1" : "0", String((p.y - b.y) / b.h)];
+        }
+        return null;
+      };
+      const first = { x: cell.points[0].x + ox, y: cell.points[0].y + oy };
+      const lastPoint = cell.points[cell.points.length - 1];
+      const last = { x: lastPoint.x + ox, y: lastPoint.y + oy };
+      if (exit[0] === undefined && tiedSource) exit = towards(from, first) ?? exit;
+      if (entry[0] === undefined && tiedTarget) entry = towards(to, last) ?? entry;
+    }
+    // How the line is drawn between its corners. draw.io draws a connection
+    // with no `edgeStyle` straight, through whatever points it was given,
+    // and one marked `curved` as a curve; only its connector styles turn
+    // square corners. Squared off, every straight line in a dependency graph
+    // or a mind map ran in steps beside the others it used to cross, and the
+    // drawing became a tangle.
+    const kind = (style.of.edgeStyle ?? "").toLowerCase();
+    // A line to a point drawn freehand is drawn straight to it, as draw.io
+    // draws a bus drop; squared off and fanned out, each became a hook.
+    const anchored = anchors.has(source) || anchors.has(target);
+    // `curved` bends a line only through points of its own; with none,
+    // draw.io draws it straight from one end to the other.
+    const route: RouteStyle =
+      style.of.curved === "1" && cell.points.length > 0
+        ? "curved"
+        : // An isometric connector runs on the slant from one box to the
+          // other, with a kink in it; squared off, the mesh of a WAN drawn
+          // with it became a maze of right angles round every router.
+          anchored || !kind || kind === "none" || kind === "isometricedgestyle"
+          ? "straight"
+          : "orthogonal";
+    const direct = route !== "orthogonal";
+    // A direct line starts on the face itself, where draw.io pinned it; the
+    // step out of the face is for square corners.
+    const reach = direct ? 0 : PORT_STUB;
+    let leaving = port(source, exit[0], exit[1], cell.loose.source, !!tiedSource, reach, [
+      style.of.exitDx,
+      style.of.exitDy,
+    ]);
+    let arriving = port(target, entry[0], entry[1], cell.loose.target, !!tiedTarget, reach, [
+      style.of.entryDx,
+      style.of.entryDy,
+    ]);
+    // A straight line leaves a box level with where it is going when it can:
+    // draw.io meets the box square on when the far end lies across from one
+    // of its faces. A sequence diagram's messages are drawn so, each a level
+    // line from one activation bar to the next; left to the router, each set
+    // off from the middle of a bar six hundred units tall, and crossed the
+    // diagram on a slant.
+    // Only between two boxes with no bend of their own: a line through
+    // bends already heads for the first of them.
+    if (direct && cell.points.length === 0) {
+      const across = (node: string, toward: { x: number; y: number } | null) => {
+        const box = boxFor(node);
+        if (!box || !toward) return null;
+        if (toward.y > box.y && toward.y < box.y + box.h) {
+          const right = toward.x > box.x + box.w;
+          return { x: right ? box.x + box.w : box.x, y: toward.y };
+        }
+        if (toward.x > box.x && toward.x < box.x + box.w) {
+          const below = toward.y > box.y + box.h;
+          return { x: toward.x, y: below ? box.y + box.h : box.y };
+        }
+        return null;
+      };
+      if (!leaving && tiedSource) leaving = across(source, arriving);
+      if (!arriving && tiedTarget) arriving = across(target, leaving);
+    }
+    // An elbow connector's one point fixes only where its elbow stands —
+    // across for a sideways elbow, down for an upright one — and draw.io
+    // ignores the other coordinate, which is often far off the page. Taken
+    // as a corner, the line went out to it and back.
+    const elbowed =
+      (style.of.edgeStyle ?? "").toLowerCase() === "elbowedgestyle" && cell.points.length === 1;
+    const bends =
+      elbowed && leaving && arriving
+        ? style.of.elbow === "vertical"
+          ? [
+              { x: leaving.x, y: cell.points[0].y + oy },
+              { x: arriving.x, y: cell.points[0].y + oy },
+            ]
+          : [
+              { x: cell.points[0].x + ox, y: leaving.y },
+              { x: cell.points[0].x + ox, y: arriving.y },
+            ]
+        : cell.points.map((q) => ({ x: q.x + ox, y: q.y + oy }));
+    let corners = drop
+      ? [drop]
+      : [...(leaving ? [leaving] : []), ...bends, ...(arriving ? [arriving] : [])];
 
     // An arrow drawn with its head at the start only. Mermaid draws a head at
     // the end or at both, so the connection is turned round: read as it was,
@@ -1257,7 +2181,7 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
       source,
       target,
       data: {
-        label: cell.label || edgeLabels.get(cell.id) || "",
+        label: labelOf(cell, backwards),
         stroke,
         arrow,
         ...(both ? { both: true } : {}),
@@ -1269,20 +2193,18 @@ export function drawioToMermaid(xml: string, as?: DrawioAs, which = 0): DrawioIm
     // for the whole page, so they were shifted above. Taken as they stood,
     // the corners of every connection drawn inside a lane landed short of it
     // by the lane's offset, and the line went off to them and came back.
-    if (corners.length) {
-      const pair = `${source}>${target}`;
-      const ordinal = ordinals.get(pair) ?? 0;
-      ordinals.set(pair, ordinal + 1);
-      waypoints[waypointKey(source, target, ordinal)] = corners;
-    } else {
-      const pair = `${source}>${target}`;
-      ordinals.set(pair, (ordinals.get(pair) ?? 0) + 1);
-    }
+    const pair = `${source}>${target}`;
+    const ordinal = ordinals.get(pair) ?? 0;
+    ordinals.set(pair, ordinal + 1);
+    const key = waypointKey(source, target, ordinal);
+    if (corners.length) waypoints[key] = corners;
+    if (direct) routes[key] = { route };
   }
 
   const body = serializeFlowchart("TB", nodes, edges);
   const trailer = [positionsLine(positions)];
   if (Object.keys(waypoints).length) trailer.push(waypointsLine(waypoints));
+  if (Object.keys(routes).length) trailer.push(edgeStylesLine(routes));
 
   const family = looksLike(cells);
   return {

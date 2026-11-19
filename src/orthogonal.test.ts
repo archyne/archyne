@@ -9,6 +9,7 @@ import {
   orthogonalRoute,
   prune,
   segmentsOf,
+  slidePath,
   slideRun,
   STUB,
   tidy,
@@ -445,19 +446,40 @@ describe("carrying the corners when the nodes move", () => {
     expect(carryWaypoints(corners, by, by)).toEqual([p(150, -30), p(150, 170), p(350, 170)]);
   });
 
-  it("moves the near corner most when only the source moves", () => {
+  it("moves the near run most when only the source moves", () => {
     const moved = carryWaypoints(corners, p(100, 0), still);
     const shifted = moved.map((q, i) => q.x - corners[i].x);
-    expect(shifted[0]).toBeGreaterThan(shifted[1]);
+    // The first two corners are the ends of one plumb run, and go together.
+    expect(shifted[0]).toBe(shifted[1]);
     expect(shifted[1]).toBeGreaterThan(shifted[2]);
     expect(shifted[2]).toBeGreaterThan(0);
   });
 
-  it("moves the far corner most when only the target moves", () => {
+  it("moves the far run most when only the target moves", () => {
     const moved = carryWaypoints(corners, still, p(0, 100));
     const shifted = moved.map((q, i) => q.y - corners[i].y);
-    expect(shifted[2]).toBeGreaterThan(shifted[1]);
+    expect(shifted[2]).toBe(shifted[1]);
     expect(shifted[1]).toBeGreaterThan(shifted[0]);
+  });
+
+  it("keeps a run a run", () => {
+    // Each corner used to go its own fraction of the way, so the two ends of
+    // a level run arrived at different heights and the run came back a step.
+    const moved = carryWaypoints(corners, p(40, 60), p(-20, 100));
+    expect(moved[0].x).toBe(moved[1].x);
+    expect(moved[1].y).toBe(moved[2].y);
+  });
+
+  it("takes the run in line with a box the whole way with that box", () => {
+    // The line leaves the source's underside at x = 100 and arrives at the
+    // target's left side at y = 200: those two runs are the box's own.
+    const source = { x: 60, y: -60, w: 80, h: 60 };
+    const target = { x: 320, y: 170, w: 80, h: 60 };
+    const moved = carryWaypoints(corners, p(30, 0), p(0, 50), source, target);
+    expect(moved[0].x).toBe(130);
+    expect(moved[1].x).toBe(130);
+    expect(moved[1].y).toBe(250);
+    expect(moved[2].y).toBe(250);
   });
 
   it("never hands a corner the whole of one end's movement", () => {
@@ -469,6 +491,58 @@ describe("carrying the corners when the nodes move", () => {
 
   it("has nothing to carry on a straight edge", () => {
     expect(carryWaypoints([], p(10, 10), p(5, 5))).toEqual([]);
+  });
+});
+
+describe("sliding a run of the line as drawn", () => {
+  // Out of the source's right side, down a corridor, and into the target's
+  // left: the Z every plain connection is.
+  const z = [p(100, 50), p(200, 50), p(200, 250), p(300, 250)];
+  const reach = { from: [20, 80] as [number, number], to: [220, 280] as [number, number] };
+
+  it("moves a middle run and keeps every corner of the rest", () => {
+    expect(slidePath(z, 1, 160, reach)).toEqual([p(160, 50), p(160, 250)]);
+  });
+
+  it("stops a middle run a stub short of the face beside it", () => {
+    const moved = slidePath(z, 1, 90, reach)!;
+    expect(moved[0].x).toBe(100 + STUB);
+  });
+
+  it("takes the end along its face with the run it leaves on", () => {
+    // Within the berths the face has: no new corner, and the first one stored
+    // is level with where the end is to go.
+    expect(slidePath(z, 0, 70, reach)).toEqual([p(200, 70), p(200, 250)]);
+  });
+
+  it("steps out a stub and across once the run is past the face", () => {
+    expect(slidePath(z, 0, 120, reach)).toEqual([
+      p(100 + STUB, 50),
+      p(100 + STUB, 120),
+      p(200, 120),
+      p(200, 250),
+    ]);
+  });
+
+  it("stops at the last berth when the run is too short to step aside", () => {
+    const short = [p(100, 50), p(124, 50), p(124, 250), p(300, 250)];
+    expect(slidePath(short, 0, 140, reach)).toEqual([p(124, 80), p(124, 250)]);
+  });
+
+  it("holds a straight line moved whole with a corner in its middle", () => {
+    const straight = [p(100, 50), p(300, 50)];
+    const both = { from: [20, 80] as [number, number], to: [20, 80] as [number, number] };
+    expect(slidePath(straight, 0, 70, both)).toEqual([p(200, 70)]);
+  });
+
+  it("is the same answer however many times it is asked", () => {
+    // One drag is one edit of the line taken at pointerdown.
+    expect(slidePath(z, 1, 160, reach)).toEqual(slidePath(z, 1, 160, reach));
+    expect(slidePath(z, 1, 200, reach)).toEqual([p(200, 50), p(200, 250)]);
+  });
+
+  it("will not slide a run that lies on the slant", () => {
+    expect(slidePath([p(0, 0), p(100, 80)], 0, 40)).toBeNull();
   });
 });
 

@@ -268,3 +268,56 @@ describe("what a separation must leave alone", () => {
     }
   });
 });
+
+describe("runs someone placed", () => {
+  // Two routes down the same halfway line, as above.
+  const one = [p(0, 0), p(200, 0), p(200, 300), p(400, 300)];
+  const two = [p(0, 100), p(200, 100), p(200, 400), p(400, 400)];
+  const both = () =>
+    new Map([
+      ["a", one],
+      ["b", two],
+    ]);
+
+  it("hold still, and the other makes room", () => {
+    // `b` has a corner of its own on the shared line: it was put there. Left
+    // to the order the runs lie in, it was the one that moved.
+    const out = spreadRuns(both(), [], GAP, [], {
+      corners: new Map([["b", [p(200, 250)]]]),
+    });
+    expect(verticalAt(out.get("b")!)).toEqual([200]);
+    expect(Math.abs(verticalAt(out.get("a")!)[0] - 200)).toBe(GAP);
+  });
+
+  it("still come apart when both were placed on the one line", () => {
+    const out = spreadRuns(both(), [], GAP, [], {
+      corners: new Map([
+        ["a", [p(200, 150)]],
+        ["b", [p(200, 250)]],
+      ]),
+    });
+    expect(verticalAt(out.get("a")!)[0]).not.toBe(verticalAt(out.get("b")!)[0]);
+  });
+
+  it("stay together when they share the line on purpose", () => {
+    const out = spreadRuns(both(), [], GAP, [], {
+      still: new Set(["a", "b"]),
+      mates: () => true,
+    });
+    expect(out.get("a")).toEqual(one);
+    expect(out.get("b")).toEqual(two);
+  });
+
+  it("are seen by the lines that are not: a trunk is not drawn over", () => {
+    // `a` and `b` are a trunk and stay; `c` comes down the same line and used
+    // to be drawn on top of them, the trunk having been left out of the pass.
+    const three = [p(0, 200), p(200, 200), p(200, 500), p(400, 500)];
+    const out = spreadRuns(new Map([...both(), ["c", three]]), [], GAP, [], {
+      still: new Set(["a", "b"]),
+      mates: (m, n) => m !== "c" && n !== "c",
+    });
+    expect(out.get("a")).toEqual(one);
+    expect(out.get("b")).toEqual(two);
+    expect(verticalAt(out.get("c")!)[0]).not.toBe(200);
+  });
+});
