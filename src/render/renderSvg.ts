@@ -578,7 +578,12 @@ function tableMarkup(
   for (const group of groups) {
     y += TABLE_ROWS.padY / 2;
     for (const rowBlock of group) {
-      const size = metrics.measure(rowBlock.text, rowBlock.font);
+      // Stepped by the lines `textStack` will actually draw, as the title is
+      // above: a row too wide for a box narrowed by hand wraps, and stepping
+      // by one line laid the next row over its second.
+      const height = labelLines(rowBlock.text)
+        .flatMap((raw) => wrapText(raw, rowBlock.font, rowWidth, metrics))
+        .reduce((sum, line) => sum + metrics.measure(line, rowBlock.font).height, 0);
       parts.push(
         textStack([rowBlock], {
           x: rowX,
@@ -587,7 +592,7 @@ function tableMarkup(
           metrics,
         }),
       );
-      y += size.height + TABLE_ROWS.rowPadY;
+      y += height + TABLE_ROWS.rowPadY;
     }
     y += TABLE_ROWS.padY / 2;
   }

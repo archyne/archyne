@@ -64,3 +64,38 @@ describe("the inspector's label field", () => {
     expect(useGraphStore.getState().edges[0].data?.label).toBe("I went home");
   });
 });
+
+/**
+ * A requirement's name is its identity, so a rename to a name another
+ * requirement has is refused. The field has to say so by going back to the
+ * name the requirement still has, not keep showing the one that was refused.
+ */
+describe("the inspector's requirement name field", () => {
+  const req = (id: string, selected = false) =>
+    ({
+      id,
+      type: "requirement",
+      position: { x: 0, y: 0 },
+      data: { label: id, reqType: "requirement", direction: "TB" },
+      selected,
+    }) as unknown as AnyNode;
+
+  it("shows the name the requirement kept after a refused rename", async () => {
+    useGraphStore.setState({
+      kind: "requirement",
+      nodes: [req("brake", true), req("speed")],
+      edges: [],
+      code: "requirementDiagram\n  requirement brake {\n  }\n  requirement speed {\n  }\n",
+    });
+    render(<Inspector />);
+    const field = document.getElementById("inspector-label") as HTMLInputElement;
+    const user = userEvent.setup();
+    await user.clear(field);
+    await user.type(field, "speed");
+    await user.tab();
+    expect(useGraphStore.getState().nodes.map((n) => n.id)).toEqual(["brake", "speed"]);
+    expect((document.getElementById("inspector-label") as HTMLInputElement).value).toBe(
+      "brake",
+    );
+  });
+});

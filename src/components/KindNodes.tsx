@@ -9,6 +9,7 @@ import { SideHandles } from "./SideHandles";
 import { useRename } from "./useRename";
 import { boxStyleOf, labelStyleOf, readableLabel, styleProps } from "../model/nodeStyle";
 import { edgeColors, useThemeStore } from "../theme";
+import { useGraphStore } from "../store";
 import { markerDefs } from "../render/markers";
 
 export function StateNodeView({ id, data, selected }: NodeProps<StateNode>) {
@@ -178,8 +179,16 @@ export function RequirementNodeView({ id, data, selected }: NodeProps<Requiremen
   // which the store does when the edit is committed.
   const rename = useRename(id, data.label, { multiline: false });
   const rows = requirementRows(data);
+  // A class's colours first, then the node's own, as `ShapeNodeView` reads
+  // them: the parser took the class's declarations out of `styles`, so that
+  // leaving the class does not leave its colours behind.
+  const classDefs = useGraphStore((s) => s.classDefs);
+  const styles = [
+    ...(data.classes ?? []).flatMap((c) => classDefs[c] ?? []),
+    ...(data.styles ?? []),
+  ];
   return (
-    <SizedBox id={id} className="table-node" selected={selected} styles={data.styles}>
+    <SizedBox id={id} className="table-node" selected={selected} styles={styles}>
       <div className="table-title" onDoubleClick={rename.begin}>
         <div className="class-annotation">«{data.reqType}»</div>
         {rename.editing ? rename.field : <Label text={data.label} />}

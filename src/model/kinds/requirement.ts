@@ -41,10 +41,29 @@ const VERIFY = new Set<string>(["Analysis", "Demonstration", "Inspection", "Test
  * `a-b.c` as three tokens and fails, while `"a-b.c"` is one name — and a
  * quoted name works everywhere a bare one does, `style` and `class` included.
  * A double quote cannot be escaped inside one, so it becomes a single quote.
+ *
+ * A keyword is quoted too, though it looks like an identifier: the lexer is
+ * case-insensitive and takes `risk`, `Test` or `element` as the keyword, so
+ * `requirement risk {` does not parse. The list is the lexer's own words.
  */
 export function reqName(name: string): string {
-  return /^[A-Za-z_]\w*$/.test(name) ? name : `"${name.replace(/"/g, "'")}"`;
+  const bare = /^[A-Za-z_]\w*$/.test(name) && !RESERVED.has(name.toLowerCase());
+  return bare ? name : `"${name.replace(/"/g, "'")}"`;
 }
+
+const RESERVED = new Set(
+  [
+    "title accTitle accDescr requirementDiagram id text risk verifyMethod",
+    "requirement functionalRequirement interfaceRequirement",
+    "performanceRequirement physicalRequirement designConstraint",
+    "low medium high analysis demonstration inspection test element",
+    "contains copies derives satisfies verifies refines traces type docref",
+    "style classDef class",
+  ]
+    .join(" ")
+    .toLowerCase()
+    .split(" "),
+);
 
 /** A field value, always quoted: text routinely carries colons and commas. */
 function value(v: string): string {
