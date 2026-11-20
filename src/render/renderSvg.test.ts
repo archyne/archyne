@@ -191,6 +191,15 @@ describe("what is in it", () => {
     expect(body?.getAttribute("fill")).toBeNull();
   });
 
+  it("draws a node's border as heavy as the diagram says", () => {
+    // An imported BPMN end event is the thick ring; it was a hairline here.
+    const heavy = shape("a", "End", 0, 0, { styles: ["stroke:#000", "stroke-width:3px"] });
+    const doc = parse(renderSvg([heavy], [], "flowchart"));
+    expect(doc.querySelector("rect.sf")?.getAttribute("style")).toBe(
+      "stroke:#000;stroke-width:3px",
+    );
+  });
+
   it("colours a node through a classDef it belongs to", () => {
     // `classDef hot …` + `class a hot` is how a flowchart colours a *set*, and
     // it used to be dropped entirely: the emitter read only `data.styles`.

@@ -400,9 +400,14 @@ body,
   line-height: 1.55;
 }
 
+/* Underlined, because colour alone does not set a link apart from the
+   sentence it sits in: the accent is 2.4:1 against the body text, short of
+   the 3:1 WCAG asks of a link marked by colour only (axe's
+   link-in-text-block). */
 .about-body a {
   color: var(--accent);
-  text-decoration: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .about-lead {
@@ -622,6 +627,30 @@ body,
   cursor: ew-resize;
 }
 
+/* An end of a selected connection: grabbed to move that end somewhere else.
+   In the label layer, above the nodes, so it is what a press on the end
+   reaches rather than the node's own connection point under it. Square-ish
+   and outlined, so it does not read as a corner. */
+.edge-end {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--accent);
+  border-radius: 3px;
+  background: var(--panel);
+  pointer-events: all;
+  cursor: move;
+  touch-action: none;
+}
+
+/* Where the moved end is going, while it is on its way. */
+.edge-reconnect {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  pointer-events: none;
+}
+
 /* Hollow, because it is not a corner yet — dragging it makes one. */
 .edge-handle.add {
   fill: var(--panel);
@@ -800,12 +829,12 @@ body.resizing-side {
 .shape-fill {
   fill: var(--custom-fill, var(--node-fill));
   stroke: var(--custom-stroke, var(--node-stroke));
-  stroke-width: 1.5;
+  stroke-width: var(--custom-stroke-width, 1.5);
 }
 
 .shape-line {
   stroke: var(--custom-stroke, var(--node-stroke));
-  stroke-width: 1.5;
+  stroke-width: var(--custom-stroke-width, 1.5);
 }
 
 .shape-node.selected .shape-fill {
@@ -979,6 +1008,13 @@ body.resizing-side {
   /* A flex item's floor is its content, which for an image is its own size:
      without this it refuses to shrink and spills out of the shape. */
   min-height: 0;
+}
+
+/* The space a picture that could not be loaded would take: see `Picture` in
+   ShapeNode.tsx. Blank, so nothing reads as broken, and the size it had. */
+.shape-image.missing {
+  display: block;
+  flex: 0 0 auto;
 }
 
 /* state diagram nodes */
@@ -1313,6 +1349,33 @@ body.resizing-side {
 .react-flow__controls button:hover {
   background: var(--panel-2);
   fill: var(--text);
+}
+/* The tool in use: select or the hand (`useCanvasTool`). */
+.react-flow__controls button.canvas-tool[aria-pressed="true"] {
+  background: var(--panel-2);
+  fill: var(--accent);
+}
+
+/* The cursor says what a press does. React Flow puts the hand on any canvas
+   that pans, and this one pans with the middle and right buttons — so it
+   showed the hand all the time while a left drag drew a selection. The arrow
+   with the select tool; the hand with the hand, and while a pan is going. */
+.canvas-wrap .react-flow__pane.draggable,
+.canvas-wrap .react-flow__pane.selection {
+  cursor: default;
+}
+.canvas-wrap .react-flow__pane.dragging,
+.canvas-wrap.panning .react-flow__pane.dragging {
+  cursor: grabbing;
+}
+.canvas-wrap.panning .react-flow__pane {
+  cursor: grab;
+}
+/* With the hand, nothing on the canvas takes the press: it goes through to
+   the canvas behind, so a drag that starts on a box or a line pans too. */
+.canvas-wrap.panning .react-flow__viewport *,
+.canvas-wrap.panning .react-flow__edgelabel-renderer * {
+  pointer-events: none !important;
 }
 
 .react-flow__minimap {
@@ -2522,28 +2585,31 @@ body.resizing-side {
 
 /* "Arranging…" — a slow layout must not read as a dead canvas. Inert, so
    the drawing underneath keeps panning and dropping shapes. */
+/* In the middle of the canvas, not along its foot: at the foot, eleven pixels
+   high, it went unseen, and a drawing that took its time to rearrange read as
+   one that had stopped answering. */
 .canvas-arranging {
   position: absolute;
   left: 50%;
-  bottom: 18px;
-  transform: translateX(-50%);
+  top: 50%;
+  transform: translate(-50%, -50%);
   z-index: 5;
   pointer-events: none;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
+  gap: 10px;
+  padding: 12px 18px;
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   background: var(--panel);
   box-shadow: var(--shadow);
-  font-size: 11px;
-  color: var(--text-dim);
+  font-size: 13px;
+  color: var(--text);
   white-space: nowrap;
 }
 .canvas-arranging-spinner {
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
   border: 2px solid var(--border);
   border-top-color: var(--accent);
   border-radius: 50%;
@@ -5345,4 +5411,27 @@ body.resizing-side {
 .palette .icon-import .mini:hover {
   color: var(--text);
   background: var(--panel-2);
+}
+
+/* Forgetting an imported icon: the corner opposite the favourite star, and
+   only on hover, like the star. */
+.icon-cell .remove {
+  position: absolute;
+  top: -2px;
+  inset-inline-start: 0;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  padding: 2px;
+}
+.icon-cell:hover .remove,
+.icon-cell .remove:focus-visible {
+  opacity: 1;
+}
+.icon-cell .remove:hover {
+  color: var(--danger, #d64545);
 }

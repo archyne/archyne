@@ -2,8 +2,9 @@
  * Archyne desktop shell: a thin Electron window around the static build.
  *
  * Everything still runs locally in the renderer — no backend. The shell
- * reaches the network in two places, each only because the user asked:
- * `archyne:fetch-icons`, for a link they pasted (see the notes there), and
+ * reaches the network in three places, each only because the user asked:
+ * `archyne:fetch-icons`, for a link they pasted (see the notes there);
+ * `archyne:fetch-images`, for the pictures in a drawing they imported; and
  * the Generate engines in ./ai.cjs, for a service they configured.
  */
 const { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } = require("electron");
@@ -181,11 +182,18 @@ function reachesLocalNetwork(hostname) {
  * Read in chunks rather than in one `arrayBuffer()`: a server that declares
  * no length, or lies about it, would otherwise decide how much memory this
  * process uses.
+ *
+ * Says who is asking. Wikimedia refuses a request with no agent of its own —
+ * half the logos in imported drawings are on Wikimedia Commons — and a named
+ * one is what its policy asks for.
  * @param {URL} url
  * @returns {Promise<Buffer | null>}
  */
 async function download(url) {
-  const res = await fetch(url, { redirect: "follow" });
+  const res = await fetch(url, {
+    redirect: "follow",
+    headers: { "user-agent": `Archyne/${app.getVersion()} (+https://archyne.dev)` },
+  });
   if (!res.ok || !res.body) return null;
 
   const declared = Number(res.headers.get("content-length"));
@@ -241,6 +249,49 @@ function iconsFromZip(buffer) {
     name,
     svg: Buffer.from(bytes).toString("utf8"),
   }));
+}
+
+/**
+ * Pictures an imported drawing points at, fetched once so the diagram can
+ * carry them.
+ *
+ * draw.io lets a shape be any image on the web, and real drawings are full of
+ * them — iconfinder, Wikimedia, a vendor's site. The page loads images from a
+ * short list of hosts only, so on the canvas each was an empty box. Fetched
+ * here, at import, they go into the file as data and are never fetched again:
+ * the diagram opens offline, and opening it does not tell those hosts anyone
+ * looked. The same fences as `fetch-icons`, and two of its own:
+ *
+ *  - only the types an `<img>` draws, told by the bytes and not the header —
+ *    an HTML error page served as `image/png` is dropped;
+ *  - a smaller cap per picture, since each one is written into the document.
+ */
+const MAX_IMAGE_BYTES = 2_000_000;
+const MAX_IMAGES = 200;
+
+/**
+ * The picture's type, from its first bytes, or null for anything else.
+ * @param {Buffer} b
+ */
+function imageType(b) {
+  if (b.length > 8 && b[0] === 0x89 && b.toString("latin1", 1, 4) === "PNG") return "image/png";
+  if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "image/jpeg";
+  if (b.length > 6 && b.toString("latin1", 0, 4) === "GIF8") return "image/gif";
+  if (
+    b.length > 12 &&
+    b.toString("latin1", 0, 4) === "RIFF" &&
+    b.toString("latin1", 8, 12) === "WEBP"
+  ) {
+    return "image/webp";
+  }
+  // SVG is text; drawn through `<img>` it cannot run anything.
+  const head = b.toString("utf8", 0, Math.min(b.length, 2048));
+  if (
+    /^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*(<!DOCTYPE svg[^>]*>\s*)?<svg[\s>]/i.test(head)
+  ) {
+    return "image/svg+xml";
+  }
+  return null;
 }
 
 function registerIpc() {
@@ -344,6 +395,41 @@ function registerIpc() {
     }
 
     return { icons: icons.slice(0, MAX_ICONS), failed };
+  });
+
+  // Pictures in an imported drawing, as data URLs keyed by the link they came
+  // from. See the notes above `MAX_IMAGE_BYTES`.
+  ipcMain.handle("archyne:fetch-images", async (_event, { urls }) => {
+    /** @type {Record<string, string>} */
+    const images = {};
+    /** @type {string[]} */
+    const failed = [];
+    const wanted = [...new Set(Array.isArray(urls) ? urls.map(String) : [])].slice(
+      0,
+      MAX_IMAGES,
+    );
+    await Promise.all(
+      wanted.map(async (link) => {
+        try {
+          const url = new URL(link);
+          if (url.protocol !== "https:" || reachesLocalNetwork(url.hostname)) {
+            failed.push(link);
+            return;
+          }
+          const body = await download(url);
+          const type = body && body.length <= MAX_IMAGE_BYTES ? imageType(body) : null;
+          if (!body || !type) {
+            failed.push(link);
+            return;
+          }
+          images[link] = `data:${type};base64,${body.toString("base64")}`;
+        } catch {
+          // Unreachable, refused, not a picture: the link stays as it was.
+          failed.push(link);
+        }
+      }),
+    );
+    return { images, failed };
   });
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "archyne",
-  "version": "1.3.0-alpha.1",
+  "version": "1.4.1-alpha.1",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -71,6 +71,8 @@
     "test:e2e:csp": "tsx tests/e2e-csp.mts",
     "test:e2e:drag": "tsx tests/e2e-drag.mts",
     "test:e2e:waypoints": "tsx tests/e2e-waypoints.mts",
+    "test:e2e:reconnect": "tsx tests/e2e-reconnect.mts",
+    "test:e2e:tool": "tsx tests/e2e-tool.mts",
     "test:e2e:sequence": "tsx tests/e2e-sequence.mts",
     "test:e2e:architecture": "tsx tests/e2e-architecture.mts",
     "test:e2e:resize": "tsx tests/e2e-resize.mts",
@@ -125,7 +127,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
-    "@peculiar/x509": "^2.2.0",
+    "@peculiar/x509": "^3.1.0",
     "@smithy/core": "^3.36.0",
     "@smithy/hash-node": "^4.5.2",
     "@smithy/signature-v4": "^5.7.4",

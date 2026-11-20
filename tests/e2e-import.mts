@@ -51,9 +51,25 @@ function check(what: string, ok: boolean) {
  * diagram is already on screen, and counting would match it and read the
  * wrong graph.
  */
-async function open(page: Page, file: string, expected: string, canvas = true) {
+async function open(
+  page: Page,
+  file: string,
+  expected: string,
+  canvas = true,
+  readAs?: string,
+) {
   await page.setInputFiles('input[type="file"]', fixture(file));
   await page.locator(".modal").waitFor({ timeout: 30000 });
+  // A family other than the one the file is read as by default: chosen in the
+  // dialog, as a reader would, and the conversion runs again.
+  if (readAs) {
+    await page.locator(".import-canvas .react-flow__node").first().waitFor({ timeout: 30000 });
+    await page.locator(".export-opts select").first().selectOption(readAs);
+    await page
+      .locator(".import-canvas .react-flow__node-service")
+      .first()
+      .waitFor({ timeout: 30000 });
+  }
 
   if (canvas) {
     // The preview opens on the Archyne canvas — the one the diagram will
@@ -460,9 +476,15 @@ try {
 
   console.log("\ndraw.io, as cloud architecture");
   {
-    // The same importer, a different family: an AWS drawing has icons, and a
-    // flowchart has nowhere to put them.
-    const { state, code } = await open(page, "cloud-aws.drawio", "cloud-aws.mmd");
+    // The same importer, a different family. A draw.io file is read as a
+    // flowchart, which keeps its layout; architecture is there to be chosen.
+    const { state, code } = await open(
+      page,
+      "cloud-aws.drawio",
+      "cloud-aws.mmd",
+      true,
+      "architecture",
+    );
     const has = (needle: string) => code.includes(needle);
 
     check("it opened as an editable architecture diagram", state.kind === "architecture");

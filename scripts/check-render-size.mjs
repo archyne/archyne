@@ -34,8 +34,16 @@ const ENTRY = resolve(root, "src/render/renderSvg.ts");
  */
 const FORBIDDEN = ["react", "react-dom", "@xyflow/react", "zustand", "mermaid", "codemirror"];
 
-/** A budget with room to grow, so it flags a jump rather than every commit. */
-const BUDGET_GZIP = 24 * 1024;
+/**
+ * A budget with room to grow, so it flags a jump rather than every commit.
+ *
+ * Raised from 24 to 28 KB in November 2026, when the router learned to draw a
+ * line whose pinned end it cannot reach, to keep lines placed by hand in
+ * their lanes, and to bring a trunk in as one line: 23.3 KB went to 25.8. The
+ * exported SVG has to route as the canvas does, so the renderer carries all of
+ * it. Raise it again only for a jump that is meant.
+ */
+const BUDGET_GZIP = 28 * 1024;
 
 const result = await build({
   entryPoints: [ENTRY],

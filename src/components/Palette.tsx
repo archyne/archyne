@@ -11,9 +11,19 @@ import { useIconPack } from "../iconPack";
 import { iconRole, plainName, VENDORS, VENDOR_LABELS } from "../model/iconRole";
 import { useT, type MessageKey } from "../i18n";
 import { IconView } from "./ArchView";
+import { setCarriedIcons } from "../icons";
 
 /** Draggable icon cell with a favorite toggle. */
-function IconCell({ name, onShow }: { name: string; onShow?: (name: string | null) => void }) {
+function IconCell({
+  name,
+  onShow,
+  onRemove,
+}: {
+  name: string;
+  onShow?: (name: string | null) => void;
+  /** Offered on an imported icon the diagram does not use: drop it from this browser. */
+  onRemove?: () => void;
+}) {
   const favorites = useIconPrefs((s) => s.favorites);
   const toggleFavorite = useIconPrefs((s) => s.toggleFavorite);
   const addAtCenter = useAddNodeAtCenter();
@@ -61,6 +71,19 @@ function IconCell({ name, onShow }: { name: string; onShow?: (name: string | nul
       >
         <span aria-hidden="true">{fav ? "★" : "☆"}</span>
       </button>
+      {onRemove && (
+        <button
+          className="remove"
+          title={t("palette.removeImported", { name })}
+          aria-label={t("palette.removeImported", { name })}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+        >
+          <span aria-hidden="true">×</span>
+        </button>
+      )}
     </div>
   );
 }
@@ -402,27 +425,75 @@ function VendorIcons() {
   const pinned = [...favorites, ...recents.filter((r) => !favorites.includes(r))];
   const vendorOf = useIconPack((s) => s.vendors);
 
+  // The imported icons this diagram actually uses. The library above is
+  // every icon this browser has kept, from every diagram ever opened in it,
+  // and all of it used to be filed under "In this diagram": a flowchart with
+  // no icons at all listed eight Azure ones. A string, so a drag — which
+  // changes the nodes every frame — does not redraw the palette with it.
+  const usedKey = useGraphStore((s) =>
+    s.nodes
+      .map((n) => (n.data as { icon?: string }).icon)
+      .filter((i): i is string => typeof i === "string" && i.startsWith("custom:"))
+      .sort()
+      .join("|"),
+  );
+  const used = new Set(usedKey ? usedKey.split("|") : []);
+  const inDiagram = carried.filter((ref) => used.has(ref));
+  const imported = carried.filter((ref) => !used.has(ref));
+
   // Six hundred imported icons in one strip is a wall, and Azure's next to
   // Amazon's is a wall you cannot read. Filed by whoever published them, in
   // the order the vendors are listed, with anything unattributed last.
   const byVendor = VENDORS.map((vendor) => ({
     vendor,
-    icons: carried.filter((ref) => (vendorOf[plainName(ref)] ?? "other") === vendor),
+    icons: imported.filter((ref) => (vendorOf[plainName(ref)] ?? "other") === vendor),
   })).filter((section) => section.icons.length > 0);
+
+  /**
+   * Forget an imported icon. Only one the diagram does not use — removing a
+   * picture out from under its own boxes would leave them drawing the
+   * fallback — and only from this browser: a file that carries it keeps it.
+   */
+  const removeImported = (ref: string) => {
+    const key = plainName(ref);
+    // Its name is showing under the search: it was under the pointer.
+    setShown(null);
+    useIconPack.getState().remove(key);
+    useIconPrefs.getState().forget(ref);
+    const library = { ...useGraphStore.getState().iconLibrary };
+    delete library[key];
+    useGraphStore.setState({ iconLibrary: library });
+    setCarriedIcons(library);
+  };
 
   return (
     <>
       {/* Imported icons. They are in no bundled collection, so without a
           place of their own the only way back to one was to remember its
           name — and filed by vendor, because a pack is hundreds of them. */}
+      {inDiagram.length > 0 && (
+        <div>
+          <div className="panel-title">{t("palette.sectionCarried")}</div>
+          <div className="icon-grid pinned">
+            {inDiagram.map((name) => (
+              <IconCell key={name} name={name} onShow={setShown} />
+            ))}
+          </div>
+        </div>
+      )}
       {byVendor.map(({ vendor, icons }) => (
         <div key={vendor}>
           <div className="panel-title">
-            {VENDOR_LABELS[vendor] || t("palette.sectionCarried")}
+            {VENDOR_LABELS[vendor] || t("palette.sectionImported")}
           </div>
           <div className="icon-grid pinned">
             {icons.map((name) => (
-              <IconCell key={name} name={name} onShow={setShown} />
+              <IconCell
+                key={name}
+                name={name}
+                onShow={setShown}
+                onRemove={() => removeImported(name)}
+              />
             ))}
           </div>
         </div>

@@ -132,6 +132,11 @@ export interface ImportSummary {
    * and left unset by the rest, which convert the first.
    */
   page?: number;
+  /**
+   * Pictures from the web now carried in the diagram as data, and those that
+   * could not be fetched; see `embedImages.ts`. Absent when none were tried.
+   */
+  images?: { embedded: number; failed: number };
 }
 
 export interface OpenedFile {
@@ -160,6 +165,15 @@ export async function openAsMermaid(
     ? await convertBinary(file.bytes, page)
     : await convert(file.content, as, page);
   if (!converted) return { file, imported: null, source: file };
+
+  // The pictures it points at on the web, brought in as data where the
+  // desktop shell can fetch them; a browser leaves them as links.
+  const { embedImages } = await import("./embedImages");
+  const pictures = await embedImages(converted.code);
+  if (pictures.embedded || pictures.failed) {
+    converted.code = pictures.code;
+    converted.summary.images = { embedded: pictures.embedded, failed: pictures.failed };
+  }
 
   const FOREIGN =
     /\.(drawio\.xml|drawio|xml|vsdx|lucid|json|gv|dot|sql|ddl|excalidraw|puml|plantuml|iuml|wsd)$/i;
@@ -224,11 +238,21 @@ async function convert(
   page?: number,
 ): Promise<{ code: string; summary: ImportSummary } | null> {
   if (isDrawio(content)) {
-    const { drawioToMermaid } = await import("./model/fromDrawio");
+    const { drawioToMermaid, drawioStencilNames } = await import("./model/fromDrawio");
+    // The shapes it takes from draw.io's libraries, fetched from draw.io
+    // (see `drawioStencils.ts`); without them they come out as outlines.
+    const { loadStencils } = await import("./model/drawioStencils");
+    let stencils = await loadStencils([]);
+    try {
+      stencils = await loadStencils(drawioStencilNames(content, page));
+    } catch {
+      // Unreadable here is unreadable below too, and that says why.
+    }
     const result = drawioToMermaid(
       content,
       as === "architecture" || as === "flowchart" ? as : undefined,
       page,
+      stencils,
     );
     return {
       code: result.code,

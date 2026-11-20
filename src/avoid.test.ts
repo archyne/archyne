@@ -148,3 +148,35 @@ describe("routing around what is in the way", () => {
     expect(clearOf(route, wall)).toBe(true);
   });
 });
+
+describe("a frame the path may cross, at a price", () => {
+  // `soft` is the last argument: a subgraph the connection is no part of.
+  const through = (a: Point, b: Point, frame: Rect) =>
+    routeAround(a, b, "y", "y", [], 14, p(0, 1), p(0, 1), [frame])!;
+
+  it("goes round a subgraph when the way round is short", () => {
+    // A long drop past a narrow frame standing in its way: a short step aside
+    // saves crossing four hundred units of it.
+    const frame = box(-60, 100, 120, 400);
+    const route = through(p(0, 0), p(0, 600), frame);
+    expect(route).not.toBeNull();
+    expect(clearOf(route, frame)).toBe(true);
+  });
+
+  it("keeps further off a frame than off a box on the way round", () => {
+    const frame = box(-60, 100, 120, 400);
+    const route = through(p(0, 0), p(0, 600), frame);
+    const xs = route.map((q) => q.x).filter((x) => x !== 0);
+    // Out past the frame's side by twice the clearance kept from a box.
+    expect(xs.every((x) => x <= -60 - 28 || x >= 60 + 28)).toBe(true);
+  });
+
+  it("crosses one when going round would be the long way", () => {
+    // A lane as wide as the pool: going round it is a thousand units each
+    // way, and crossing it is sixty.
+    const lane = box(-1000, 100, 2000, 60);
+    const route = through(p(0, 0), p(0, 300), lane);
+    expect(route).not.toBeNull();
+    expect(clearOf(route, lane)).toBe(false);
+  });
+});

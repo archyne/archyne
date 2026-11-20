@@ -30,7 +30,7 @@
  */
 import { labelLines } from "../model/label";
 import { IMG_SIZE, labelSize, requirementRows } from "../model/types";
-import { styleProps } from "../model/nodeStyle";
+import { readableLabel, styleProps } from "../model/nodeStyle";
 import {
   C4_TAGS,
   isGroup,
@@ -187,10 +187,12 @@ function n(v: number): string {
  */
 function drawnStyle(node: AnyNode, classDefs: ClassDefs) {
   const data = node.data as { classes?: string[]; styles?: string[] };
-  return styleProps([
-    ...(data.classes ?? []).flatMap((c) => classDefs[c] ?? []),
-    ...(data.styles ?? []),
-  ]);
+  return readableLabel(
+    styleProps([
+      ...(data.classes ?? []).flatMap((c) => classDefs[c] ?? []),
+      ...(data.styles ?? []),
+    ]),
+  );
 }
 
 /**
@@ -210,6 +212,9 @@ function paintAttrs(s: ReturnType<typeof drawnStyle>, part: "fill" | "line" = "f
     // keeping only the theme colour here left a purple rim on a green cylinder.
     ...(part === "fill" && s.fill ? [`fill:${s.fill}`] : []),
     ...(s.stroke ? [`stroke:${s.stroke}`] : []),
+    // And its weight, as `--custom-stroke-width` gives it on the canvas: the
+    // thick ring of an imported end event was a hairline in the export.
+    ...(s.strokeWidth ? [`stroke-width:${s.strokeWidth}`] : []),
   ];
   return decls.length ? ` style="${esc(decls.join(";"))}"` : "";
 }

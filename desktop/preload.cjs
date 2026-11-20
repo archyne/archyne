@@ -78,6 +78,14 @@ contextBridge.exposeInMainWorld("archyne", {
   fetchIcons: (urls) => ipcRenderer.invoke("archyne:fetch-icons", { urls }),
 
   /**
+   * Download the pictures an imported drawing points at, so they go into the
+   * diagram as data. Returns a data URL for each link that gave an image, and
+   * the links that did not.
+   * @param {string[]} urls
+   */
+  fetchImages: (urls) => ipcRenderer.invoke("archyne:fetch-images", { urls }),
+
+  /**
    * Generate through the shell (desktop/ai.cjs): the page describes the
    * services it may call and sends conversations; the shell keeps the
    * secrets, makes the requests and streams the answers back. A secret goes

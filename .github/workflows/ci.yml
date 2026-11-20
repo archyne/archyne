@@ -178,6 +178,18 @@ jobs:
         env:
           ARCHYNE_URL: http://localhost:5173
 
+      - name: Moving a connection's end
+        if: matrix.shard == 'drag'
+        run: npm run test:e2e:reconnect
+        env:
+          ARCHYNE_URL: http://localhost:5173
+
+      - name: Selecting and panning the canvas
+        if: matrix.shard == 'drag'
+        run: npm run test:e2e:tool
+        env:
+          ARCHYNE_URL: http://localhost:5173
+
       - name: Sequence message order
         if: matrix.shard == 'rest'
         run: npm run test:e2e:sequence

@@ -4,6 +4,7 @@ import { CropDialog } from "./CropDialog";
 import {
   Background,
   ConnectionMode,
+  ControlButton,
   Controls,
   MiniMap,
   ReactFlow,
@@ -38,6 +39,10 @@ import type { EdgeTypes } from "@xyflow/react";
 import { isGroup } from "../model/types";
 import { pasteFrom } from "../clipboard";
 import { addSeed } from "../iconPicture";
+import { stacked } from "../stacking";
+import { MIN_ZOOM } from "../zoom";
+import { CONNECT_RADIUS } from "../reconnect";
+import { useCanvasTool, useCanvasToolKeys, usePanning } from "./useCanvasTool";
 
 const nodeTypes: NodeTypes = {
   shape: ShapeNodeView,
@@ -174,6 +179,12 @@ export function CanvasView() {
   const [connecting, setConnecting] = useState(false);
   const dragGuides = useDragGuides();
   const coarse = useCoarsePointer();
+  useCanvasToolKeys();
+  const panning = usePanning();
+  const tool = useCanvasTool((s) => s.tool);
+  const setTool = useCanvasTool((s) => s.setTool);
+  /** The end of a connection being moved shows every connection point too. */
+  const reconnecting = useGraphStore((s) => s.reconnecting);
   const unsupported = useGraphStore((s) => s.unsupported);
   const parseError = useGraphStore((s) => s.parseError);
   const code = useGraphStore((s) => s.code);
@@ -200,10 +211,13 @@ export function CanvasView() {
   // it landed.
   const aiHighlight = useGraphStore((s) => s.aiHighlight);
   const clearAiHighlight = useGraphStore((s) => s.clearAiHighlight);
+  // Boxes and connections drawn over the containers they are not in, as well
+  // as the ones they are: see `stacking.ts`.
+  const layered = useMemo(() => stacked(nodes, edges), [nodes, edges]);
   const flowNodes = useMemo(() => {
     const changed = new Set(aiHighlight?.nodes ?? []);
-    if (!connect.source && changed.size === 0) return nodes;
-    return nodes.map((n) => {
+    if (!connect.source && changed.size === 0) return layered.nodes;
+    return layered.nodes.map((n) => {
       const extra = [
         n.id === connect.source ? "connect-source" : "",
         changed.has(n.id) ? "ai-changed" : "",
@@ -212,16 +226,16 @@ export function CanvasView() {
         .join(" ");
       return extra ? { ...n, className: `${n.className ?? ""} ${extra}`.trim() } : n;
     });
-  }, [nodes, connect.source, aiHighlight]);
+  }, [layered, connect.source, aiHighlight]);
   const flowEdges = useMemo(() => {
     const changed = new Set((aiHighlight?.edges ?? []).map(([a, b]) => `${a}\u0000${b}`));
-    if (changed.size === 0) return edges;
-    return edges.map((e) =>
+    if (changed.size === 0) return layered.edges;
+    return layered.edges.map((e) =>
       changed.has(`${e.source}\u0000${e.target}`)
         ? { ...e, className: `${e.className ?? ""} ai-changed`.trim() }
         : e,
     );
-  }, [edges, aiHighlight]);
+  }, [layered, aiHighlight]);
 
   if (unsupported) {
     // Valid Mermaid we cannot edit visually. Render it rather than refusing
@@ -239,7 +253,7 @@ export function CanvasView() {
 
   return (
     <main
-      className={`canvas-wrap${connecting ? " connecting" : ""}`}
+      className={`canvas-wrap${connecting || reconnecting ? " connecting" : ""}${panning ? " panning" : ""}`}
       /* A diagram's own accessible title names the region when the author
          gave one — "Payment flow — diagram canvas" rather than the same
          generic label on every diagram. */
@@ -257,6 +271,7 @@ export function CanvasView() {
         edges={flowEdges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        minZoom={MIN_ZOOM}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
@@ -347,12 +362,17 @@ export function CanvasView() {
            right button. A touchscreen has neither of those buttons, so there
            the same gesture has to pan — otherwise a finger only ever draws a
            marquee and the diagram cannot be moved at all. */
-        selectionOnDrag={!coarse}
+        selectionOnDrag={!coarse && !panning}
         selectionMode={SelectionMode.Partial}
-        panOnDrag={coarse ? true : [1, 2]}
+        /* With the hand (H, or Space held) a left drag pans as well, from
+           anywhere: the boxes and lines under it are made inert in the
+           stylesheet, so the press reaches the canvas behind them. Space is
+           ours, not React Flow's, so that it works the same as the button. */
+        panOnDrag={coarse || panning ? true : [1, 2]}
+        panActivationKeyCode={null}
         onMove={() => (panMovedRef.current = true)}
         connectionMode={ConnectionMode.Loose}
-        connectionRadius={38}
+        connectionRadius={CONNECT_RADIUS}
         snapToGrid
         snapGrid={[GRID, GRID]}
         fitView
@@ -362,7 +382,28 @@ export function CanvasView() {
         <Background gap={18} />
         <GuideLines />
         {kind === "sequence" && <SequenceOverlay />}
-        <Controls />
+        <Controls>
+          {/* One button, the pointer or the hand, whichever is in use: a
+              click swaps it, and the cursor on the canvas follows — the arrow
+              to select, the hand to move the canvas. */}
+          <ControlButton
+            onClick={() => setTool(tool === "pan" ? "select" : "pan")}
+            title={t(tool === "pan" ? "canvas.toolPan" : "canvas.toolSelect")}
+            aria-label={t("shortcuts.toolToggle")}
+            aria-pressed={tool === "pan"}
+            className="canvas-tool"
+          >
+            {tool === "pan" ? (
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M6 7V3a1 1 0 0 1 2 0v4V2.5a1 1 0 0 1 2 0V7V3.5a1 1 0 0 1 2 0V9c0 3-1.6 5-4.4 5C5.3 14 4.6 12.8 3.4 11L2.2 9.1a1 1 0 0 1 1.6-1.2L5 9.2V4.5a1 1 0 0 1 2 0V7" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3 2l9 6.2-4 .8 2.4 4.4-1.6.8L6.4 9.8 3 12.6z" />
+              </svg>
+            )}
+          </ControlButton>
+        </Controls>
         <MiniMap pannable zoomable style={MINIMAP_SIZE} />
       </ReactFlow>
       {menu && (

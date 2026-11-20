@@ -45,6 +45,44 @@ CSS class names and internal store shape are _not_ public API.
   model: its requirements, a block definition diagram (a class diagram of
   «block»s with parts, values and ports), a state machine of its operating
   modes, and the activity of a mission.
+
+### Fixed
+
+- **A class's annotations are split into words again.** The inspector's
+  annotations field split what was typed on the letter "s" rather than on
+  spaces, so `interfaceBlock` became `interface` and `Block`, and
+  `constraintBlock` was cut in three. It splits on whitespace now, and takes
+  off any `<<…>>` or `«…»` typed around a name, which used to be written back
+  doubled.
+
+## [1.4.1-alpha.1] — 2026-11-19
+
+### Fixed
+
+- **A node's label keeps the spaces between its words.** Typing into the
+  Label field of a flowchart node in the inspector dropped every space before
+  the next character arrived, so "I went home" came out as "Iwenthome".
+  Renaming on the canvas and the edge label field were never affected.
+  Thanks to [@a-rastin](https://github.com/a-rastin).
+- **The links in the About dialog are underlined.** They were told apart
+  from the text around them by colour alone, and the accent is too close to
+  the body text for that (2.4:1, where WCAG asks for 3:1).
+
+### Security
+
+- Electron 45.3.3, and current versions of hono and @hono/node-server.
+
+## [1.4.0-alpha.1] — 2026-11-19
+
+### Added
+
+- **A hand for moving the canvas.** One button under the zoom controls swaps
+  the pointer for the hand and back, and the cursor on the canvas follows:
+  the arrow to select, the hand to move the canvas. With the hand a drag pans
+  from anywhere, a box or a line included, and leaves them where they are. V
+  and H pick one from the keyboard, and Space held gives the hand until it is
+  let go. The canvas used to show the hand all the time while a left drag
+  drew a selection, and panning took the middle or right button.
 - **A code signing policy.** [CODE_SIGNING.md](CODE_SIGNING.md) says what
   will be signed (the Windows installer, built by the release workflow and
   nothing else), who approves each signing, and what Archyne sends over the
@@ -56,12 +94,199 @@ CSS class names and internal store shape are _not_ public API.
 
 ### Fixed
 
-- **A class's annotations are split into words again.** The inspector's
-  annotations field split what was typed on the letter "s" rather than on
-  spaces, so `interfaceBlock` became `interface` and `Block`, and
-  `constraintBlock` was cut in three. It splits on whitespace now, and takes
-  off any `<<…>>` or `«…»` typed around a name, which used to be written back
-  doubled.
+- **"In this diagram" lists the icons this diagram uses.** It listed every
+  icon the browser had kept, from every diagram ever opened in it. The rest
+  are under "Imported icons" now, where each can be forgotten — the way to
+  clear out the ones that came out black before imported icons kept their
+  colours, and import them again.
+- **Switching documents no longer empties one, or overwrites it with
+  another.** Opening a document makes it active at once and loads it after;
+  anything that saved in between saved what was on screen into the wrong
+  document. Clicking a tab just after a reload, while the page was still
+  loading, emptied the document being left; clicking through tabs quickly
+  wrote one document's diagram into the next; and text typed in the code
+  editor, read back after a short pause, was saved into whichever document
+  had been opened during the pause. Everything that saves now saves to the
+  document the code was loaded for, and a load or a read-back overtaken by
+  another is dropped.
+- **A connection goes where it is dragged.** Sliding a run kept two corners
+  to hold it and left the rest of the line to be routed again, which it was —
+  differently: on the diagrams shipped here barely half the drags ended with
+  the run where the pointer had left it, and the others bent the far end of
+  the line, sent it through a box, folded it back on itself or moved a
+  neighbour instead. What is kept now is the line as it is drawn, with that
+  one run moved; the corners the router would draw anyway are dropped when
+  the drag ends, by asking the router. And what was put somewhere stays
+  there: the passes that share out a face and separate lines lying together
+  move the other lines, not the one that was placed.
+- **The run a line leaves or arrives on can be dragged**, and takes its end
+  along the face with it, as far as the face goes; past that the line steps
+  out and across. It used to do nothing, or to move the end of a different
+  connection.
+- **Other lines keep off connections routed by hand.** Two connections of
+  one node with corners of their own were left out of the pass that
+  separates lines lying together, so nothing else knew they were there and
+  was drawn on top of them.
+- **An end pinned to a face is reached from the right side.** The corner
+  that pins it was routed to as a leg of its own, with no length: the line
+  arrived from whichever side was nearer and turned straight back, or went
+  round the block to get to where it already was — the tour an imported
+  line took round its own node.
+- **An imported line whose end cannot be met where it was pinned is drawn
+  anyway.** draw.io pins most ends to a point of their box, and some cannot
+  be reached from outside: the far end of a bar the line lies along, the
+  side of an icon whose neighbour stands ten units off. Such a line went
+  through the box it was joining, or reached its pin and turned straight
+  back — 287 of the 1,721 squared connections in the draw.io examples were
+  drawn folded over themselves. One that comes out so is laid again with the
+  face left to the geometry, as it is for any other connection; 20 still
+  fold. The corners in the file are untouched.
+- **A draw.io elbow between two boxes one above the other is a straight
+  line**, as draw.io draws it: the elbow would stand inside both boxes, so
+  there is none. Every device hanging from a bus in a network drawing is
+  such a line, and each used to leave by its device's side and go round to
+  the end of the bar.
+- **A line meets a picture, not the room round it.** A picture node holds
+  its picture, a caption and padding, and is a good deal bigger than what is
+  drawn: lines stopped short of the icon, and an icon just above a bar had
+  no gap left to cross.
+- **A line goes straight through a marker laid on it.** A small node with
+  nothing joined to it — the numbered badge on each line of a drawing — was
+  gone round, which put a hump in every line.
+- **An end's point in a draw.io file is read with its offset**
+  (`exitDx`/`exitDy`, `entryDx`/`entryDy`); without it the line set off from
+  the corner of the box, with a hook.
+- **A draw.io isometric connector is a straight line.** Squared off like
+  the connector styles that do turn corners, the mesh of a WAN drawn with it
+  became a maze of right angles round every router.
+- **Lines leaving one point of a box leave it together.** A trunk out of a
+  switch is several lines pinned to one point; their starts were pushed a
+  head's width apart and each stepped back to the shared corner, a comb
+  where draw.io has one line. Where lines arrive they are still kept apart,
+  so that no arrowhead hides another.
+- **Lines pinned to one point of a box arrive as one trunk with one
+  arrowhead**, as draw.io draws them. They used to be parted a head's width
+  each, and stepped off the trunk to do it.
+- **Auto-layout keeps the lines it placed the boxes for.** The hierarchical
+  arrangement works out where every line goes as well as where every box
+  stands, and leaves room between the boxes for those lines; the lines were
+  then thrown away and routed afresh, took the shortest way between the boxes
+  as placed, and ran down one another's lanes. They are kept now, as each
+  connection's corners, and given twice the room they had: in an
+  order-handling flow of eight subgraphs the crossings went from six to one.
+  The arrangements that place boxes without routing lines (compact, tree,
+  organic) are routed as before.
+- **Arranging a large drawing no longer holds the window still.** Automatic
+  draws the file in every arrangement and judges each; the judging compared
+  every run of every line with every run of every other, and took the second
+  line apart again for each run of the first — fifty-three seconds on a
+  drawing of 135 boxes, the window frozen for up to fifteen at a time. It
+  takes six now, and the notice that it is working is in the middle of the
+  canvas rather than along its foot, where it went unseen.
+- **An imported icon keeps its colours.** Icons that paint their shapes from
+  a `style` attribute — Inkscape's, and Microsoft's Azure set — lost it to
+  the cleaning every imported SVG goes through, and came out as black
+  silhouettes. What the style says about paint is now kept, as attributes.
+  Icons imported before this have to be imported again.
+- **Captions in the import preview can be read in the dark theme.** Words
+  standing on a pale box keep the dark colour they were given; whether a
+  word stands on one was asked of the open document rather than of the
+  drawing being previewed, so in the preview every caption was turned pale
+  for the dark canvas and vanished on the box under it.
+- **Two boxes in neighbouring rows are joined across the gap between them**
+  however far aside they stand. With less than two stubs between the faces
+  the line went down past the lower box's head and came back up to it.
+- **Moving a node keeps a routed line square.** Each corner was carried its
+  own fraction of the way, so a level run came back as a step; the corners
+  of one run now move together, and the run in line with a box goes with it.
+- **A draw.io drawing is read as a flowchart**, cloud stencils or not.
+  Drawings made of AWS, Azure, GCP or Cisco stencils used to go to
+  `architecture-beta`, which lays the services out afresh and lost every
+  container, caption and position; one Cisco icon in a PESTEL table was
+  enough to send the whole page there. As a flowchart each keeps its layout
+  and draws its stencils as pictures. Architecture is still in the import
+  dialog for anyone who wants it.
+- **Pictures from the web in an imported drawing are drawn, on the
+  desktop.** draw.io shapes can be any image online — iconfinder, Wikimedia,
+  a vendor's site — and the app loads images from a short list of hosts
+  only, so each was an empty box. The desktop app now fetches them once, at
+  import, and carries them in the diagram as data: it draws offline, and
+  opening it later reaches nobody. The import dialog says how many came
+  across and how many could not be fetched. In a browser they stay links.
+- **draw.io's library shapes are drawn as draw.io draws them.** A Cisco
+  router, an AWS service, a network switch or a BPMN symbol is a stencil: a
+  small drawing program in draw.io's library, which the file only names.
+  Importing now fetches draw.io's stencil library from draw.io's own
+  repository, at a pinned version, and runs each stencil the file uses in
+  the cell's own colours, as an SVG carried in the diagram. Nothing is
+  matched by name: every library is drawn the same way. The library is not
+  part of Archyne (it carries terms of its own) and is read as data, never
+  run. Offline, or for a shape draw.io draws in code rather than from a
+  stencil, it comes across as draw.io itself falls back to: a box in the
+  cell's own colours.
+- **A container's name sits where draw.io put it**: under the room, in the
+  bottom corner of a namespace, beside a rack shelf. Words set over a
+  picture — the numbered badges of a reference architecture — stay on it.
+- **Lines drawn freehand end where they were drawn.** A network's bus bar
+  and the drops onto it were tied to the room around them and routed to its
+  edge, into a tangle; they now meet at the point drawn. Connections routed
+  by hand out of the same node — a switch's rail past every device in its
+  rack — share their trunk instead of fanning apart.
+- **More of a draw.io home network comes across as drawn.** A device with
+  a logo on its screen is a device, not an empty box round the logo; a
+  draw.io group is never painted; a turned triangle — a house's roof —
+  points the way it was turned; and a picture that cannot be
+  loaded leaves its space blank instead of a broken-image mark.
+- **A file opens fitted to the window.** The canvas fitted itself once, when
+  it first appeared, so a file opened after that came up at full size
+  wherever the last one had been left — a corner of an imported page, cut
+  off at every edge.
+- **An imported drawing reads in the dark theme.** draw.io drawings are made
+  on a white page: words standing on the canvas in a dark colour are drawn
+  in the theme's colour instead (on the canvas only — the file keeps its
+  colours), and a room or subnet drawn see-through takes the colour it had
+  on white, instead of letting the dark through and going muddy.
+- **The canvas zooms out far enough to fit a whole imported page.** It
+  stopped at half size, so a tall draw.io page with one label far below the
+  rest was "fitted" onto the empty space in between, and showed nothing.
+- **Words draw.io sets beside a shape stand beside it**: a rack's servers,
+  fifteen units tall with their names on the right, had each name laid on
+  the server below.
+- **Connections go round pictures.** A node drawn as a picture has no fill
+  and no stroke, and was taken for a caption the router may cross: a line
+  from an API gateway ran straight through the icon of the service beside it.
+- **A quoted word in a label shows its quotes.** Mermaid's parser hands a
+  `#quot;` back as an internal placeholder, and the canvas drew that:
+  `ﬂ°quot¶ßLogin failedﬂ°quot¶ß`.
+- **A box lying across a container it is not in is drawn on top of it.** In
+  draw.io's activity example "Invoice" sits across the line between two
+  swimlanes; it was imported, and hidden under both lanes' fill. Connections
+  between such boxes were hidden the same way.
+- **A draw.io import looks much more like the drawing**, checked side by side
+  against draw.io's own rendering of all 73 of its published examples:
+  - **The words are set as they were**: type size, bold and italic, left or
+    top alignment, see-through text, and the colour the label's own HTML
+    gives — the org chart's names were white on pale grey, because only the
+    style's colour was read. A large heading stays on one line.
+  - **Connections keep their line**: straight where draw.io drew them
+    straight, curved where curved, and a sequence diagram's messages level
+    between their bars. An org chart's elbows leave and arrive along the
+    rail they were drawn on. A direct line leaves its node from the point
+    draw.io pinned it to, with no step out of the face first — stepped out
+    square, every line from a home network's mesh router started with a
+    hook, and `curved` lines (straight in draw.io when they have no points)
+    came out as S-bends.
+  - **Shapes keep their outline**: BPMN events, gateways and end events,
+    UML actors, the X ending a lifeline. A shape with its words beside it
+    has them beside it, not crammed inside and cut off. A vendor icon is an
+    icon in its own colour rather than a solid block, and a `line` is a
+    rule, not an empty box. A circle with words on it stays a circle.
+  - **Colours resolve**: see-through fills, a fill of `swimlane` taken from
+    the column it sits in, and `%status%`-style placeholders filled in.
+  - **The words at a connection's ends** — a UML association's `0..1` — join
+    its label instead of floating as nodes of their own.
+  - A border drawn heavy in the diagram is heavy on the canvas and in SVG
+    export.
 
 ## [1.3.0-alpha.1] — 2026-10-26
 
