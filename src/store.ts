@@ -2143,8 +2143,12 @@ export const useGraphStore = create<GraphState>((set, get) => {
       const newNodes = clipboard.nodes.map((n) => {
         const id = uniquify(n.id);
         idMap.set(n.id, id);
+        const copy = structuredClone(n);
+        // A requirement's name is its id: the copy is saved as `speed_2`,
+        // so it has to be shown as that too, not as the `speed` it came from.
+        if (copy.type === "requirement") copy.data.label = id;
         return {
-          ...structuredClone(n),
+          ...copy,
           id,
           parentId: undefined,
           extent: undefined,
@@ -2607,8 +2611,11 @@ export const useGraphStore = create<GraphState>((set, get) => {
       let i = 2;
       let newId = `${id}_${i}`;
       while (taken.has(newId)) newId = `${id}_${++i}`;
+      const clone = structuredClone(node);
+      // As in `pasteClipboard`: a requirement is named by its id.
+      if (clone.type === "requirement") clone.data.label = newId;
       const copy: AnyNode = {
-        ...structuredClone(node),
+        ...clone,
         id: newId,
         selected: true,
         position: {

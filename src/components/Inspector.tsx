@@ -622,7 +622,15 @@ function NodeFields({ node }: { node: AnyNode }) {
               // so it changes once, not on every keystroke.
               key={`name-${node.id}`}
               defaultValue={d.label}
-              onBlur={(e) => updateNodeData(node.id, { label: e.target.value })}
+              onBlur={(e) => {
+                updateNodeData(node.id, { label: e.target.value });
+                // A refused rename — empty, or a name already taken — leaves
+                // the node as it was, and with it this field's key, so the
+                // field would keep showing the name that was not taken. A
+                // rename that went through changes the id and remounts it.
+                const kept = useGraphStore.getState().nodes.find((n) => n.id === node.id);
+                if (kept) e.target.value = String(kept.data.label);
+              }}
             />
           </label>
           <label>

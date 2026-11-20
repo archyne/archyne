@@ -562,6 +562,16 @@ describe("requirement diagram (SysML)", () => {
     expect(g2.nodes.map((n) => n.id).sort()).toEqual(["ECU v2", "REQ-1.2 speed"]);
   });
 
+  it("quotes names that are keywords, in any case", async () => {
+    const names = ["risk", "Test", "element", "LOW", "satisfies", "classDef", "docRef"];
+    const code = `requirementDiagram\n${names
+      .map((n) => `  requirement "${n}" {\n  }`)
+      .join("\n")}\n  "risk" - traces -> "Test"\n  style "LOW" fill:#f96\n`;
+    const { g2 } = await roundTrip(code, "requirement");
+    expect(g2.nodes.map((n) => n.id).sort()).toEqual([...names].sort());
+    expect(g2.edges).toHaveLength(1);
+  });
+
   it("draws relationships as SysML does", async () => {
     const g = await parseDiagram(REQ);
     const satisfies = g.edges.find((e) => e.data?.req?.rel === "satisfies");

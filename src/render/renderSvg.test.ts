@@ -554,4 +554,28 @@ describe("a SysML requirement", () => {
     expect(idRow?.textContent).toBe("Id: R-1");
     expect(idRow?.getAttribute("opacity")).toBeNull();
   });
+
+  it("puts the next row below a row that wrapped, not over it", () => {
+    // A box narrowed by hand wraps a long Text row; the Risk row has to
+    // start under its last line.
+    const node = {
+      id: "speed",
+      type: "requirement",
+      position: { x: 0, y: 0 },
+      style: { width: 180, height: 200 },
+      data: {
+        label: "speed",
+        reqType: "requirement",
+        text: "The drone shall reach its cruising speed within ten seconds of take-off",
+        risk: "High",
+        direction: "TB",
+      },
+    } as unknown as AnyNode;
+    const lines = [...parse(renderSvg([node], [], "requirement")).querySelectorAll("tspan[y]")];
+    const ys = lines.map((t) => Number(t.getAttribute("y")));
+    const risk = lines.findIndex((t) => t.textContent?.startsWith("Risk:"));
+    const text = lines.findIndex((t) => t.textContent?.startsWith("Text:"));
+    expect(risk - text).toBeGreaterThan(1); // the Text row did wrap
+    expect(ys[risk]).toBeGreaterThan(ys[risk - 1] + 10);
+  });
 });

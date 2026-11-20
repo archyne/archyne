@@ -712,4 +712,20 @@ describe("requirement diagrams (SysML)", () => {
     expect(added?.data).toMatchObject({ reqType: "performanceRequirement" });
     expect(useGraphStore.getState().code).toContain("performanceRequirement Requirement1 {");
   });
+
+  it("names a duplicated or pasted requirement by its new id", async () => {
+    // The copy is saved under its new id, so showing the old name would
+    // change what the canvas says the next time the file is opened.
+    await load(REQS);
+    useGraphStore.getState().duplicateNode("speed");
+    let copy = useGraphStore.getState().nodes.find((n) => n.id === "speed_2");
+    expect(copy?.data.label).toBe("speed_2");
+
+    useGraphStore.getState().selectAll();
+    useGraphStore.getState().copySelection();
+    useGraphStore.getState().pasteClipboard();
+    copy = useGraphStore.getState().nodes.find((n) => n.id === "brake_2");
+    expect(copy?.data.label).toBe("brake_2");
+    expect(useGraphStore.getState().code).toContain("requirement brake_2 {");
+  });
 });
