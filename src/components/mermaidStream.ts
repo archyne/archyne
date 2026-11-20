@@ -2,7 +2,7 @@ import { StreamLanguage } from "@codemirror/language";
 
 /**
  * Fallback highlighter for the mermaid dialects codemirror-lang-mermaid
- * doesn't know (state, ER, class, architecture-beta, C4): a lightweight
+ * doesn't know (state, ER, class, architecture-beta, C4, requirement): a lightweight
  * stream tokenizer over keywords, strings, comments and edge operators.
  */
 const KEYWORDS = new RegExp(
@@ -69,6 +69,28 @@ const KEYWORDS = new RegExp(
       "Rel_L",
       "Rel_R",
       "Rel",
+      // requirement (SysML)
+      "requirementDiagram",
+      "functionalRequirement",
+      "interfaceRequirement",
+      "performanceRequirement",
+      "physicalRequirement",
+      "designConstraint",
+      "requirement",
+      "element",
+      "verifymethod",
+      "docref",
+      "risk",
+      "id",
+      "text",
+      "type",
+      "contains",
+      "copies",
+      "derives",
+      "satisfies",
+      "verifies",
+      "refines",
+      "traces",
     ].join("|") +
     ")\\b",
 );

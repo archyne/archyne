@@ -24,6 +24,37 @@ itself ships, the following count as the public API for semver purposes:
 Breaking any of those requires a major version. The React component structure,
 CSS class names and internal store shape are _not_ public API.
 
+## [Unreleased]
+
+### Added
+
+- **SysML requirement diagrams.** `requirementDiagram` — the one part of
+  SysML that Mermaid draws natively — is now an editable family like the UML
+  ones, where it used to open read-only. Requirements of all six kinds and the
+  elements that answer them come from the palette; the inspector edits a
+  requirement's id, text, risk and verification method, an element's type and
+  document reference, and which of the seven relationships a connection is.
+  The relationship is drawn on the line in guillemets, dashed with an open
+  head, and containment as a solid line with a crosshair at the container. In
+  this syntax a requirement's name is its identifier, so renaming one renames
+  every relationship that points at it, and a name another requirement already
+  has is refused rather than silently merging the two. Each field is a
+  `Label: value` row with the label set back in a muted colour, so the value
+  reads first. Exported SVG draws them too.
+- **Four SysML templates**, all of one small drone so that they read as one
+  model: its requirements, a block definition diagram (a class diagram of
+  «block»s with parts, values and ports), a state machine of its operating
+  modes, and the activity of a mission.
+
+### Fixed
+
+- **A class's annotations are split into words again.** The inspector's
+  annotations field split what was typed on the letter "s" rather than on
+  spaces, so `interfaceBlock` became `interface` and `Block`, and
+  `constraintBlock` was cut in three. It splits on whitespace now, and takes
+  off any `<<…>>` or `«…»` typed around a name, which used to be written back
+  doubled.
+
 ## [1.4.1-alpha.1] — 2026-11-19
 
 ### Fixed

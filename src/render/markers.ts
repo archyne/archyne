@@ -145,6 +145,25 @@ export const MARKERS: MarkerSpec[] = [
     ],
   },
   {
+    // SysML containment: a circle with a cross in it, at the container's end.
+    // Hollow rather than open, so the line it sits on does not show through.
+    id: "req-contains",
+    viewBox: "0 0 16 16",
+    refX: 15,
+    refY: 8,
+    width: 16,
+    height: 16,
+    ink: [
+      {
+        d: "M1,8 a7,7 0 1 0 14,0 a7,7 0 1 0 -14,0 Z",
+        fill: "hollow",
+        stroke: true,
+        width: 1.2,
+      },
+      { d: "M1,8 L15,8 M8,1 L8,15", fill: "none", stroke: true, width: 1.2 },
+    ],
+  },
+  {
     // The plain arrowhead a flowchart, state, C4 or architecture edge ends in.
     // The canvas gets this one from React Flow's own `MarkerType.ArrowClosed`,
     // which generates it into the live document — so it has no entry in

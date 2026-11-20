@@ -56,6 +56,7 @@ const HEADERS: Array<[RegExp, string]> = [
   [/^classDiagram(-v2)?\b/, "class"],
   [/^architecture-beta\b/, "architecture"],
   [/^C4(Context|Container|Component|Dynamic|Deployment)\b/, "c4"],
+  [/^requirementDiagram\b/, "requirement"],
 ];
 
 function familyOf(header: string): string {

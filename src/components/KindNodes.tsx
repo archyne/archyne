@@ -1,6 +1,7 @@
 import { type NodeProps } from "@xyflow/react";
 import { Label } from "./Label";
-import type { ClassNode, EntityNode, StateNode } from "../model/types";
+import type { ClassNode, EntityNode, RequirementNode, StateNode } from "../model/types";
+import { requirementRows } from "../model/types";
 import { NodeResize } from "./NodeResize";
 import { useSized } from "./useSized";
 
@@ -154,6 +155,44 @@ export function ClassNodeView({ id, data, selected }: NodeProps<ClassNode>) {
           {data.methods.map((m, i) => (
             <div key={i} className="table-row mono">
               {m}
+            </div>
+          ))}
+        </div>
+      )}
+      <SideHandles />
+    </SizedBox>
+  );
+}
+
+/**
+ * A SysML requirement or element, drawn as SysML draws it: the kind in
+ * guillemets over the name, and the fields beneath as `Label: value` rows.
+ *
+ * The labels stay in English on purpose. They are SysML's own vocabulary —
+ * `Id`, `Text`, `Risk` — as mermaid draws them in every rendering of the
+ * same file, and an export that changed its words with the editor's locale
+ * would disagree with the diagram everyone else sees.
+ */
+export function RequirementNodeView({ id, data, selected }: NodeProps<RequirementNode>) {
+  // The name only: renaming one renames it everywhere it is referred to,
+  // which the store does when the edit is committed.
+  const rename = useRename(id, data.label, { multiline: false });
+  const rows = requirementRows(data);
+  return (
+    <SizedBox id={id} className="table-node" selected={selected} styles={data.styles}>
+      <div className="table-title" onDoubleClick={rename.begin}>
+        <div className="class-annotation">«{data.reqType}»</div>
+        {rename.editing ? rename.field : <Label text={data.label} />}
+      </div>
+      {rows.length > 0 && (
+        <div className="table-rows">
+          {rows.map(([k, v]) => (
+            <div key={k} className="table-row">
+              {/* One flex child, not two: a second would add the row's gap
+                  and the line would no longer be the width measured for it. */}
+              <span>
+                <span className="req-key">{k}:</span> {v}
+              </span>
             </div>
           ))}
         </div>

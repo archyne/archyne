@@ -26,6 +26,7 @@ import { parseClass, serializeClass } from "./kinds/cls";
 import { parseSequence, serializeSequence } from "./kinds/sequence";
 import { parseArchitecture, serializeArchitecture } from "./kinds/architecture";
 import { parseC4, serializeC4 } from "./kinds/c4";
+import { parseRequirement, serializeRequirement } from "./kinds/requirement";
 import { positionsLine, type PositionMap } from "./positions";
 
 /**
@@ -40,7 +41,7 @@ import { positionsLine, type PositionMap } from "./positions";
 export class UnsupportedDiagramError extends Error {
   constructor(readonly diagramType: string) {
     super(
-      `Unsupported diagram type "${diagramType}". Visual editing supports: flowchart, stateDiagram-v2, erDiagram, classDiagram, sequenceDiagram, architecture-beta, C4.`,
+      `Unsupported diagram type "${diagramType}". Visual editing supports: flowchart, stateDiagram-v2, erDiagram, classDiagram, sequenceDiagram, architecture-beta, C4, requirementDiagram.`,
     );
     this.name = "UnsupportedDiagramError";
   }
@@ -53,7 +54,7 @@ export interface ParsedDiagram {
   /** Bare nodes at (0,0); the store assigns positions. */
   nodes: AnyNode[];
   edges: FlowEdge[];
-  /** classDef definitions (flowchart only). */
+  /** classDef definitions (flowchart and requirement). */
   classDefs: ClassDefs;
   /** Non-fatal notice, e.g. constructs the canvas cannot edit yet. */
   warning?: string;
@@ -114,6 +115,9 @@ async function parseDiagramLocked(
   } else if (type === "c4") {
     kind = "c4";
     parsed = parseC4(db);
+  } else if (type === "requirement" || type.startsWith("requirementDiagram")) {
+    kind = "requirement";
+    parsed = parseRequirement(db);
   } else {
     throw new UnsupportedDiagramError(type);
   }
@@ -186,6 +190,9 @@ export function serializeDiagram({
       break;
     case "c4":
       out = serializeC4(nodes, edges, c4Flavor, title);
+      break;
+    case "requirement":
+      out = serializeRequirement(direction, nodes, edges, classDefs);
       break;
   }
   // acc statements are valid right after the header in every kind.
@@ -278,6 +285,23 @@ export function presentEdge(kind: DiagramKind, e: FlowEdge): FlowEdge {
             },
           }
         : {}),
+    };
+  }
+  if (kind === "requirement" && d.req) {
+    // The relationship *is* the label: SysML writes it in guillemets on the
+    // line, and mermaid's syntax has no room for any other text there.
+    const contains = d.req.rel === "contains";
+    return {
+      ...base,
+      label: `«${d.req.rel}»`,
+      style: {
+        stroke: pal.stroke,
+        strokeWidth: 1.5,
+        // Containment is a solid line with a crosshair at the container;
+        // every other relationship is a dashed dependency with an open head.
+        ...(contains ? {} : { strokeDasharray: "6 4" }),
+      },
+      ...(contains ? { markerStart: "req-contains" } : { markerEnd: "seq-open" }),
     };
   }
   if (kind === "sequence" && d.seq) {
@@ -378,5 +402,7 @@ export function defaultEdgeData(kind: DiagramKind): FlowEdgeData {
       };
     case "c4":
       return { label: "Uses", c4: { relType: "rel", techn: "" } };
+    case "requirement":
+      return { label: "", req: { rel: "satisfies" } };
   }
 }

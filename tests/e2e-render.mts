@@ -257,6 +257,39 @@ const FAMILIES: Array<{
     ],
     wants: "Handles settlement",
   },
+  {
+    kind: "requirement",
+    nodes: [
+      node(
+        "speed",
+        "requirement",
+        {
+          label: "speed",
+          reqType: "performanceRequirement",
+          reqId: "R-1",
+          text: "Reach 200 km/h",
+          direction: "TB",
+        },
+        0,
+      ),
+      node(
+        "engine",
+        "requirement",
+        { label: "engine", reqType: "element", direction: "TB" },
+        200,
+      ),
+    ],
+    edges: [
+      {
+        id: "r1",
+        source: "engine",
+        target: "speed",
+        markerEnd: "seq-open",
+        data: { label: "", req: { rel: "satisfies" } },
+      },
+    ],
+    wants: "Text: Reach 200 km/h",
+  },
 ];
 
 for (const family of FAMILIES) {

@@ -23,6 +23,7 @@ import type {
   NodeSeed,
   NoteNode,
   ParticipantNode,
+  RequirementNode,
   ServiceNode,
   ShapeNode,
   StateNode,
@@ -315,7 +316,64 @@ export const NEW_DIAGRAM: Record<DiagramKind, string> = {
   architecture:
     "architecture-beta\n  group vpc(cloud)[VPC]\n  service web(internet)[Web] in vpc\n  service db(database)[Database] in vpc\n\n  web:R --> L:db\n",
   c4: 'C4Context\n  title System Context\n  Person(user, "User")\n  System(app, "Application")\n\n  Rel(user, app, "Uses")\n',
+  requirement:
+    'requirementDiagram\n  requirement Need {\n    id: "1"\n    text: "The system shall do one thing."\n  }\n  element Design {\n    type: "block"\n  }\n\n  Design - satisfies -> Need\n',
 };
+
+/**
+ * A requirement's name as it can be written back: on one line, and with no
+ * double quote, which a quoted name in `requirementDiagram` cannot escape.
+ */
+function requirementName(label: string): string {
+  return label
+    .replace(/"/g, "'")
+    .replace(/\s*\n\s*/g, " ")
+    .trim();
+}
+
+/**
+ * Renames that change a requirement's identity, applied to the graph.
+ *
+ * In `requirementDiagram` the name is the identifier — there is no alias, as
+ * there is for a class or a state — so a requirement renamed on the canvas has
+ * to be renamed everywhere it is referred to, or the next save writes the
+ * relationships against a name that no longer exists. A name that is empty or
+ * already taken is refused rather than merged: two requirements with one name
+ * are one requirement to mermaid.
+ */
+export function renameRequirements(
+  nodes: AnyNode[],
+  edges: FlowEdge[],
+  renames: Array<[string, string]>,
+): { nodes: AnyNode[]; edges: FlowEdge[] } {
+  const map = new Map<string, string>();
+  const taken = new Set(nodes.map((n) => n.id));
+  for (const [from, label] of renames) {
+    const to = requirementName(label);
+    if (to === from) continue;
+    if (!to || taken.has(to)) {
+      map.set(from, from);
+      continue;
+    }
+    taken.delete(from);
+    taken.add(to);
+    map.set(from, to);
+  }
+  if (map.size === 0) return { nodes, edges };
+  const to = (id: string) => map.get(id) ?? id;
+  return {
+    nodes: nodes.map((n) =>
+      n.type === "requirement" && map.has(n.id)
+        ? ({ ...n, id: to(n.id), data: { ...n.data, label: to(n.id) } } as AnyNode)
+        : n,
+    ),
+    edges: edges.map((e) =>
+      map.has(e.source) || map.has(e.target)
+        ? { ...e, source: to(e.source), target: to(e.target) }
+        : e,
+    ),
+  };
+}
 
 export interface GraphState {
   code: string;
@@ -1691,6 +1749,19 @@ export const useGraphStore = create<GraphState>((set, get) => {
             data: {},
           } satisfies JunctionNode;
           break;
+        case "requirement": {
+          const element = seed.reqType === "element";
+          const id = freshId(element ? "Element" : "Requirement");
+          node = {
+            id,
+            type: "requirement",
+            position,
+            data: element
+              ? { label: id, reqType: "element", elementType: "block", direction }
+              : { label: id, reqType: seed.reqType, text: "The system shall …", direction },
+          } satisfies RequirementNode;
+          break;
+        }
         case "c4": {
           const id = freshId("el");
           node = {
@@ -1750,12 +1821,18 @@ export const useGraphStore = create<GraphState>((set, get) => {
       const key = opts?.burst ? `${[...byId.keys()].join(",")}:${opts.burst}` : null;
       const joins = key !== null && lastBurst?.key === key && now - lastBurst.at < 900;
       lastBurst = key ? { key, at: now } : null;
-      set({
-        nodes: get().nodes.map((n) => {
-          const patch = byId.get(n.id);
-          return patch ? ({ ...n, data: { ...n.data, ...patch } } as AnyNode) : n;
-        }),
+      let nodes = get().nodes.map((n) => {
+        const patch = byId.get(n.id);
+        return patch ? ({ ...n, data: { ...n.data, ...patch } } as AnyNode) : n;
       });
+      let edges = get().edges;
+      if (get().kind === "requirement") {
+        const renames = patches.flatMap(([id, patch]): Array<[string, string]> =>
+          typeof patch.label === "string" ? [[id, patch.label]] : [],
+        );
+        ({ nodes, edges } = renameRequirements(nodes, edges, renames));
+      }
+      set({ nodes, edges });
       regenerate({ record: !joins });
     },
 

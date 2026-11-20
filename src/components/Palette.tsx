@@ -3,7 +3,7 @@ import { useGraphStore } from "../store";
 import { ACTOR_PATH } from "./ActorGlyph";
 import { ImportIcon } from "./ImportIcon";
 import { useIconPrefs } from "../iconPrefs";
-import { SHAPES, type NodeSeed, type Shape } from "../model/types";
+import { REQ_TYPES, SHAPES, type NodeSeed, type Shape } from "../model/types";
 import { BUILTIN_ICON_NAMES, ICON_COLLECTIONS, iconsByPrefix, searchIcons } from "../icons";
 import { useAddNodeAtCenter } from "../placement";
 import { COMMON_ICONS } from "../iconSuggestions";
@@ -201,6 +201,22 @@ const C4_ITEMS: Item[] = [
     preview: "M8,4 h36 v16 h-36 Z M4,8 h8 M4,14 h8",
   },
 ];
+
+/**
+ * The SysML requirement kinds, and the element that answers them. Each kind is
+ * a box with a title band; a design constraint is marked by a bar across the
+ * top, an element by its missing rows — enough to tell them apart at 48×24.
+ */
+const REQ_ITEMS: Item[] = REQ_TYPES.map((reqType) => ({
+  labelKey: `req.${reqType}` as MessageKey,
+  seed: { type: "requirement", reqType },
+  preview:
+    reqType === "element"
+      ? "M2,4 h44 v16 h-44 Z M2,11 h44"
+      : reqType === "designConstraint"
+        ? "M2,2 h44 v20 h-44 Z M2,8 h44 M6,13 h28 M6,17 h20 M2,5 h44"
+        : "M2,2 h44 v20 h-44 Z M2,8 h44 M6,13 h28 M6,17 h20",
+}));
 
 const SEQ_ITEMS: Item[] = [
   {
@@ -632,7 +648,9 @@ export function Palette() {
             ? CLASS_ITEMS
             : kind === "c4"
               ? C4_ITEMS
-              : SEQ_ITEMS;
+              : kind === "requirement"
+                ? REQ_ITEMS
+                : SEQ_ITEMS;
 
   const groupLabel =
     kind === "flowchart"

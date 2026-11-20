@@ -160,6 +160,43 @@ export const EXAMPLES: Record<
   Rel(lib, mail, "Sends reminders via")`,
     marks: ["Catalogue", "Reader"],
   },
+  requirement: {
+    document: `requirementDiagram
+  requirement brew_time {
+    id: "K-1"
+    text: "The kettle shall boil one litre in under three minutes."
+    risk: medium
+    verifymethod: test
+  }
+  element heater {
+    type: "block"
+  }
+  heater - satisfies -> brew_time`,
+    request: "add a derived safety requirement for automatic shut-off, verified by a test case",
+    answer: `requirementDiagram
+  requirement brew_time {
+    id: "K-1"
+    text: "The kettle shall boil one litre in under three minutes."
+    risk: medium
+    verifymethod: test
+  }
+  functionalRequirement auto_off {
+    id: "K-2"
+    text: "The kettle shall switch off when it boils dry."
+    risk: high
+    verifymethod: test
+  }
+  element heater {
+    type: "block"
+  }
+  element dry_boil_test {
+    type: "test case"
+  }
+  heater - satisfies -> brew_time
+  auto_off - derives -> brew_time
+  dry_boil_test - verifies -> auto_off`,
+    marks: ["brew_time", "heater"],
+  },
 };
 
 /**

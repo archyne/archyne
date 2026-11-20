@@ -23,6 +23,7 @@ const DEFAULT_SEED: Record<DiagramKind, NodeSeed> = {
   sequence: { type: "participant", ptype: "participant" },
   architecture: { type: "service", icon: "server" },
   c4: { type: "c4", c4Shape: "system" },
+  requirement: { type: "requirement", reqType: "requirement" },
 };
 
 /**

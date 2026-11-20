@@ -38,6 +38,7 @@ const KINDS: DiagramKind[] = [
   "sequence",
   "architecture",
   "c4",
+  "requirement",
 ];
 
 export function Toolbar() {

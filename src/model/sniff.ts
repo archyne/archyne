@@ -20,6 +20,7 @@ const HEADERS: Array<[RegExp, DiagramKind]> = [
   [/^classDiagram(-v2)?\b/, "class"],
   [/^erDiagram\b/, "er"],
   [/^C4(Context|Container|Component|Dynamic|Deployment)\b/, "c4"],
+  [/^requirementDiagram\b/, "requirement"],
   [/^(flowchart|graph)\b/, "flowchart"],
 ];
 

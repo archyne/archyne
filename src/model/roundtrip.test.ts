@@ -244,6 +244,7 @@ describe("positions sidecar", () => {
       FLOW,
       "stateDiagram-v2\n  a --> b\n",
       'erDiagram\n  A ||--|| B : "x"\n',
+      "requirementDiagram\n  requirement a {\n  }\n",
     ]) {
       const withPos = patchPositions(code, { a: { x: 1, y: 2 } });
       await expect(parseDiagram(withPos)).resolves.toBeTruthy();
@@ -451,6 +452,128 @@ describe("c4 diagram", () => {
   });
 });
 
+describe("requirement diagram (SysML)", () => {
+  // Written exactly as the serializer writes it, so the round-trip can be
+  // asserted byte for byte rather than structure by structure.
+  const REQ = `requirementDiagram
+  direction LR
+  requirement "Top speed" {
+    id: "1.1"
+    text: "The vehicle shall reach 200 km/h: on a flat road, unloaded."
+    risk: high
+    verifymethod: test
+  }
+  functionalRequirement brake {
+    id: "2"
+    text: "The vehicle shall stop."
+    risk: medium
+    verifymethod: inspection
+  }
+  designConstraint mass {
+  }
+  element engine {
+    type: "block"
+    docref: "docs/engine.md"
+  }
+  element bench_test {
+    type: "test case"
+  }
+
+  engine - satisfies -> "Top speed"
+  brake - derives -> "Top speed"
+  "Top speed" - contains -> mass
+  bench_test - verifies -> brake
+
+  classDef hot fill:#f96
+  class brake hot
+  style engine fill:#9cf,stroke:#333
+`;
+
+  it("parses requirements, elements and their fields", async () => {
+    const g = await parseDiagram(REQ);
+    expect(g.kind).toBe("requirement");
+    expect(g.direction).toBe("LR");
+    const byId = Object.fromEntries(g.nodes.map((n) => [n.id, n]));
+    expect(byId["Top speed"]?.data).toMatchObject({
+      label: "Top speed",
+      reqType: "requirement",
+      reqId: "1.1",
+      risk: "High",
+      verifyMethod: "Test",
+    });
+    expect(byId.brake?.data).toMatchObject({
+      reqType: "functionalRequirement",
+      classes: ["hot"],
+    });
+    expect(byId.mass?.data).toMatchObject({ reqType: "designConstraint" });
+    expect(byId.mass?.data).not.toHaveProperty("risk");
+    expect(byId.engine?.data).toMatchObject({
+      reqType: "element",
+      elementType: "block",
+      docRef: "docs/engine.md",
+      styles: ["fill:#9cf", "stroke:#333"],
+    });
+    const rels = g.edges.map((e) => [e.source, e.data?.req?.rel, e.target]);
+    expect(rels).toContainEqual(["engine", "satisfies", "Top speed"]);
+    expect(rels).toContainEqual(["Top speed", "contains", "mass"]);
+  });
+
+  it("keeps a class's colours on the class, not on its members", async () => {
+    // mermaid folds `hot`'s fill into the node's own style list; read back
+    // naively, the node would grow a `style brake fill:#f96` line of its own.
+    const g = await parseDiagram(REQ);
+    expect(g.classDefs).toEqual({ hot: ["fill:#f96"] });
+    const brake = g.nodes.find((n) => n.id === "brake");
+    expect(brake?.data).not.toHaveProperty("styles");
+  });
+
+  it("round-trips byte for byte", async () => {
+    const g = await parseDiagram(REQ);
+    const out = serializeDiagram({
+      kind: g.kind,
+      direction: g.direction,
+      nodes: g.nodes,
+      edges: g.edges,
+      classDefs: g.classDefs,
+    });
+    expect(out).toBe(REQ);
+  });
+
+  it("round-trips the relationship types", async () => {
+    const rels = [
+      "contains",
+      "copies",
+      "derives",
+      "satisfies",
+      "verifies",
+      "refines",
+      "traces",
+    ];
+    const code = `requirementDiagram\n  requirement a {\n  }\n  requirement b {\n  }\n${rels
+      .map((r) => `  a - ${r} -> b`)
+      .join("\n")}\n`;
+    const { g2 } = await roundTrip(code, "requirement");
+    expect(g2.edges.map((e) => e.data?.req?.rel)).toEqual(rels);
+  });
+
+  it("quotes names the syntax cannot take bare", async () => {
+    const code = `requirementDiagram\n  requirement "REQ-1.2 speed" {\n  }\n  element "ECU v2" {\n  }\n  "ECU v2" - satisfies -> "REQ-1.2 speed"\n`;
+    const { g2 } = await roundTrip(code, "requirement");
+    expect(g2.nodes.map((n) => n.id).sort()).toEqual(["ECU v2", "REQ-1.2 speed"]);
+  });
+
+  it("draws relationships as SysML does", async () => {
+    const g = await parseDiagram(REQ);
+    const satisfies = g.edges.find((e) => e.data?.req?.rel === "satisfies");
+    const contains = g.edges.find((e) => e.data?.req?.rel === "contains");
+    expect(satisfies?.label).toBe("«satisfies»");
+    expect(satisfies?.markerEnd).toBe("seq-open");
+    expect(satisfies?.style?.strokeDasharray).toBeTruthy();
+    expect(contains?.markerStart).toBe("req-contains");
+    expect(contains?.style?.strokeDasharray).toBeUndefined();
+  });
+});
+
 describe("recovered constructs", () => {
   it("flowchart: double-headed arrows round-trip", async () => {
     const g1 = await parseDiagram("flowchart LR\n  a <--> b\n  c x--x d\n  e o--o f\n");
@@ -631,6 +754,7 @@ describe("accessibility metadata", () => {
       "flowchart TD\n  a --> b",
       "stateDiagram-v2\n  a --> b",
       "architecture-beta\n  service a(cloud)[A]",
+      "requirementDiagram\n  requirement a {\n  }",
     ]) {
       const g1 = await parseDiagram(
         `${header.split("\n")[0]}\n  accTitle: My title\n  accDescr: My description\n${header.split("\n").slice(1).join("\n")}\n`,

@@ -4,7 +4,7 @@ import type { NodeStyle } from "./nodeStyle";
 
 /** Diagram families the editor supports on the shared canvas. */
 export type DiagramKind =
-  "flowchart" | "state" | "er" | "class" | "sequence" | "architecture" | "c4";
+  "flowchart" | "state" | "er" | "class" | "sequence" | "architecture" | "c4" | "requirement";
 
 /** Mermaid direction. */
 export type Direction = "TD" | "TB" | "LR" | "RL" | "BT";
@@ -322,6 +322,94 @@ export interface C4EdgeInfo {
   techn: string;
 }
 
+/**
+ * The SysML requirement family, as mermaid's `requirementDiagram` writes it.
+ *
+ * The six requirement kinds are named by the keyword that opens their block,
+ * not by the "Functional Requirement" mermaid reports them as, so the value is
+ * what gets written back. `element` is the seventh: the model element a
+ * requirement is satisfied, verified or traced by — a SysML block, a test case,
+ * a simulation.
+ */
+export const REQ_TYPES = [
+  "requirement",
+  "functionalRequirement",
+  "interfaceRequirement",
+  "performanceRequirement",
+  "physicalRequirement",
+  "designConstraint",
+  "element",
+] as const;
+export type ReqType = (typeof REQ_TYPES)[number];
+
+export const REQ_RISKS = ["Low", "Medium", "High"] as const;
+export type ReqRisk = (typeof REQ_RISKS)[number];
+
+export const REQ_VERIFY = ["Analysis", "Demonstration", "Inspection", "Test"] as const;
+export type ReqVerify = (typeof REQ_VERIFY)[number];
+
+/** The relationships SysML draws between requirements and what meets them. */
+export const REQ_RELATIONS = [
+  "contains",
+  "copies",
+  "derives",
+  "satisfies",
+  "verifies",
+  "refines",
+  "traces",
+] as const;
+export type ReqRelation = (typeof REQ_RELATIONS)[number];
+
+/**
+ * A requirement, or an element, in one shape.
+ *
+ * One node type rather than two because they are drawn, measured and edited
+ * as the same titled table: what differs is which rows there are. A
+ * requirement has an id, a text, a risk and a verification method; an element
+ * has a type and a document reference. Every row is optional, because the
+ * syntax lets every one be left out — and one left out is not written back.
+ */
+export interface RequirementNodeData extends Record<string, unknown> {
+  label: string;
+  reqType: ReqType;
+  reqId?: string;
+  text?: string;
+  risk?: ReqRisk;
+  verifyMethod?: ReqVerify;
+  /** Element only: what kind of model element it is ("block", "test case"). */
+  elementType?: string;
+  /** Element only: where it is documented. */
+  docRef?: string;
+  /** classDef names assigned via `class a name` or `a:::name`. */
+  classes?: string[];
+  /** Inline styles from a `style <id> ...` statement. */
+  styles?: string[];
+  direction: Direction;
+}
+
+/**
+ * The rows a requirement node shows under its title, as label/value pairs.
+ *
+ * Here rather than beside the component that draws them because measurement
+ * and the SVG renderer need the same rows, and neither can import a React
+ * component to find out what they are.
+ */
+export function requirementRows(d: RequirementNodeData): Array<[string, string]> {
+  const rows: Array<[string, string | undefined]> =
+    d.reqType === "element"
+      ? [
+          ["Type", d.elementType],
+          ["Doc ref", d.docRef],
+        ]
+      : [
+          ["Id", d.reqId],
+          ["Text", d.text],
+          ["Risk", d.risk],
+          ["Verification", d.verifyMethod],
+        ];
+  return rows.filter((r): r is [string, string] => Boolean(r[1]));
+}
+
 /** Architecture-beta service node. */
 export interface ServiceNodeData extends Record<string, unknown> {
   label: string;
@@ -353,6 +441,7 @@ export type ParticipantNode = Node<ParticipantNodeData, "participant">;
 export type ServiceNode = Node<ServiceNodeData, "service">;
 export type JunctionNode = Node<Record<string, unknown>, "junction">;
 export type C4Node = Node<C4NodeData, "c4">;
+export type RequirementNode = Node<RequirementNodeData, "requirement">;
 export type NoteNode = Node<NoteNodeData, "note">;
 export type GroupNode = Node<GroupNodeData, "group">;
 export type AnyNode =
@@ -364,6 +453,7 @@ export type AnyNode =
   | ServiceNode
   | JunctionNode
   | C4Node
+  | RequirementNode
   | NoteNode
   | GroupNode;
 
@@ -403,6 +493,8 @@ export interface FlowEdgeData extends Record<string, unknown> {
   seq?: { op: SeqOp };
   arch?: ArchEdgeInfo;
   c4?: C4EdgeInfo;
+  /** Requirement diagrams: which SysML relationship the connection is. */
+  req?: { rel: ReqRelation };
   /** Set when several edges share the same node pair: index, count, and
    *  a direction-normalizing sign for the perpendicular offset. */
   par?: { i: number; n: number; s?: 1 | -1 };
@@ -424,6 +516,7 @@ export type NodeSeed =
   | { type: "service"; icon: string }
   | { type: "junction" }
   | { type: "c4"; c4Shape: C4Shape }
+  | { type: "requirement"; reqType: ReqType }
   // An icon on a group is how a VNet, a VPC or a subscription is drawn:
   // a container that says what it is. Optional, since most groups are just
   // groups.

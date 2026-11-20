@@ -10,13 +10,14 @@ const KIND_TAG: Record<DiagramKind, string> = {
   sequence: "SQ",
   architecture: "AR",
   c4: "C4",
+  requirement: "RQ",
 };
 
 /**
  * Which family a document is, without opening it.
  *
- * Two letters and a hue rather than a drawing: at this size a glyph for seven
- * families would be seven smudges, and letters can be read as well as
+ * Two letters and a hue rather than a drawing: at this size a glyph for eight
+ * families would be eight smudges, and letters can be read as well as
  * recognised. The badge carries its own label, so the full name is available
  * to anyone who cannot use the hue.
  */

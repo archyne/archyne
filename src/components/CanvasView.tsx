@@ -16,7 +16,13 @@ import { useRef } from "react";
 import { useGraphStore } from "../store";
 import type { AnyNode, DiagramKind, FlowEdge, NodeSeed } from "../model/types";
 import { GroupNodeView, ShapeNodeView } from "./ShapeNode";
-import { ClassNodeView, EntityNodeView, MarkerDefs, StateNodeView } from "./KindNodes";
+import {
+  ClassNodeView,
+  EntityNodeView,
+  MarkerDefs,
+  RequirementNodeView,
+  StateNodeView,
+} from "./KindNodes";
 import { MessageEdge, ParticipantNodeView } from "./SequenceView";
 import { C4NodeView, JunctionNodeView, ServiceNodeView } from "./ArchView";
 import { RoutedEdge } from "./RoutedEdge";
@@ -48,6 +54,7 @@ const nodeTypes: NodeTypes = {
   service: ServiceNodeView,
   junction: JunctionNodeView,
   c4: C4NodeView,
+  requirement: RequirementNodeView,
   note: NoteNodeView,
 };
 
@@ -83,6 +90,7 @@ const DEFAULT_SEED: Record<DiagramKind, NodeSeed> = {
   sequence: { type: "participant", ptype: "participant" },
   architecture: { type: "service", icon: "server" },
   c4: { type: "c4", c4Shape: "system" },
+  requirement: { type: "requirement", reqType: "requirement" },
 };
 
 /**

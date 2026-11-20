@@ -52,9 +52,11 @@ import {
   defaultSize,
   isFrameless,
   labelSize,
+  requirementRows,
   type AnyNode,
   type ClassNodeData,
   type EntityNodeData,
+  type RequirementNodeData,
   type ShapeNodeData,
 } from "./model/types";
 import {
@@ -229,6 +231,8 @@ function measureClass(
   data: ClassNodeData,
   metrics: TextMetrics,
   width?: number,
+  /** Rows set in the table face rather than the code face: a requirement's. */
+  plainRows: string[] = [],
 ): { width: number; height: number } {
   const name = data.generic ? `${data.label}<${data.generic}>` : data.label;
   const title = metrics.measure(name, FONTS.tableTitle);
@@ -241,23 +245,24 @@ function measureClass(
     titleHeight += a.height;
   }
 
-  const groups = [data.members, data.methods].filter((g) => g.length > 0);
+  const groups = [data.members, data.methods, plainRows].filter((g) => g.length > 0);
   let rows = 0;
   for (const group of groups) {
     rows += TABLE_ROWS.padY;
+    const font = group === plainRows ? FONTS.table : FONTS.mono;
     for (const text of group) {
       // Both numbers from the backend, height included. Assuming a line box of
       // 1.33× here cost 7px over four rows: `line-height: normal` resolves
       // through the *font's* metrics, and the code face this row is set in
       // (`.table-row.mono`) asks for a tighter line than the text face does.
-      const measured = metrics.measure(text, FONTS.mono);
+      const measured = metrics.measure(text, font);
       const line = row(measured.width, measured.height);
       widest = Math.max(widest, line.width);
       rows += line.height;
     }
   }
-  // `.table-rows + .table-rows` puts a 1px rule between the two groups.
-  if (groups.length === 2) rows += 1;
+  // `.table-rows + .table-rows` puts a 1px rule between consecutive groups.
+  rows += Math.max(0, groups.length - 1);
 
   return {
     width: Math.max(BOXES.table.minWidth, Math.ceil((width ?? widest) + BOXES.table.border)),
@@ -265,6 +270,30 @@ function measureClass(
       titleHeight + TABLE_TITLE.padY + TABLE_TITLE.rule + rows + BOXES.table.border,
     ),
   };
+}
+
+/**
+ * A SysML requirement or element: a class-like title — the kind in guillemets
+ * over the name — and one row per field it has, each `Label: value` on a line
+ * of its own in the table face. `RequirementNodeView` draws exactly this.
+ */
+function measureRequirement(
+  data: RequirementNodeData,
+  metrics: TextMetrics,
+  width?: number,
+): { width: number; height: number } {
+  return measureClass(
+    {
+      label: data.label,
+      annotations: [data.reqType],
+      members: [],
+      methods: [],
+      direction: data.direction,
+    },
+    metrics,
+    width,
+    requirementRows(data).map(([k, v]) => `${k}: ${v}`),
+  );
 }
 
 /**
@@ -373,6 +402,9 @@ export function measureNode(
 
     case "class":
       return measureClass(n.data, metrics, width);
+
+    case "requirement":
+      return measureRequirement(n.data, metrics, width);
 
     case "participant": {
       // `.participant-head` is a flex row, and an actor puts a 14px stick

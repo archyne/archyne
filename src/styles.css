@@ -1139,6 +1139,13 @@ body.resizing-side {
   font-size: 10px;
 }
 
+/* A requirement row's label — `Id:`, `Risk:` — set back so the value reads
+   first. Colour only: the row is measured as one run of text, and a change of
+   weight or size here would make it wider than the box measured for it. */
+.req-key {
+  color: var(--text-dim);
+}
+
 .table-row.mono {
   font-family: "Cascadia Code", Consolas, monospace;
   font-size: 11.5px;
@@ -4849,6 +4856,9 @@ body.resizing-side {
 }
 .doc-kind.k-c4 {
   background: #9aa5b1;
+}
+.doc-kind.k-requirement {
+  background: #e8956a;
 }
 
 /* The import preview: the same two-column body as the export dialog, with

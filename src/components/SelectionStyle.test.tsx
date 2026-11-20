@@ -146,3 +146,37 @@ describe("the selection's commands in the palette", () => {
     expect(screen.queryByRole("option", { name: en["insp.matchHeight"] })).toBeNull();
   });
 });
+
+describe("a class's annotations", () => {
+  it("splits on whitespace, not on the letter s", async () => {
+    useGraphStore.setState({
+      kind: "class",
+      code: "classDiagram\n",
+      nodes: [
+        {
+          id: "Battery",
+          type: "class",
+          position: { x: 0, y: 0 },
+          selected: true,
+          data: {
+            label: "Battery",
+            members: [],
+            methods: [],
+            annotations: [],
+            direction: "TB",
+          },
+        } as unknown as AnyNode,
+      ],
+    });
+    render(<Inspector />);
+    const field = screen.getByLabelText(new RegExp(en["insp.annotations"]));
+    await userEvent.type(field, "interfaceBlock  <<constraintBlock>> «sensor»");
+    await userEvent.tab();
+    const node = useGraphStore.getState().nodes.find((n) => n.id === "Battery")!;
+    expect((node.data as { annotations: string[] }).annotations).toEqual([
+      "interfaceBlock",
+      "constraintBlock",
+      "sensor",
+    ]);
+  });
+});

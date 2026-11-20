@@ -11,7 +11,13 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import { ShapeNodeView, GroupNodeView } from "./ShapeNode";
-import { ClassNodeView, EntityNodeView, MarkerDefs, StateNodeView } from "./KindNodes";
+import {
+  ClassNodeView,
+  EntityNodeView,
+  MarkerDefs,
+  RequirementNodeView,
+  StateNodeView,
+} from "./KindNodes";
 import { MessageEdge, ParticipantNodeView } from "./SequenceView";
 import { C4NodeView, JunctionNodeView, ServiceNodeView } from "./ArchView";
 import { NoteNodeView } from "./NoteNode";
@@ -40,6 +46,7 @@ const nodeTypes: NodeTypes = {
   service: ServiceNodeView,
   junction: JunctionNodeView,
   c4: C4NodeView,
+  requirement: RequirementNodeView,
   note: NoteNodeView,
 };
 

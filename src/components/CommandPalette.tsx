@@ -31,6 +31,7 @@ const KINDS: DiagramKind[] = [
   "sequence",
   "architecture",
   "c4",
+  "requirement",
 ];
 
 const THEMES = [

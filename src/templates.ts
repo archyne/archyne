@@ -183,4 +183,142 @@ export const TEMPLATES: Template[] = [
   Rel(shop, email, "Sends receipts", "SMTP")
 `,
   },
+
+  /*
+   * SysML. Four views of one system — a small drone — so that together they
+   * read as a model rather than as four unrelated pictures: what it must do,
+   * what it is made of, the modes it runs in, and how a mission runs.
+   *
+   * Only the requirement diagram is a SysML family in mermaid. The other three
+   * are SysML notation written in the UML family that draws it: a block
+   * definition diagram is a class diagram of «block»s, a state machine is a
+   * state diagram, an activity is a flowchart with SysML's initial and final
+   * nodes. They are edited exactly as those families are.
+   */
+  {
+    id: "sysml-requirements",
+    kind: "requirement",
+    nameKey: "tpl.sysmlRequirements",
+    descriptionKey: "tpl.sysmlRequirementsDesc",
+    code: `requirementDiagram
+  requirement mission {
+    id: "R-0"
+    text: "The drone shall survey a 2 km route and come back unaided."
+    risk: medium
+    verifymethod: demonstration
+  }
+  performanceRequirement flight_time {
+    id: "R-1"
+    text: "The drone shall fly for at least 30 minutes on one charge."
+    risk: high
+    verifymethod: test
+  }
+  functionalRequirement return_home {
+    id: "R-2"
+    text: "The drone shall return home when the battery falls below 15%."
+    risk: high
+    verifymethod: test
+  }
+  physicalRequirement takeoff_mass {
+    id: "R-1.1"
+    text: "The take-off mass shall not exceed 2 kg."
+    risk: medium
+    verifymethod: inspection
+  }
+  element battery_pack {
+    type: "block"
+  }
+  element flight_controller {
+    type: "block"
+  }
+  element endurance_test {
+    type: "test case"
+  }
+
+  mission - contains -> flight_time
+  mission - contains -> return_home
+  takeoff_mass - derives -> flight_time
+  battery_pack - satisfies -> flight_time
+  flight_controller - satisfies -> return_home
+  endurance_test - verifies -> flight_time
+`,
+  },
+  {
+    id: "sysml-bdd",
+    kind: "class",
+    nameKey: "tpl.sysmlBdd",
+    descriptionKey: "tpl.sysmlBddDesc",
+    code: `classDiagram
+  class Drone {
+    <<block>>
+    part frame : Airframe
+    part power : BatteryPack
+    part rotors : Rotor
+    value mass : kg
+  }
+  class Airframe {
+    <<block>>
+    value material : String
+  }
+  class BatteryPack {
+    <<block>>
+    value capacity : Wh
+    port charge : DCPort
+  }
+  class Rotor {
+    <<block>>
+    value diameter : mm
+    spin(rpm : Real) void
+  }
+
+  Drone *-- "1" Airframe : frame
+  Drone *-- "1" BatteryPack : power
+  Drone *-- "4" Rotor : rotors
+`,
+  },
+  {
+    id: "sysml-state-machine",
+    kind: "state",
+    nameKey: "tpl.sysmlStateMachine",
+    descriptionKey: "tpl.sysmlStateMachineDesc",
+    code: `stateDiagram-v2
+  [*] --> Off
+  Off --> Standby : power on
+  Standby --> Off : power off
+  Standby --> Flying : arm and launch
+  state Flying {
+    [*] --> TakingOff
+    TakingOff --> Cruising : altitude reached
+    Cruising --> Hovering : waypoint reached
+    Hovering --> [*] : survey done
+  }
+  Flying --> Landing : low battery
+  Landing --> Standby : touched down
+`,
+  },
+  {
+    id: "sysml-activity",
+    kind: "flowchart",
+    nameKey: "tpl.sysmlActivity",
+    descriptionKey: "tpl.sysmlActivityDesc",
+    code: `flowchart LR
+  initial(("Start"))
+  plan("Receive mission plan")
+  charged{"Battery above 30%?"}
+  charge("Charge battery")
+  merge{"merge"}
+  checks("Run pre-flight checks")
+  fly("Fly the route")
+  final((("End")))
+
+  initial --> plan
+  plan --> charged
+  charged -->|"no"| charge
+  charged -->|"yes"| merge
+  charge --> merge
+  merge --> checks
+  checks --> fly
+  fly --> final
+`,
+  },
 ];

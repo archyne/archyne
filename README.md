@@ -359,7 +359,7 @@ the other version.
 
 ## Current scope
 
-Seven Mermaid diagram families, all with visual editing and two-way sync.
+Eight Mermaid diagram families, all with visual editing and two-way sync.
 Anything else Mermaid can draw — gantt, pie, mindmap, timeline — opens
 read-only, rendered rather than refused.
 
@@ -400,6 +400,16 @@ read-only, rendered rather than refused.
   enterprise/system/container boundaries as groups, relations with
   technology labels and bidirectional arrows. The original C4 flavor and
   title round-trip.
+- **SysML requirement diagrams** (`requirementDiagram`) — the six requirement
+  kinds (functional, interface, performance, physical, design constraint and
+  plain) with their id, text, risk and verification method, elements with a
+  type and a document reference, and the seven relationships —
+  contains, copies, derives, satisfies, verifies, refines, traces — drawn as
+  SysML draws them. Renaming a requirement renames every relationship that
+  points at it. The rest of SysML is written in the families above, and four
+  templates show how: a block definition diagram as a class diagram of
+  «block»s, a state machine, and an activity, beside a requirements model of
+  the same system. See [`docs/sysml.md`](docs/sysml.md).
 
 The palette, inspector, and "New…" menu adapt to the active diagram kind.
 Plus: **undo/redo** (Ctrl+Z/Y — the code being the source of truth makes

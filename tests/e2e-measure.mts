@@ -101,6 +101,21 @@ const CORPUS: Record<string, string> = {
   System(app, "Application", "Does the thing this system exists to do")
   Rel(user, app, "Uses")
 `,
+  requirement: `requirementDiagram
+  functionalRequirement brake {
+    id: "R-2"
+    text: "The vehicle shall stop within 40 m from 100 km/h on a dry road."
+    risk: high
+    verifymethod: test
+  }
+  element brake_system {
+    type: "block"
+  }
+  designConstraint mass {
+  }
+  brake_system - satisfies -> brake
+  brake - contains -> mass
+`,
 };
 
 let failed = false;

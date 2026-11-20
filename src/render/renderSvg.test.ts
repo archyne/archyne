@@ -536,3 +536,22 @@ describe("words with no box", () => {
     expect(doc.querySelectorAll("tspan").length).toBe(2);
   });
 });
+
+describe("a SysML requirement", () => {
+  it("draws its rows with the label set back and the value in full", async () => {
+    const { svg } = await render(
+      'requirementDiagram\n  requirement speed {\n    id: "R-1"\n    risk: high\n  }\n',
+    );
+    const doc = parse(svg);
+    const dimmed = [...doc.querySelectorAll('tspan[opacity="0.7"]')].map((t) => t.textContent);
+    // The «stereotype» was already dimmed; the row labels now are too.
+    expect(dimmed).toEqual(expect.arrayContaining(["«requirement»", "Id:", "Risk:"]));
+    const idRow = [...doc.querySelectorAll("tspan")].find((t) =>
+      t.textContent?.startsWith("Id:"),
+    );
+    // One line still, so it measures as it did: the value follows in the
+    // same tspan, at full strength.
+    expect(idRow?.textContent).toBe("Id: R-1");
+    expect(idRow?.getAttribute("opacity")).toBeNull();
+  });
+});
