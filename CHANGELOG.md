@@ -24,7 +24,7 @@ itself ships, the following count as the public API for semver purposes:
 Breaking any of those requires a major version. The React component structure,
 CSS class names and internal store shape are _not_ public API.
 
-## [Unreleased]
+## [1.5.0-alpha.1] — 2026-11-20
 
 ### Added
 
@@ -41,10 +41,12 @@ CSS class names and internal store shape are _not_ public API.
   has is refused rather than silently merging the two. Each field is a
   `Label: value` row with the label set back in a muted colour, so the value
   reads first. Exported SVG draws them too.
+  Thanks to [@mriccobene](https://github.com/mriccobene).
 - **Four SysML templates**, all of one small drone so that they read as one
   model: its requirements, a block definition diagram (a class diagram of
   «block»s with parts, values and ports), a state machine of its operating
   modes, and the activity of a mission.
+  Thanks to [@mriccobene](https://github.com/mriccobene).
 
 ### Fixed
 
@@ -53,7 +55,7 @@ CSS class names and internal store shape are _not_ public API.
   spaces, so `interfaceBlock` became `interface` and `Block`, and
   `constraintBlock` was cut in three. It splits on whitespace now, and takes
   off any `<<…>>` or `«…»` typed around a name, which used to be written back
-  doubled.
+  doubled. Thanks to [@mriccobene](https://github.com/mriccobene).
 
 ## [1.4.1-alpha.1] — 2026-11-19
 
